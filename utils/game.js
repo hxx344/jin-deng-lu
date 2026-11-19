@@ -1,5 +1,7 @@
 // 《烬灯录》的游戏规则，不依赖微信接口。所有随机数由调用方传入 rng（返回 [0, 1) 的函数），便于测试。
 const content = require('./content');
+const combatPower = require('./combat-power');
+const mountain = require('./mountain');
 
 const SCHOOL_IDS = content.SCHOOL_IDS;
 const SCHOOLS = content.SCHOOLS;
@@ -235,6 +237,11 @@ function newRun(state, rng) {
     lastTitle: '',
     lastTrib: null,
     sea: null,
+    materials: 0,
+    mountainChoices: 0,
+    mountainRevision: 0,
+    cave: null,
+    sect: null,
     sudden: null,
     suddenCount: 0,
     suddenCooldown: 0,
@@ -259,6 +266,7 @@ function createState(now, rng) {
     bigCount: 0,
     arena: ARENA_MAX,
     arenaPoints: 0,
+    mountainLegacy: null,
     run: null
   };
   state.run = newRun(state, rng || Math.random);
@@ -302,11 +310,15 @@ function hasSet(run, school, n) {
   return setCounts(run)[school] >= n;
 }
 
+function skillSuppressed(run, skill) {
+  return skill.arcane && run.aftermath && run.aftermath.id === 'backlash';
+}
+
 function sumSkills(run, key) {
   let total = 0;
   run.skills.forEach((s) => {
     const skill = skillInfo(s.id);
-    if (run.aftermath && run.aftermath.id === 'backlash' && skill.arcane) return;
+    if (skillSuppressed(run, skill)) return;
     total += (skill[key] || 0) * s.level;
   });
   return total;
@@ -394,7 +406,7 @@ function mergeOptions(state, id) {
       const right = skillInfo(other.id);
       if (!right || right.arcane || right.school !== left.school) return;
       const arcane = arcaneFor(left.id, right.id);
-      if (arcane) out.push({ first: left.id, second: right.id, arcane: arcane });
+      if (arcane && !skillEntry(run, arcane.id)) out.push({ first: left.id, second: right.id, arcane: arcane });
     });
   });
   return out;
@@ -410,7 +422,7 @@ function mergeSkills(state, first, second, rng) {
   if (!leftEntry || !rightEntry || leftEntry.level < MAX_GRADE || rightEntry.level < MAX_GRADE ||
     !left || !right || left.arcane || right.arcane || left.school !== right.school) return null;
   const arcane = arcaneFor(first, second);
-  if (!arcane) return null;
+  if (!arcane || skillEntry(run, arcane.id)) return null;
   const before = snapshot(state);
   run.skills = run.skills.filter((entry) => entry.id !== first && entry.id !== second);
   run.skills.push({ id: arcane.id, level: 1 });
@@ -491,6 +503,21 @@ function attrs(state) {
   return out;
 }
 
+function combatPowerDetails(state, currentAttrs) {
+  const run = state.run;
+  if (run.phase === 'root') return { total: 0, sources: [] };
+  const mastery = run.skills.reduce((sum, entry) => {
+    const skill = skillInfo(entry.id);
+    return skillSuppressed(run, skill) ? sum : sum + combatPower.masteryPower(entry.level, skill.arcane);
+  }, 0);
+  const counts = setCounts(run);
+  const bonds = SCHOOL_IDS.reduce((sum, id) => sum + combatPower.bondPower(counts[id]), 0);
+  return combatPower.powerProfile(REALMS[run.realm], STAGES[run.stage], currentAttrs || attrs(state), [
+    { id: 'mastery', label: '功法品级', value: mastery },
+    { id: 'bonds', label: '流派羁绊', value: bonds }
+  ]);
+}
+
 function qiCap(state) {
   const run = state.run;
   return BASE_QI_CAP * REALMS[run.realm].cap * STAGES[run.stage].cap;
@@ -503,7 +530,8 @@ function qiRate(state) {
     (hasSet(run, 'pill', 2) ? 0.3 : 0) + 0.2 * lampLevel(state, 'r4');
   const fate = fateInfo(run);
   const demon = run.mode === 'demon' ? 1 + MAX_DEMON * DEMON_QI_RATE : 1;
-  return REALMS[run.realm].rate * (1 + bonus) * (1 + (fate.qi || 0)) * demon;
+  const cave = [1, 1.12, 1.25][run.cave ? run.cave.array : 0];
+  return REALMS[run.realm].rate * (1 + bonus) * (1 + (fate.qi || 0)) * demon * cave;
 }
 
 function maxLife(state) {
@@ -793,13 +821,14 @@ function legacyOffers(state, rng) {
   const run = state.run;
   const counts = setCounts(run);
   const rootSchools = rootOf(run).schools || [];
+  const library = run.cave ? run.cave.library : 0;
   const pool = [];
   const weights = [];
   SKILLS.forEach((skill) => {
     const owned = skillEntry(run, skill.id);
     if (owned && owned.level >= MAX_GRADE) return;
     pool.push(skill);
-    weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 : 1));
+    weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 + library * 2 : 1));
   });
   dampNewSkills(state, pool, weights);
   const count = 3 + (hasSet(run, 'talisman', 4) ? 1 : 0);
@@ -1295,6 +1324,7 @@ function die(state, cause) {
   state.wick += wick;
   state.totalWick += wick;
   state.lives++;
+  if (run.sect) state.mountainLegacy = mountain.archive(run, state.lives);
   state.best = Math.max(state.best, run.realm * STAGES.length + run.stage);
   state.carry = '';
   state.epitaphs.unshift(text + '（灯芯 +' + wick + '）');
@@ -1460,6 +1490,10 @@ function choose(state, index, rng) {
   if (soothe > 0) {
     run.demon -= soothe;
     lines.push('心魔 -' + soothe);
+  }
+  if (run.realm >= SEA_REALM) {
+    run.mountainChoices++;
+    mountain.progressChoices(run, lines);
   }
   state.bigCount++;
   if (state.bigCount >= BIG_EVERY) {
@@ -1707,10 +1741,7 @@ function autoStep(state, rng) {
   return out;
 }
 
-// 竞技场：和排行榜上的人切磋。榜上只有境界和累计灯芯，对手的战力由这两项推算。
-const ARENA_REALM_POWER = [12, 45, 130, 380, 850];
-const ARENA_STAGE_MULT = [1, 1.25, 1.5];
-const ARENA_UNBORN_POWER = 6;
+// 竞技场：和排行榜上的人切磋。
 // 胜利按对手战力发论道积分，失败折寿。
 const ARENA_WIN_RATE = 0.06;
 const ARENA_WIN_MIN = 3;
@@ -1733,23 +1764,13 @@ function arenaStanding(state) {
 }
 
 function arenaPower(state) {
-  const a = attrs(state);
-  return ATTRS.reduce((sum, k) => sum + Math.max(0, a[k]), 0);
-}
-
-function arenaFoePower(row) {
-  const index = Math.floor(Number(row.realmIndex));
-  if (!Number.isFinite(index) || index < 0) return ARENA_UNBORN_POWER;
-  const realm = Math.min(REALMS.length - 1, Math.floor(index / STAGES.length));
-  const wick = Math.max(0, Number(row.totalWick) || 0);
-  return Math.round(ARENA_REALM_POWER[realm] * ARENA_STAGE_MULT[index % STAGES.length] * (1 + Math.min(0.5, Math.log10(1 + wick) / 10)));
+  return combatPowerDetails(state).total;
 }
 
 // row 是榜上的一行：{ id, name, realmIndex, totalWick }。对战次数跨世保留，随时间回复。
-function arenaInfo(state, row) {
+function arenaInfo(state, row, mine = arenaPower(state)) {
   const run = state.run;
-  const mine = arenaPower(state);
-  const foe = arenaFoePower(row);
+  const foe = combatPower.estimatedOpponentPower(row);
   const win = Math.max(ARENA_WIN_MIN, Math.round(foe * ARENA_WIN_RATE));
   const info = {
     power: foe,
@@ -1868,6 +1889,35 @@ function seaResult(state, title, label, lines, tags, before, cause) {
   return { title: title, label: label, lines: lines, tags: tags, dead: checkDeath(state, cause) };
 }
 
+function mountainReady(state) {
+  const run = state.run;
+  return run.phase === 'alive' && run.realm >= SEA_REALM && !atSea(run) && !run.event && !run.pending;
+}
+
+function mountainContext(state) {
+  return {
+    ready: mountainReady(state), yuan: state.run.realm > SEA_REALM,
+    cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber
+  };
+}
+
+function mountainView(state, page, disciple) {
+  return mountain.mountainView(state, page, disciple, mountainContext(state));
+}
+
+function chooseMountain(state, page, disciple, stamp, id, name) {
+  const before = snapshot(state);
+  const result = mountain.chooseMountain(state, page, disciple, stamp, id, name, mountainContext(state));
+  if (!result) return null;
+  const tags = [];
+  if (result.book) gainSkill(state, result.book.id, result.book.level, result.lines, tags);
+  if (result.demon || result.chance) {
+    const demon = result.demon ? Math.max(-state.run.demon, result.demon) : 0;
+    applyFx(state, { demon: demon, chance: result.chance }, Math.random, result.lines, tags);
+  }
+  return seaResult(state, result.title, result.label, result.lines, tags, before);
+}
+
 function landingText(sea) {
   sea.landed = true;
   return sea.clue ? '枯海留名：你带着船上的名字回到了岸边。' : '沉舟归岸：你趁水还没漫过船舷，回到了岸边。';
@@ -1982,7 +2032,7 @@ function yuanTrialView(state) {
     attribute('mind', '凭道心守住本名');
     if (sea.clue) prepared('clue', '凭「' + route.clue + '」唤回本名', 0, 8);
     if (run.marks.includes('petword')) prepared('word', '请逃字替你记名', 6, 0);
-    if (hasSet(run, 'pill', 2)) prepared('pill', '炼一炉定神丹', 0, 10);
+    if (hasSet(run, 'pill', 2)) prepared('pill', '炼一炉定神丹', 0, 10 - (run.cave ? run.cave.field * 3 : 0));
   } else {
     attribute('edge', '斩断盐索');
     attribute('body', '负骨过潮');
@@ -2286,6 +2336,7 @@ function normalizeRun(state, raw, rng) {
     });
   }
   run.choices = toCount(raw.choices);
+  if (run.realm >= SEA_REALM) mountain.normalizeRunMountain(run, raw, run.realm > SEA_REALM, toCount);
   if (Array.isArray(raw.karma)) {
     raw.karma.forEach((k) => {
       if (k && KARMA[k.id] && !findById(run.karma, k.id)) run.karma.push({ id: k.id, due: toCount(k.due) });
@@ -2354,8 +2405,9 @@ function normalizeRun(state, raw, rng) {
     else run.chance += 1;
   }
   const pending = raw.pending;
-  if (pending && findById(SKILLS, pending.id) && !skillEntry(run, pending.id) && run.skills.length >= maxSkills(state)) {
-    run.pending = { id: pending.id, level: clamp(toCount(pending.level), 1, MAX_GRADE) };
+  const pendingSkill = pending && skillInfo(pending.id);
+  if (pendingSkill && !skillEntry(run, pending.id) && run.skills.length >= maxSkills(state)) {
+    run.pending = { id: pending.id, level: pendingSkill.arcane ? 1 : clamp(toCount(pending.level), 1, MAX_GRADE) };
   }
   run.sea = normalizeSea(run, raw.sea);
   return run;
@@ -2369,6 +2421,7 @@ function normalizeState(raw, now, rng) {
   state.wick = toCount(raw.wick);
   state.totalWick = Math.max(toCount(raw.totalWick), state.wick);
   state.lives = toCount(raw.lives);
+  state.mountainLegacy = mountain.normalizeArchive(raw.mountainLegacy, state.lives, toCount);
   const best = Math.floor(Number(raw.best));
   state.best = Number.isFinite(best) ? clamp(best, -1, WICK_SCORE.length - 1) : -1;
   const lamps = raw.lamps || {};
@@ -2492,6 +2545,7 @@ module.exports = {
   setCounts,
   hasSet,
   attrs,
+  combatPowerDetails,
   qiCap,
   qiRate,
   maxLife,
@@ -2535,6 +2589,9 @@ module.exports = {
   seaView,
   chooseSea,
   retreatSea,
+  mountainReady,
+  mountainView,
+  chooseMountain,
   yuanTrialView,
   attemptYuanTrial,
   tribulationInfo,

@@ -134,18 +134,24 @@ const RARE_ROOTS = [
 const LAYERS = ['尘壤', '骸山', '枯海'];
 
 // cap 和 rate 是丹田容量、灵气产出相对凡胎的倍率；layer 是所在墟层。
+// power 定义该境界的战力基数、单项属性软上限，以及竞技场估算用的典型构筑。
 const REALMS = [
-  { name: '凡胎', cap: 1, rate: 1, layer: 0 },
-  { name: '引气', cap: 5, rate: 2.5, layer: 0 },
-  { name: '筑基', cap: 25, rate: 6, layer: 1 },
-  { name: '金丹', cap: 150, rate: 15, layer: 1, fullWick: 120 },
-  { name: '元婴', cap: 1000, rate: 45, layer: 2, fullWick: 280 }
+  { name: '凡胎', cap: 1, rate: 1, layer: 0,
+    power: { base: 12, softCap: 24, opponentAttribute: 2, opponentMastery: 0, opponentBonds: 0 } },
+  { name: '引气', cap: 5, rate: 2.5, layer: 0,
+    power: { base: 30, softCap: 72, opponentAttribute: 13, opponentMastery: 10, opponentBonds: 4 } },
+  { name: '筑基', cap: 25, rate: 6, layer: 1,
+    power: { base: 65, softCap: 210, opponentAttribute: 29, opponentMastery: 22, opponentBonds: 6 } },
+  { name: '金丹', cap: 150, rate: 15, layer: 1, fullWick: 120,
+    power: { base: 130, softCap: 300, opponentAttribute: 77, opponentMastery: 42, opponentBonds: 10 } },
+  { name: '元婴', cap: 1000, rate: 45, layer: 2, fullWick: 280,
+    power: { base: 220, softCap: 450, opponentAttribute: 114, opponentMastery: 72, opponentBonds: 14 } }
 ];
 
 const STAGES = [
-  { name: '前期', cap: 1 },
-  { name: '中期', cap: 1.6 },
-  { name: '后期', cap: 2.5 }
+  { name: '前期', cap: 1, power: 1 },
+  { name: '中期', cap: 1.6, power: 1.2 },
+  { name: '后期', cap: 2.5, power: 1.4 }
 ];
 
 // TRIBS[i] 是从第 i 个境界突破到下一个境界的天劫。

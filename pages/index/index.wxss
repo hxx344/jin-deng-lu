@@ -70,6 +70,31 @@
   color: #a3988a;
 }
 
+.power-badge {
+  display: flex;
+  flex-shrink: 0;
+  align-self: center;
+  align-items: baseline;
+  margin-left: auto;
+  padding: 7rpx 16rpx;
+  border: 2rpx solid rgba(255, 191, 111, 0.25);
+  border-radius: 14rpx;
+  background: rgba(255, 191, 111, 0.08);
+}
+
+.power-label {
+  margin-right: 10rpx;
+  font-size: 22rpx;
+  color: #dac5a7;
+}
+
+.power-value {
+  font-size: 32rpx;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #ffcf8a;
+}
+
 .bar {
   height: 8rpx;
   margin-top: 12rpx;
@@ -1636,6 +1661,36 @@
   background: rgba(143, 230, 200, 0.12);
   color: #8fe6c8;
 }
+.mountain-entry {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin: 0 0 14rpx;
+  padding: 12rpx 18rpx;
+  border: 1rpx solid #567365;
+  border-left: 5rpx solid #8eb4a1;
+  border-radius: 10rpx;
+  background: #21332b;
+  color: #e6eee8;
+}
+
+.mountain-entry-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.mountain-entry-sub {
+  flex-shrink: 0;
+  color: #b6cfc1;
+  font-size: 22rpx;
+}
+
 /* 标签页 */
 .tabs {
   flex-shrink: 0;
@@ -1718,6 +1773,51 @@
 .attr-hint {
   font-size: 20rpx;
   color: #c7b3ff;
+}
+
+.power-panel {
+  margin-top: 12rpx;
+  padding: 12rpx 18rpx 14rpx;
+  border: 2rpx solid rgba(255, 191, 111, 0.18);
+  border-radius: 20rpx;
+  background: rgba(255, 191, 111, 0.06);
+}
+
+.power-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 24rpx;
+  color: #f6e7c8;
+}
+
+.power-sources {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 6rpx;
+}
+
+.power-source {
+  display: flex;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 50%;
+  padding-top: 6rpx;
+  font-size: 22rpx;
+  color: #c3b6a5;
+}
+
+.power-source:nth-child(odd) {
+  padding-right: 16rpx;
+}
+
+.power-source:nth-child(even) {
+  padding-left: 16rpx;
+}
+
+.power-source-value {
+  font-weight: 700;
+  color: #f6e7c8;
 }
 
 .set {
@@ -2048,6 +2148,137 @@
 
 .sheet-body::-webkit-scrollbar {
   display: none;
+}
+
+.mountain-tabs {
+  display: flex;
+  gap: 20rpx;
+}
+
+.mountain-tab {
+  padding: 8rpx 3rpx;
+  border-bottom: 3rpx solid transparent;
+  color: #c3b7a7;
+  font-size: 26rpx;
+}
+
+.mountain-tab-on {
+  border-color: #a3c6b4;
+  color: #cde4d7;
+  font-weight: 700;
+}
+
+.mountain-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx 26rpx;
+  margin-top: 16rpx;
+  padding: 12rpx 0;
+  border-top: 1rpx solid #685b4a;
+  border-bottom: 1rpx solid #685b4a;
+}
+
+.mountain-stat {
+  display: flex;
+  gap: 9rpx;
+  color: #c3b7a7;
+  font-size: 23rpx;
+}
+
+.mountain-number {
+  color: #f6e7c8;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mountain-body {
+  max-height: 53vh;
+  margin-top: 14rpx;
+}
+
+.mountain-lead {
+  margin: 0 0 16rpx;
+}
+
+.mountain-name {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 68rpx;
+  margin-bottom: 16rpx;
+  padding: 10rpx 18rpx;
+  border: 1rpx solid #796853;
+  border-radius: 10rpx;
+  background: #211b17;
+  color: #f6e7c8;
+  font-size: 27rpx;
+}
+
+.mountain-person {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin: 0 0 10rpx;
+  padding: 13rpx 16rpx;
+  border-left: 3rpx solid #8eb4a1;
+  background: #28342c;
+}
+
+.mountain-person-name,
+.mountain-back {
+  color: #d2e9db;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.mountain-person-detail,
+.mountain-teaching {
+  color: #c3b7a7;
+  font-size: 23rpx;
+}
+
+.mountain-back,
+.mountain-teaching {
+  margin-bottom: 14rpx;
+}
+
+.mountain-story {
+  margin: 16rpx 0 12rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #927658;
+  color: #f6e7c8;
+}
+
+.mountain-story-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8rpx 12rpx;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.mountain-story-progress,
+.mountain-cost {
+  color: #e5bc87;
+  font-size: 23rpx;
+  font-weight: 500;
+}
+
+.mountain-story-text {
+  margin-top: 8rpx;
+  color: #cfc4b3;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.mountain-cost {
+  margin-top: 6rpx;
+}
+
+.mountain-story-option {
+  border-radius: 10rpx;
 }
 
 .opt {

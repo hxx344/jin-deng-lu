@@ -250,6 +250,11 @@ function __boot(name) {
     setTimeout(function () { el.classList.remove(cls); }, 120);
   });
 
+  __app.addEventListener('input', function (e) {
+    var handler = e.target.getAttribute('bindinput');
+    if (handler && typeof __page[handler] === 'function') __page[handler]({ detail: { value: e.target.value } });
+  });
+
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       if (__page.onHide) __page.onHide();

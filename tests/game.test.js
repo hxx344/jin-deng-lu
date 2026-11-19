@@ -1,6 +1,7 @@
 const assert = require('node:assert');
 const test = require('node:test');
 const game = require('../utils/game');
+const { powerProfile } = require('../utils/combat-power');
 
 const near = (a, b) => assert.ok(Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)), a + ' 应约等于 ' + b);
 
@@ -1737,24 +1738,119 @@ test('功法已满时，传承和随机得来的功法里精进比新功法更�
   assert.strictEqual(s.run.event.offers.length, 3);
 });
 
+test('战力由当前角色派生，兼顾境界、均衡属性和功法，旧档可直接重算', () => {
+  const unborn = game.createState(0, () => 0);
+  assert.deepStrictEqual(game.combatPowerDetails(unborn), { total: 0, sources: [] });
+
+  const s = born('pill');
+  const points = (id) => game.combatPowerDetails(s).sources.find((entry) => entry.id === id).value;
+  assert.strictEqual(game.combatPowerDetails(s).total, 12);
+  s.run.stats.edge = 12;
+  s.run.stats.mind = -100;
+  assert.strictEqual(points('attributes'), 14);
+  s.run.stats.edge = 24;
+  const cap = points('attributes');
+  s.run.stats.edge = 36;
+  assert.ok(points('attributes') - cap < cap - 14);
+  s.run.stats = { edge: 30, body: 0, mind: 0 };
+  const specialized = points('attributes');
+  s.run.stats = { edge: 10, body: 10, mind: 10 };
+  assert.ok(points('attributes') > specialized);
+
+  const initial = game.combatPowerDetails(s).total;
+  game.advance(s, 100 * 1000);
+  assert.strictEqual(s.run.stage, 1);
+  assert.ok(game.combatPowerDetails(s).total > initial);
+  give(s, ['pi1', 'pi3', 'pi5', 'pi6']);
+  assert.strictEqual(points('mastery'), 8);
+  assert.strictEqual(points('bonds'), 10);
+  s.run.skills[0].level = 4;
+  assert.strictEqual(points('mastery'), 17);
+  give(s, ['sw2']);
+  const withStoredChances = points('attributes');
+  s.run.chance = 0;
+  assert.ok(points('attributes') < withStoredChances);
+
+  const profile = game.combatPowerDetails(s);
+  assert.strictEqual(profile.total, profile.sources.reduce((sum, source) => sum + source.value, 0));
+  assert.deepStrictEqual(game.combatPowerDetails(game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime)), profile);
+  assert.ok(game.retire(s));
+  assert.deepStrictEqual(game.combatPowerDetails(s), profile);
+  assert.ok(game.reincarnate(s, s.lastTime, () => 0));
+  assert.strictEqual(game.combatPowerDetails(s).total, 0);
+});
+
+test('战力按有效秘法贡献计分，并支持来自新玩法的独立增减项', () => {
+  const s = born('pill');
+  give(s, ['sw1', 'sw2', 'sw4', 'sw6'], 4);
+  const before = game.combatPowerDetails(s);
+  assert.ok(game.mergeSkills(s, 'sw1', 'sw2', () => 1));
+  const merged = game.combatPowerDetails(s);
+  assert.ok(merged.total > before.total);
+  s.run.aftermath = { id: 'backlash', remaining: 1 };
+  const suppressed = game.combatPowerDetails(s);
+  assert.strictEqual(suppressed.sources.find((entry) => entry.id === 'mastery').value, 22);
+  assert.ok(suppressed.total < merged.total);
+
+  const equipment = { id: 'equipment', label: '装备', value: 12.6 };
+  const injury = { id: 'injury', label: '伤势', value: -3 };
+  const inputs = [game.REALMS[0], game.STAGES[0], game.attrs(s)];
+  const base = powerProfile(...inputs);
+  const extended = powerProfile(...inputs, [equipment, injury]);
+  assert.strictEqual(extended.total, base.total + 10);
+  assert.deepStrictEqual(extended.sources.slice(-2), [Object.assign({}, equipment, { value: 13 }), injury]);
+});
+
+test('竞技场估算全境界逐阶段递增，同档构筑可公平切磋，灯芯加成有上限', () => {
+  const s = born('pill');
+  const builds = [
+    { attrs: [3, 2, 1], skills: [], level: 1 },
+    { attrs: [13, 10, 8], skills: ['sw1', 'sw4', 'bo1', 'ta1'], level: 1 },
+    { attrs: [30, 28, 22], skills: ['sw1', 'sw4', 'bo1', 'bo3', 'ta1', 'pi1'], level: 2 },
+    { attrs: [90, 70, 63], skills: ['sw1', 'sw4', 'bo1', 'bo3', 'ta1', 'ta2', 'pi1', 'pi3'], level: 3 },
+    { attrs: [135, 120, 105], skills: ['sw1', 'sw4', 'bo1', 'bo3', 'ta1', 'ta2', 'pi1', 'pi3'], level: 4 }
+  ];
+  let previous = 0;
+  builds.forEach((build, realm) => {
+    s.run.realm = realm;
+    s.run.skills = [];
+    give(s, build.skills, build.level);
+    s.run.stats = { edge: build.attrs[0], body: build.attrs[1], mind: build.attrs[2] };
+    game.STAGES.forEach((_, stage) => {
+      s.run.stage = stage;
+      const realmIndex = realm * game.STAGES.length + stage;
+      const info = game.arenaInfo(s, { realmIndex, totalWick: 0 });
+      assert.ok(info.power > previous);
+      previous = info.power;
+      const highWick = game.arenaInfo(s, { realmIndex, totalWick: 1e9 });
+      assert.strictEqual(highWick.power, Math.round(info.power * 1.15));
+      assert.strictEqual(game.arenaInfo(s, { realmIndex, totalWick: NaN }).power, info.power);
+      assert.strictEqual(game.arenaInfo(s, { realmIndex, totalWick: -5 }).power, info.power);
+      if (stage === 0) assert.ok(info.chance >= 0.4 && info.chance <= 0.6, '同档胜率 ' + info.chance);
+    });
+  });
+  assert.strictEqual(game.arenaInfo(s, { realmIndex: 999 }).power, previous);
+  assert.strictEqual(game.arenaInfo(s, { realmIndex: null }).power, 8);
+});
+
 test('竞技场：战力推算、胜败奖励、对战次数每小时回复一次并可一次用完', () => {
   const s = born();
   s.run.stats = { edge: 10, body: 10, mind: -5 };
-  assert.strictEqual(game.arenaPower(s), 20);
+  assert.strictEqual(game.arenaPower(s), 35);
   assert.strictEqual(s.arena, 10);
   const weak = { id: 'u1', name: '甲', realmIndex: 0, totalWick: 0 };
   const strong = { id: 'u2', name: '乙', realmIndex: 11, totalWick: 99999 };
   let info = game.arenaInfo(s, weak);
-  assert.strictEqual(info.power, 12);
-  near(info.chance, 20 / 32);
+  assert.strictEqual(info.power, 19);
+  near(info.chance, 35 / 54);
   assert.deepStrictEqual([info.win, info.years, info.left, info.reason], [3, 3, 10, '']);
   info = game.arenaInfo(s, strong);
-  assert.strictEqual(info.power, 855);
+  assert.strictEqual(info.power, 741);
   assert.strictEqual(info.chance, 0.05);
-  assert.strictEqual(info.win, 51);
-  assert.strictEqual(game.arenaInfo(s, { realmIndex: 12, totalWick: 0 }).power, 850);
-  assert.strictEqual(game.arenaInfo(s, { id: 'u3', realmIndex: -1, totalWick: 5 }).power, 6);
-  assert.strictEqual(game.arenaInfo(s, { id: 'u4' }).power, 6);
+  assert.strictEqual(info.win, 44);
+  assert.strictEqual(game.arenaInfo(s, { realmIndex: 12, totalWick: 0 }).power, 722);
+  assert.strictEqual(game.arenaInfo(s, { id: 'u3', realmIndex: -1, totalWick: 5 }).power, 8);
+  assert.strictEqual(game.arenaInfo(s, { id: 'u4' }).power, 8);
 
   // 败：寿元上限 -3，耗一次。
   const originalAttrs = game.attrs(s);
@@ -1767,10 +1863,10 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   assert.strictEqual(s.run.age, 0);
   assert.strictEqual(s.arena, 9);
   assert.deepStrictEqual(s.run.log[0], { age: 0, title: '竞技场', text: '败给乙：论道积分未增加，折寿 3 年', detail: '寿元余 60 → 57 年，寿元上限 60 → 57 年' });
-  // 胜：论道积分 +51，解锁称号；同一个人可以接着再胜。
+  // 胜：论道积分 +44，解锁称号；同一个人可以接着再胜。
   r = game.arenaFight(s, strong, () => 0);
   assert.strictEqual(r.win, true);
-  assert.deepStrictEqual(r.lines, ['论道积分 +51', '获得称号「论道新秀」']);
+  assert.deepStrictEqual(r.lines, ['论道积分 +44', '获得称号「论道新秀」']);
   assert.strictEqual(game.arenaStanding(s).title, '论道新秀');
   assert.strictEqual(game.maxLife(s), 57);
   assert.strictEqual(game.arenaFight(s, strong, () => 0).win, true);
@@ -1784,7 +1880,7 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   assert.deepStrictEqual([r.fights, r.wins, r.losses], [3, 2, 1]);
   assert.deepStrictEqual(r.lines, ['论道积分 +6', '折寿 3 年']);
   assert.strictEqual(r.label, '连战甲 3 场，胜 2 败 1');
-  assert.strictEqual(s.arenaPoints, 108);
+  assert.strictEqual(s.arenaPoints, 94);
   assert.deepStrictEqual(game.attrs(s), originalAttrs);
   assert.strictEqual(game.tribulationInfo(s).chance, originalTrib);
   assert.strictEqual(s.run.log.length, logs + 1);
@@ -1805,7 +1901,7 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   const raw = JSON.parse(JSON.stringify(s));
   raw.arena = 2.5;
   assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arena, 2.5);
-  assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arenaPoints, 108);
+  assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arenaPoints, 94);
   raw.arena = 99;
   assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arena, 10);
   delete raw.arena;
@@ -1831,7 +1927,7 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   assert.strictEqual(s.arena, 5);
   game.reincarnate(s, s.lastTime, () => 0);
   assert.strictEqual(s.arena, 5);
-  assert.strictEqual(s.arenaPoints, 108);
+  assert.strictEqual(s.arenaPoints, 94);
 });
 function goldCore() {
   const s = born();
