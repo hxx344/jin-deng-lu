@@ -1014,7 +1014,19 @@ test('每做完 10 次普通机缘的选择得一次大机缘，进度跨世保�
   assert.strictEqual(loaded.big, 99);
   assert.strictEqual(loaded.bigCount, 9);
 });
-test('大机缘：消耗一次、当场随机结算，不给选项、不耗寿元和机缘', () => {
+// 让大机缘落在指定的那一件上：随机数恒定，取这件事在当前池子里所占权重区间的中点。
+function bigFor(s, id) {
+  const pool = game.bigPool(s);
+  const total = pool.reduce((sum, ev) => sum + ev.weight, 0);
+  let start = 0;
+  for (let i = 0; i < pool.length; i++) {
+    if (pool[i].id === id) return game.drawBig(s, () => (start + pool[i].weight / 2) / total);
+    start += pool[i].weight;
+  }
+  return assert.fail('大机缘池里没有 ' + id);
+}
+
+test('大机缘：消耗一次、当场随机落下一件事，不给选项、不耗寿元和机缘', () => {
   const s = born();
   assert.strictEqual(game.canDrawBig(s), false);
   assert.strictEqual(game.drawBig(s, () => 0), null);
@@ -1022,81 +1034,188 @@ test('大机缘：消耗一次、当场随机结算，不给选项、不耗寿�
   const chance = s.run.chance;
   const r = game.drawBig(s, () => 0);
   assert.strictEqual(r.title, '大机缘');
+  assert.strictEqual(r.label, '树上挂着的仙蜕');
+  assert.ok(r.text.length > 10);
   assert.strictEqual(r.dead, false);
-  assert.deepStrictEqual(r.tags.slice(0, 1), ['big']);
+  assert.strictEqual(r.tags[0], 'big');
   assert.ok(r.tags.indexOf('lose') < 0);
   assert.strictEqual(s.big, 1);
   assert.strictEqual(s.run.event, null);
   assert.strictEqual(s.run.chance, chance);
   assert.strictEqual(s.run.age, 0);
   assert.strictEqual(s.run.choices, 0);
-  // 新功法比普通传承高一品
+  // 手上没有功法时，仙蜕给一门玄品新功法
   assert.strictEqual(s.run.skills.length, 1);
-  assert.strictEqual(s.run.skills[0].level, 2);
-  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '大机缘');
-  // 已有的功法一次升两品
-  s.run.skills[0].level = 1;
-  assert.ok(game.drawBig(s, () => 0).tags.indexOf('upgrade') >= 0);
   assert.strictEqual(s.run.skills[0].level, 3);
+  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '大机缘·树上挂着的仙蜕');
+  assert.strictEqual(s.run.lastTitle, '树上挂着的仙蜕');
+  // 有功法时，把其中一门直接练到天品
+  s.run.skills[0].level = 1;
+  assert.ok(bigFor(s, 'relic').tags.indexOf('upgrade') >= 0);
+  assert.strictEqual(s.run.skills.length, 1);
+  assert.strictEqual(s.run.skills[0].level, 4);
+  assert.strictEqual(s.big, 0);
+
+  assert.strictEqual(game.BIG_EVENTS.reduce((sum, ev) => sum + ev.weight, 0), 100);
+  assert.strictEqual(game.BIG_EVENTS.filter((ev) => ev.tone === 'bad').reduce((sum, ev) => sum + ev.weight, 0), 20);
 });
-test('大机缘：结果有好有坏，坏结果不会直接寿尽或入魔', () => {
-  // 随机数恒定时按权重落在固定的一格：功法 30、灵气 14、属性 12、寿元 8、机缘 8、折寿 10、心魔 10、散灵气 8。
-  const roll = (value) => {
+test('大机缘：每件事各有各的效果，用不上的不进池子', () => {
+  const make = () => {
     const s = born();
     s.big = 1;
-    s.run.qi = 100;
-    return { s: s, r: game.drawBig(s, () => value) };
+    return s;
   };
-  let o = roll(0.35);
-  assert.strictEqual(o.r.lines[0], '灵气 +' + game.formatNumber(game.qiCap(born())));
-  o = roll(0.5);
-  assert.deepStrictEqual(o.r.lines, ['锋 +3', '躯 +3', '神 +3']);
-  o = roll(0.6);
-  assert.deepStrictEqual(o.r.lines, ['寿元上限 +20 年']);
-  o = roll(0.7);
-  assert.deepStrictEqual(o.r.lines, ['机缘 +12']);
-  assert.ok(o.r.tags.indexOf('lose') < 0);
-  o = roll(0.75);
-  assert.deepStrictEqual(o.r.lines, ['折寿 8 年']);
-  assert.deepStrictEqual(o.r.tags, ['big', 'life-', 'lose']);
-  assert.strictEqual(game.maxLife(o.s), 52);
-  o = roll(0.85);
-  assert.deepStrictEqual(o.r.lines, ['心魔 +15']);
-  assert.deepStrictEqual(o.r.tags, ['big', 'demon+', 'lose']);
-  assert.strictEqual(o.s.run.demon, 15);
-  o = roll(0.95);
-  assert.deepStrictEqual(o.r.lines, ['灵气 -30']);
-  assert.deepStrictEqual(o.r.tags, ['big', 'lose']);
-  assert.strictEqual(o.s.run.qi, 70);
+  const ids = (s) => game.bigPool(s).map((ev) => ev.id);
+  // 刚投胎：没有功法、年岁为零，凑羁绊、忘功法和倒流都轮不到
+  ['bond', 'forget', 'youth'].forEach((id) => assert.ok(ids(make()).indexOf(id) < 0));
+  const rich = make();
+  give(rich, ['sw1'], 2);
+  rich.run.age = 25;
+  rich.run.stats = { edge: 1, body: 2, mind: 3 };
+  assert.strictEqual(game.bigPool(rich).length, game.BIG_EVENTS.length);
 
-  // 只剩一年寿元、心魔 99 时，怎么抽都不会死也不会入魔
+  let s = make();
+  give(s, ['sw1']);
+  let r = bigFor(s, 'bond');
+  assert.deepStrictEqual(s.run.skills.map((k) => game.SKILLS.filter((x) => x.id === k.id)[0].school), ['sword', 'sword']);
+  assert.strictEqual(s.run.skills[1].level, 2);
+  assert.ok(r.tags.indexOf('bond') >= 0);
+
+  s = make();
+  bigFor(s, 'wick');
+  assert.strictEqual(s.wick, 2);
+  assert.strictEqual(s.totalWick, 2);
+  assert.strictEqual(s.run.phase, 'alive');
+
+  s = make();
+  s.run.age = 25;
+  assert.deepStrictEqual(bigFor(s, 'youth').lines, ['年岁 -10，寿元余 +10 年']);
+  assert.strictEqual(s.run.age, 15);
+
+  s = make();
+  const base = game.tribulationInfo(s).chance;
+  assert.deepStrictEqual(bigFor(s, 'thunder').lines, ['下一场天劫成功率 +20%，渡过或失败后用掉']);
+  near(game.tribulationInfo(s).chance, base + 0.2);
+  assert.ok(ids(s).indexOf('thunder') < 0);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0).run.tribBoon, 0.2);
+  s.run.stage = 2;
+  s.run.qi = game.qiCap(s);
+  assert.ok(game.attemptTribulation(s, () => 0, 'scatter'));
+  assert.strictEqual(s.run.tribBoon, 0);
+
+  s = make();
+  assert.deepStrictEqual(bigFor(s, 'teller').lines, ['下一个机缘必为传承', '这一世可重抽的次数 +2']);
+  assert.ok(ids(s).indexOf('teller') < 0);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0).run.freeRerolls, 2);
+  assert.ok(game.drawEvent(s, () => 0.99));
+  assert.strictEqual(s.run.event.kind, 'legacy');
+
+  s = make();
+  bigFor(s, 'peer');
+  assert.strictEqual(s.run.speed, 0.5);
+
+  s = make();
+  s.run.stats = { edge: 1, body: 2, mind: 3 };
+  assert.deepStrictEqual(bigFor(s, 'rotate').lines, ['锋的根基 1 → 3', '躯的根基 2 → 1', '神的根基 3 → 2']);
+  assert.deepStrictEqual(s.run.stats, { edge: 3, body: 1, mind: 2 });
+  s.run.stats = { edge: 2, body: 2, mind: 2 };
+  assert.ok(ids(s).indexOf('rotate') < 0);
+
+  s = make();
+  assert.strictEqual(s.run.fate, '');
+  r = bigFor(s, 'fate');
+  assert.ok(game.FATES.some((fate) => fate.id === s.run.fate));
+  assert.ok(r.lines[0].indexOf('命格换成【') === 0);
+  // 换了会当场寿尽的命格不给：45 岁时薄命只剩 42 年寿元
+  [0, 0.3, 0.6, 0.99].forEach((x) => {
+    s.run.fate = '';
+    s.run.age = 45;
+    s.big = 1;
+    const pool = game.bigPool(s);
+    const total = pool.reduce((sum, ev) => sum + ev.weight, 0);
+    const at = pool.findIndex((ev) => ev.id === 'fate');
+    const start = pool.slice(0, at).reduce((sum, ev) => sum + ev.weight, 0);
+    let first = true;
+    const drawn = game.drawBig(s, () => {
+      if (!first) return x;
+      first = false;
+      return (start + 1) / total;
+    });
+    assert.strictEqual(drawn.label, '拿错的命纸');
+    assert.ok(['bright', 'dark'].indexOf(s.run.fate) >= 0);
+    assert.strictEqual(s.run.phase, 'alive');
+  });
+  s = make();
+  s.run.demon = 20;
+  r = bigFor(s, 'dream');
+  assert.strictEqual(s.run.age, 10);
+  assert.strictEqual(s.run.demon, 5);
+  assert.strictEqual(s.run.stage, 1);
+  assert.strictEqual(r.lines[0], '一觉睡去 10 年');
+  s.big = 1;
+  s.run.age = game.maxLife(s) - 11;
+  assert.ok(ids(s).indexOf('dream') < 0);
+
+  s = make();
+  give(s, ['sw1'], 3);
+  r = bigFor(s, 'forget');
+  assert.deepStrictEqual(r.lines, ['《截云剑》跌回灵品']);
+  assert.deepStrictEqual(r.tags, ['big', 'lose']);
+  assert.strictEqual(s.run.skills[0].level, 2);
+
+  s = make();
+  s.run.demon = 90;
+  const mind = s.run.stats.mind;
+  r = bigFor(s, 'possess');
+  assert.strictEqual(s.run.demon, 99);
+  assert.strictEqual(s.run.stats.mind, mind + 2);
+  assert.strictEqual(s.run.mode, 'human');
+  assert.ok(r.tags.indexOf('lose') >= 0);
+  s.big = 1;
+  assert.ok(ids(s).indexOf('possess') < 0);
+
+  s = make();
+  assert.deepStrictEqual(bigFor(s, 'scavenge').lines, ['机缘 -30']);
+  assert.strictEqual(s.run.chance, 30);
+
+  s = make();
+  assert.deepStrictEqual(bigFor(s, 'debt').lines, ['种下因果【丹盟的欠条】']);
+  s.big = 1;
+  assert.ok(ids(s).indexOf('debt') < 0);
+});
+test('大机缘：怎么抽都不会直接寿尽或入魔，旧存档的待选大机缘退还', () => {
   const seen = {};
-  for (let seed = 1; seed <= 300; seed++) {
+  for (let seed = 1; seed <= 600; seed++) {
+    const rng = mulberry(seed);
     const s = born();
     s.big = 1;
+    const count = Math.floor(rng() * 7);
+    for (let i = 0; i < count; i++) {
+      const skill = game.SKILLS[Math.floor(rng() * game.SKILLS.length)];
+      if (!s.run.skills.some((k) => k.id === skill.id)) s.run.skills.push({ id: skill.id, level: 1 + Math.floor(rng() * 4) });
+    }
+    s.run.stats = { edge: Math.floor(rng() * 9), body: Math.floor(rng() * 9), mind: Math.floor(rng() * 9) };
     s.run.qi = 100;
-    s.run.age = game.maxLife(s) - 1;
-    s.run.demon = 99;
-    const r = game.drawBig(s, mulberry(seed));
+    // 一半的人只剩一年寿元、心魔 99
+    if (seed % 2) {
+      s.run.age = game.maxLife(s) - 1;
+      s.run.demon = 99;
+    } else {
+      s.run.age = Math.floor(rng() * 30);
+      s.run.demon = Math.floor(rng() * 60);
+    }
+    if (game.maxLife(s) <= s.run.age) continue;
+    const r = game.drawBig(s, rng);
     seen[r.label] = true;
-    assert.strictEqual(r.dead, false);
-    assert.strictEqual(s.run.phase, 'alive');
-    assert.strictEqual(s.run.mode, 'human');
-    if (s.run.pending) continue;
-    assert.ok(game.maxLife(s) > s.run.age);
+    assert.ok(r.lines.length > 0, r.label);
+    assert.strictEqual(r.dead, false, r.label);
+    assert.strictEqual(s.run.phase, 'alive', r.label);
+    assert.strictEqual(s.run.mode, 'human', r.label);
+    assert.ok(game.maxLife(s) > s.run.age, r.label);
+    assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0).run.phase, 'alive', r.label);
   }
-  assert.ok(Object.keys(seen).length >= 5);
+  assert.strictEqual(Object.keys(seen).length, game.BIG_EVENTS.length);
 
-  // 功法全部满品时照样能用，只是不会再落成功法
-  const full = born();
-  full.big = 1;
-  game.SKILLS.forEach((k) => full.run.skills.push({ id: k.id, level: game.GRADES.length }));
-  assert.strictEqual(game.canDrawBig(full), true);
-  const skills = JSON.stringify(full.run.skills);
-  assert.ok(game.drawBig(full, () => 0));
-  assert.strictEqual(JSON.stringify(full.run.skills), skills);
-
-  // 旧存档里还没选的大机缘作废，次数退还
   const old = born();
   const raw = JSON.parse(JSON.stringify(old));
   raw.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 2 }], rerolls: 0, big: true };
@@ -2042,7 +2161,7 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
 
   // 大机缘不能减少普通机缘的余波和冷却。
   s.big = 1;
-  assert.deepStrictEqual(game.drawBig(s, () => 0.7).lines, ['机缘 +12']);
+  assert.ok(bigFor(s, 'wick'));
   assert.strictEqual(s.run.aftermath.remaining, 3);
   assert.strictEqual(s.run.suddenCooldown, 4);
 

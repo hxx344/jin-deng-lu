@@ -21,6 +21,7 @@ const AUTO_LAMP = content.AUTO_LAMP;
 const KARMA = content.KARMA;
 const MARKS = content.MARKS;
 const LEGACY_INTROS = content.LEGACY_INTROS;
+const BIG_EVENTS = content.BIG_EVENTS;
 const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
 
@@ -230,6 +231,7 @@ function newRun(state, rng) {
     log: [],
     forceLegacy: false,
     freeRerolls: 0,
+    tribBoon: 0,
     lastTitle: '',
     lastTrib: null,
     sea: null,
@@ -787,8 +789,7 @@ function dampNewSkills(state, pool, weights) {
   });
 }
 
-// big 为真时给大机缘用：多一个候选，品阶高一品。
-function legacyOffers(state, rng, big) {
+function legacyOffers(state, rng) {
   const run = state.run;
   const counts = setCounts(run);
   const rootSchools = rootOf(run).schools || [];
@@ -801,12 +802,11 @@ function legacyOffers(state, rng, big) {
     weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 : 1));
   });
   dampNewSkills(state, pool, weights);
-  const count = 3 + (hasSet(run, 'talisman', 4) ? 1 : 0) + (big ? 1 : 0);
-  const boost = big ? 1 : 0;
+  const count = 3 + (hasSet(run, 'talisman', 4) ? 1 : 0);
   return sample(pool, weights, count, rng).map((skill) => {
     const owned = skillEntry(run, skill.id);
-    if (owned) return { id: skill.id, level: Math.min(MAX_GRADE, owned.level + 1 + boost) };
-    return { id: skill.id, level: (REALMS[run.realm].layer > 0 && rng() < 0.3 ? 2 : 1) + boost };
+    if (owned) return { id: skill.id, level: Math.min(MAX_GRADE, owned.level + 1) };
+    return { id: skill.id, level: REALMS[run.realm].layer > 0 && rng() < 0.3 ? 2 : 1 };
   });
 }
 
@@ -869,7 +869,7 @@ function generateEvent(state, rng, forcedType, excludeId) {
     if (fresh.length) pool = fresh;
     if (pool.length) return { kind: 'event', id: pick(pool, rng).id };
   }
-  const offers = legacyOffers(state, rng, false);
+  const offers = legacyOffers(state, rng);
   if (offers.length) {
     const intros = [];
     LEGACY_INTROS.forEach((intro, i) => {
@@ -895,82 +895,228 @@ function drawEvent(state, rng) {
   return true;
 }
 
-// 大机缘不给选项，按权重随机落下一种结果，好坏都有。坏结果不会直接让人寿尽或入魔。
-const BIG_LIFE_LOSS = 8;
+// 大机缘不给选项，随机落下一件事并当场结算，好事、坏事和说不准的事都有。
+// 坏事不会直接让人寿尽或入魔；眼下用不上或会致命的事不进池子。
+const BIG_YEARS = 10;
 const BIG_DEMON = 15;
-const BIG_QI_LOSS = 0.3;
-const BIG_OUTCOMES = [
-  { id: 'skill', weight: 30, label: '缘分落成了一门功法' },
-  { id: 'qi', weight: 14, label: '缘分化成灵气，灌进丹田', fx: { qi: 1 } },
-  { id: 'attrs', weight: 12, label: '缘分把筋骨和神魂都洗了一遍', fx: { edge: 3, body: 3, mind: 3 } },
-  { id: 'life', weight: 8, label: '缘分续上了一截寿数', fx: { life: 20 } },
-  { id: 'chance', weight: 8, label: '缘分碎成了一把小机缘', fx: { chance: 12 } },
-  { id: 'wither', weight: 10, bad: true, label: '缘分太重，压折了一截寿数' },
-  { id: 'demon', weight: 10, bad: true, label: '缘分里掺着别人的执念' },
-  { id: 'drain', weight: 8, bad: true, label: '缘分是空的，反倒吸走了一些灵气' }
-];
+const BIG_TRIB = 0.2;
+const BIG_REROLLS = 2;
+const BIG_SPEED = 0.5;
+
+// 把 skills 换成 next 之后人还活着。
+function bigSurvives(state, next) {
+  return withSkills(state, next, () => maxLife(state)) > state.run.age;
+}
+
+function bigWithLevel(run, entry, level) {
+  return run.skills.map((s) => (s === entry ? { id: s.id, level: level } : s));
+}
+
+// 能学的新功法：功法已满时交给取舍，否则学了不能寿尽。
+function bigNewSkills(state, level, schools) {
+  const run = state.run;
+  return SKILLS.filter((skill) => !skillEntry(run, skill.id) && (!schools || schools.indexOf(skill.school) >= 0) &&
+    (run.skills.length >= maxSkills(state) || bigSurvives(state, run.skills.concat({ id: skill.id, level: level }))));
+}
+
+function bigRelicOwned(state) {
+  const run = state.run;
+  return run.skills.filter((s) => !skillInfo(s.id).arcane && s.level < MAX_GRADE && bigSurvives(state, bigWithLevel(run, s, MAX_GRADE)));
+}
+
+function bigBondSkills(state) {
+  const counts = setCounts(state.run);
+  return bigNewSkills(state, 2, SCHOOL_IDS.filter((k) => counts[k] === 1 || counts[k] === 3));
+}
+
+function bigFates(state) {
+  const run = state.run;
+  const old = run.fate;
+  const out = FATES.filter((fate) => {
+    if (fate.id === old) return false;
+    run.fate = fate.id;
+    return maxLife(state) > run.age;
+  });
+  run.fate = old;
+  return out;
+}
+
+function bigForgettable(state) {
+  const run = state.run;
+  return run.skills.filter((s) => !skillInfo(s.id).arcane && s.level > 1 && bigSurvives(state, bigWithLevel(run, s, s.level - 1)));
+}
+
+function bigWick(run) {
+  return Math.max(2, Math.ceil(WICK_SCORE[run.realm * STAGES.length + run.stage] / 3));
+}
+
+// ok 判断这件事眼下能不能发生，run 结算并把结果写进 lines 和 tags。
+const BIG_EFFECTS = {
+  relic: {
+    ok: (state) => bigRelicOwned(state).length > 0 || bigNewSkills(state, 3).length > 0,
+    run: (state, rng, lines, tags) => {
+      const owned = bigRelicOwned(state);
+      if (!owned.length) {
+        gainSkill(state, pick(bigNewSkills(state, 3), rng).id, 3, lines, tags);
+        return;
+      }
+      const entry = pick(owned, rng);
+      const skill = skillInfo(entry.id);
+      const before = entry.level;
+      entry.level = MAX_GRADE;
+      tags.push('skill:' + skill.school, 'upgrade');
+      lines.push('《' + skill.name + '》直入' + GRADES[MAX_GRADE - 1] + '品：' + skillUpgradeDesc(skill, before, MAX_GRADE));
+    }
+  },
+  bond: {
+    ok: (state) => bigBondSkills(state).length > 0,
+    run: (state, rng, lines, tags) => gainSkill(state, pick(bigBondSkills(state), rng).id, 2, lines, tags)
+  },
+  wick: {
+    ok: () => true,
+    run: (state, rng, lines, tags) => {
+      const n = bigWick(state.run);
+      state.wick += n;
+      state.totalWick += n;
+      lines.push('灯芯 +' + n + '（不必等到身死）');
+      tags.push('bigup');
+    }
+  },
+  youth: {
+    ok: (state) => state.run.age >= 3,
+    run: (state, rng, lines, tags) => {
+      const n = Math.min(BIG_YEARS, state.run.age);
+      state.run.age -= n;
+      lines.push('年岁 -' + n + '，寿元余 +' + n + ' 年');
+      tags.push('life+');
+    }
+  },
+  thunder: {
+    ok: (state) => {
+      const run = state.run;
+      const trib = TRIBS[run.realm];
+      return run.mode !== 'demon' && !!trib && !trib.seaTrial && !run.tribBoon;
+    },
+    run: (state, rng, lines) => {
+      state.run.tribBoon = BIG_TRIB;
+      lines.push('下一场天劫成功率 +' + pctText(BIG_TRIB) + '，渡过或失败后用掉');
+    }
+  },
+  teller: {
+    ok: (state) => !state.run.forceLegacy,
+    run: (state, rng, lines, tags) => {
+      const run = state.run;
+      const cap = findById(LAMPS, 'y2').max + BIG_REROLLS;
+      const gained = Math.min(cap, run.freeRerolls + BIG_REROLLS) - run.freeRerolls;
+      run.forceLegacy = true;
+      run.freeRerolls += gained;
+      lines.push('下一个机缘必为传承');
+      if (gained > 0) lines.push('这一世可重抽的次数 +' + gained);
+      tags.push('chance');
+    }
+  },
+  peer: {
+    ok: () => true,
+    run: (state, rng, lines, tags) => applyFx(state, { speed: BIG_SPEED }, rng, lines, tags)
+  },
+  rotate: {
+    ok: (state) => {
+      const s = state.run.stats;
+      return s.edge !== s.body || s.body !== s.mind;
+    },
+    run: (state, rng, lines) => {
+      const s = state.run.stats;
+      const next = { edge: s.mind, body: s.edge, mind: s.body };
+      ATTRS.forEach((k) => {
+        if (next[k] !== s[k]) lines.push(ATTR_NAMES[k] + '的根基 ' + s[k] + ' → ' + next[k]);
+        s[k] = next[k];
+      });
+    }
+  },
+  fate: {
+    ok: (state) => bigFates(state).length > 0,
+    run: (state, rng, lines) => {
+      const fate = pick(bigFates(state), rng);
+      state.run.fate = fate.id;
+      lines.push('命格换成【' + fate.name + '】：' + fate.desc);
+    }
+  },
+  dream: {
+    ok: (state) => state.run.mode !== 'demon' && !isFull(state) && yearsLeft(state) >= BIG_YEARS + 2,
+    run: (state, rng, lines, tags) => {
+      const run = state.run;
+      run.age += BIG_YEARS;
+      lines.push('一觉睡去 ' + BIG_YEARS + ' 年');
+      addQiWithLines(state, qiRewardAmount(state, 1), lines, tags);
+      const calm = Math.min(BIG_DEMON, run.demon);
+      if (calm > 0) {
+        run.demon -= calm;
+        lines.push('心魔 -' + calm);
+      }
+    }
+  },
+  forget: {
+    ok: (state) => bigForgettable(state).length > 0,
+    run: (state, rng, lines) => {
+      const entry = pick(bigForgettable(state), rng);
+      const skill = skillInfo(entry.id);
+      entry.level -= 1;
+      lines.push('《' + skill.name + '》跌回' + GRADES[entry.level - 1] + '品');
+    }
+  },
+  possess: {
+    ok: (state) => state.run.mode !== 'demon' && state.run.demon <= MAX_DEMON - 2,
+    run: (state, rng, lines, tags) => {
+      // 实际涨幅只会比给出的小，所以按离 99 的差额给，不会就此入魔。
+      const gain = Math.min(BIG_DEMON, MAX_DEMON - 1 - state.run.demon);
+      applyFx(state, { demon: gain, mind: 2 }, rng, lines, tags);
+    }
+  },
+  scavenge: {
+    ok: (state) => state.run.chance >= 4,
+    run: (state, rng, lines) => {
+      const n = Math.floor(state.run.chance / 2);
+      state.run.chance -= n;
+      lines.push('机缘 -' + n);
+    }
+  },
+  debt: {
+    ok: (state) => !findById(state.run.karma, 'debt') && state.run.marks.indexOf('deadbeat') < 0,
+    run: (state, rng, lines, tags) => applyFx(state, { karma: 'debt' }, rng, lines, tags)
+  }
+};
 
 function canDrawBig(state) {
   const run = state.run;
   return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.sudden && state.big >= 1;
 }
 
-// 大机缘给的功法：比普通传承高一品。学了会寿尽的不给；功法全部满品时返回 null。
-function bigSkill(state, rng) {
-  const run = state.run;
-  const offers = legacyOffers(state, rng, true);
-  for (let i = 0; i < offers.length; i++) {
-    const owned = skillEntry(run, offers[i].id);
-    if (!owned && run.skills.length >= maxSkills(state)) return offers[i];
-    const next = run.skills.filter((s) => s !== owned);
-    next.push(offers[i]);
-    if (withSkills(state, next, () => maxLife(state)) > run.age) return offers[i];
-  }
-  return null;
+// 眼下能落下来的大机缘。
+function bigPool(state) {
+  return BIG_EVENTS.filter((ev) => BIG_EFFECTS[ev.id].ok(state));
 }
 
-// 用掉一次大机缘并当场结算，返回和 choose 相同形状的结果；用不了时返回 null。
+// 用掉一次大机缘并当场结算，返回和 choose 相同形状的结果，另带一段 text；用不了时返回 null。
 function drawBig(state, rng) {
   if (!canDrawBig(state)) return null;
   const run = state.run;
   const before = snapshot(state);
   const beforeStage = run.realm * STAGES.length + run.stage;
-  const learn = bigSkill(state, rng);
-  // 体系羁绊会把寿元上限放大两成，折寿按放大后留出至少一年。
-  const years = Math.min(BIG_LIFE_LOSS, Math.floor((yearsLeft(state) - 1) / 1.2));
-  const demon = run.mode === 'demon' ? 0 : Math.min(BIG_DEMON, MAX_DEMON - 1 - run.demon);
-  const drain = Math.round(run.qi * BIG_QI_LOSS);
-  const usable = {
-    skill: !!learn, qi: !isFull(state), attrs: true, life: run.mode !== 'demon', chance: true,
-    wither: years >= 1, demon: demon >= 1, drain: drain >= 1
-  };
-  const pool = BIG_OUTCOMES.filter((o) => usable[o.id]);
-  const outcome = sample(pool, pool.map((o) => o.weight), 1, rng)[0];
+  const pool = bigPool(state);
+  const ev = sample(pool, pool.map((item) => item.weight), 1, rng)[0];
   const lines = [];
   const tags = ['big'];
   state.big -= 1;
-  if (outcome.id === 'skill') {
-    gainSkill(state, learn.id, learn.level, lines, tags);
-  } else if (outcome.id === 'wither') {
-    applyFx(state, { life: -years }, rng, lines, tags);
-  } else if (outcome.id === 'demon') {
-    applyFx(state, { demon: demon }, rng, lines, tags);
-  } else if (outcome.id === 'drain') {
-    run.qi -= drain;
-    lines.push('灵气 -' + formatNumber(drain));
-  } else {
-    applyFx(state, outcome.fx, rng, lines, tags);
-  }
-  if (outcome.bad) tags.push('lose');
+  BIG_EFFECTS[ev.id].run(state, rng, lines, tags);
+  if (ev.tone === 'bad') tags.push('lose');
   if (run.realm * STAGES.length + run.stage > beforeStage) maybeSudden(state, rng, 'meridian');
   maybeSudden(state, rng, 'fortune');
-  run.lastTitle = '大机缘';
-  run.log.push({ age: run.age, title: '大机缘', text: outcome.label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.lastTitle = ev.title;
+  run.log.push({ age: run.age, title: '大机缘·' + ev.title, text: lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   const dead = checkDeath(state);
-  return { title: '大机缘', label: outcome.label, lines: lines, tags: tags, dead: dead };
+  return { title: '大机缘', label: ev.title, text: ev.text, lines: lines, tags: tags, dead: dead };
 }
-
 function rerollEvent(state, rng) {
   const run = state.run;
   if (run.phase !== 'alive' || rerollsLeft(state) < 1) return false;
@@ -1778,7 +1924,7 @@ function retreatSea(state) {
 function tribulationChance(state, ratio) {
   const run = state.run;
   return clamp(0.15 + 0.7 * ratio - 0.03 * Math.floor(run.demon / 10) +
-    (hasSet(run, 'sword', 2) ? 0.1 : 0) + 0.03 * lampLevel(state, 'm2') + sumSkills(run, 'trib'), 0.05, 0.98);
+    (hasSet(run, 'sword', 2) ? 0.1 : 0) + 0.03 * lampLevel(state, 'm2') + sumSkills(run, 'trib') + run.tribBoon, 0.05, 0.98);
 }
 
 function tribulationTerms(state, trib) {
@@ -1930,6 +2076,7 @@ function attemptTribulation(state, rng, method) {
   const before = snapshot(state);
   const chance = method === 'borrow' ? info.borrowChance : info.chance;
   run.lastTrib = { name: info.name, chance: method === 'scatter' ? 0 : chance, method: method };
+  run.tribBoon = 0;
   if (method === 'borrow') {
     run.chance -= BORROW_CHANCE;
     lines.push('借势：机缘 -' + BORROW_CHANCE + '，成功率 +' + pctText(BORROW_TRIB));
@@ -2169,7 +2316,8 @@ function normalizeRun(state, raw, rng) {
   }
   run.wake = WAKES[raw.wake] ? raw.wake : '';
   run.forceLegacy = raw.forceLegacy === true;
-  run.freeRerolls = toCount(raw.freeRerolls, findById(LAMPS, 'y2').max);
+  run.freeRerolls = toCount(raw.freeRerolls, findById(LAMPS, 'y2').max + BIG_REROLLS);
+  run.tribBoon = raw.tribBoon > 0 ? BIG_TRIB : 0;
   run.lastTitle = toText(raw.lastTitle, 40);
   if (raw.lastTrib && typeof raw.lastTrib === 'object') {
     run.lastTrib = { name: toText(raw.lastTrib.name, 20), chance: clamp(toNumber(raw.lastTrib.chance), 0, 1) };
@@ -2365,7 +2513,9 @@ module.exports = {
   eventView,
   canDraw,
   drawEvent,
+  BIG_EVENTS,
   canDrawBig,
+  bigPool,
   drawBig,
   rerollEvent,
   choose,

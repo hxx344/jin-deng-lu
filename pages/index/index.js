@@ -965,7 +965,7 @@ Page({
       off: off,
       sea: seaEntry ? '进入枯海' : '',
       trib: yuan && yuan.ready ? '渡元婴劫' : (info && info.ready ? '渡' + info.name : ''),
-      tribSub: yuan && yuan.ready ? yuan.name + ' ' + yuan.step + ' / 2' : (info && info.ready ? '成功率 ' + percent(info.chance) + '%' : ''),
+      tribSub: yuan && yuan.ready ? yuan.name + ' ' + yuan.step + ' / 2' : (info && info.ready ? '成功率 ' + percent(info.chance) + '%' + (run.tribBoon ? ' · 有雷相助' : '') : ''),
       big: !boarding && s.big > 0 ? '大机缘' : '',
       bigSub: '可用 ' + s.big + ' 次',
       powder: powder.visible ? '服散续命' : '',
@@ -1037,7 +1037,7 @@ Page({
           '拿不准就选“闭关不理”，耗 1 年换一点灵气。也可以点“稍后再选”先收起来。',
           '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，渡劫、坐化和投胎仍由你决定。',
           '有些事件会直接给机缘次数，或提高这一世的机缘积攒速度；当前速度显示在顶部和“轮回”页。',
-          '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：点了当场结算，没有选项，不耗寿元。多半是好事（高一品的功法、灵气、锋躯神、寿元或机缘），也可能折寿、涨心魔或散掉灵气，但不会直接寿尽或入魔。进度和次数跨世保留。'
+          '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：没有选项，点了当场随机落下一件事，不耗寿元。可能是好事（一门功法直接练到天品、灯芯自己长一截、年轻十岁、下一场天劫多两成把握），可能说不准（锋躯神换位置、命格被换、一梦十年），也可能是坏事（功法跌一品、机缘少一半、多一张丹盟的欠条），但不会直接寿尽或入魔。进度和次数跨世保留。'
         ]),
         sec('机缘之间的联动', [
           '余势：上一回的结果会影响紧接着的下一回，机缘面板上会写明。上一回成了，这一回成功率 +10%；没成，这一回折寿减半；闭关了，这一回少耗 1 年。',
@@ -1433,6 +1433,7 @@ Page({
         kind: 'result',
         title: r.title,
         label: r.label,
+        text: r.text || '',
         lines: r.lines.map((text, i) => ({ key: i, text: text })),
         okText: r.dead ? '……' : (run.pending ? '取舍功法' : '收起'),
         nextText: nextText
@@ -1665,7 +1666,7 @@ Page({
       this.refresh();
       return;
     }
-    this.result = Object.assign({ title: result.title, label: result.label, lines: result.lines, dead: result.dead }, context);
+    this.result = Object.assign({ title: result.title, label: result.label, text: result.text || '', lines: result.lines, dead: result.dead }, context);
     this.eventOpen = false;
     this.replaceHidden = false;
     if (result.dead) wx.vibrateShort({ type: 'heavy' });
