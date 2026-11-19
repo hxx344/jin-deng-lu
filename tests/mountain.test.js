@@ -434,3 +434,15 @@ test('升阶可以暂缓，没有山外数据或数据损坏的旧档会被修�
   assert.ok(game.mountainView(state, 'world', ''));
   assert.deepEqual(reload(state), state);
 });
+
+test('藏经阁功法不能传给弟子，带着它也能照常授业', () => {
+  const state = cultivator(YUAN);
+  found(state);
+  state.tomes.tm_sw1 = 5;
+  state.run.skills = [{ id: 'tm_sw1', level: 5 }, { id: 'sw1', level: 2 }];
+  const member = state.run.sect.disciples[0].id;
+  const ids = game.mountainView(state, 'sect', member).options.map((item) => item.id);
+  assert.ok(ids.includes('teach-sw1'));
+  assert.equal(ids.includes('teach-tm_sw1'), false);
+  assert.deepEqual(reload(state), state);
+});

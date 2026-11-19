@@ -92,6 +92,35 @@ for (let i = 0; i < SKILLS.length; i++) {
   }
 }
 
+// 藏经阁的功法：不在普通传承和随机功法池里，花灯芯请出后才会出现在传承里。
+// 它们不加数值，而是各改一条规则：mech 是规则名（在 game.js 里各自生效），v 依次是仙、神、道品时的数值，
+// text 里的 {v} 换成当前品级的数值，fmt 是数值写法（pct 百分比，mult 倍数，不写就是原数）。
+const TOME_GRADES = ['仙', '神', '道'];
+const TOMES = [
+  { id: 'tm_sw1', school: 'sword', name: '斩灯剑意', mech: 'earlyTrib', v: [0.8, 0.65, 0.5], fmt: 'pct', text: '不必等灵气圆满：后期灵气到丹田容量的 {v} 就能渡劫' },
+  { id: 'tm_sw2', school: 'sword', name: '骸山剑冢', mech: 'relicEdge', v: [1, 2, 3], text: '取舍时每换掉一门功法，锋永久 +{v} × 它的品级（凡 1 至天 4，秘法和藏经阁功法算 5）' },
+  { id: 'tm_sw3', school: 'sword', name: '无名一剑', mech: 'reTrib', v: [0.6, 0.8, 1], fmt: 'pct', text: '渡劫失败时立刻再出一剑：按原成功率的 {v} 再判一次' },
+  { id: 'tm_pi1', school: 'pill', name: '九转炉心', mech: 'freeSeclude', v: [1, 1.5, 2], fmt: 'mult', text: '“闭关不理”不再耗寿元，灵气收益 ×{v}' },
+  { id: 'tm_pi2', school: 'pill', name: '长生药引', mech: 'revive', v: [5, 8, 12], text: '寿元耗尽时不死：散尽灵气，年岁退回到离寿尽还有 {v} 年，每世一次（魔修无效）' },
+  { id: 'tm_pi3', school: 'pill', name: '太素丹经', mech: 'demonFuel', v: [0.05, 0.08, 0.12], fmt: 'pct', text: '心魔不再降低渡劫成功率，改为每 10 点心魔灵气产出 +{v}' },
+  { id: 'tm_ta1', school: 'talisman', name: '天书残页', mech: 'echo', v: [0.3, 0.45, 0.6], fmt: 'pct', text: '在传承里学会一门功法后，有 {v} 机会把另一门没学过的也一并学会（功法位已满时不触发）' },
+  { id: 'tm_ta2', school: 'talisman', name: '敕令真符', mech: 'ward', v: [2, 3, 4], text: '概率型选项没成时不承担后果，每世 {v} 次' },
+  { id: 'tm_ta3', school: 'talisman', name: '一字镇魔', mech: 'sealDemon', v: [30, 20, 10], text: '心魔满 100 时不堕魔：心魔清零，折寿 {v} 年' },
+  { id: 'tm_bo1', school: 'body', name: '骸骨金身', mech: 'bodyAll', v: [0.6, 0.8, 1], fmt: 'pct', text: '渡劫考核的每一项，都可以用躯的 {v} 顶替' },
+  { id: 'tm_bo2', school: 'body', name: '饮海吞山', mech: 'yearCap', v: [3, 2, 1], text: '机缘里每次选择最多耗寿 {v} 年（选项结果里的折寿不算）' },
+  { id: 'tm_bo3', school: 'body', name: '万劫不磨', mech: 'demonTrib', v: [0.6, 0.8, 1], fmt: 'pct', text: '魔修也能渡劫，成功率按 {v} 算；成功只升境界，不加寿元' },
+  { id: 'tm_lu1', school: 'luck', name: '灯下拾遗', mech: 'wickLive', v: [1, 2, 3], text: '活着就能攒灯芯：每次小境界突破灯芯 +{v}，渡劫成功灯芯 +{v} × 5' },
+  { id: 'tm_lu2', school: 'luck', name: '天官赐福', mech: 'twice', v: [0.25, 0.35, 0.5], fmt: 'pct', text: '概率型选项成了时，有 {v} 机会把成功的奖励再结算一次' },
+  { id: 'tm_lu3', school: 'luck', name: '逆天改命', mech: 'sure', v: [3, 5, 8], text: '每世前 {v} 次概率型选项必成' }
+].map((tome) => Object.assign({ tome: true }, tome));
+
+// odds 依次是请出仙、神、道品的概率。
+const TOME_TIERS = [
+  { id: 'scrap', name: '翻残卷', cost: 60, odds: [0.9, 0.1, 0] },
+  { id: 'copy', name: '请藏本', cost: 150, odds: [0.45, 0.45, 0.1] },
+  { id: 'sole', name: '开孤本', cost: 400, odds: [0, 0.6, 0.4] }
+];
+
 const ROOTS = [
   { id: 'sword', school: 'sword', name: '剑骨', text: '生来骨头就硬，摔跤都是地先疼。', edge: 2 },
   { id: 'pill', school: 'pill', name: '药体', text: '从小拿灵草当零嘴，至今没吃出毛病。', qi: 0.15 },
@@ -163,7 +192,7 @@ const TRIBS = [
 ];
 
 // 价格 = cost × 2^已有等级。
-const AUTO_LAMP = { id: 'y5', branch: '缘', name: '自动机缘', desc: '永久解锁主界面的自动机缘开关', cost: 30, max: 1 };
+const AUTO_LAMP = { id: 'y5', branch: '缘', name: '自动机缘', desc: '永久解锁主界面的自动机缘开关', cost: 100, max: 1 };
 const LAMPS = [
   { id: 'r1', branch: '根', name: '厚胎', desc: '初始寿元 +10 年', cost: 3, max: 3 },
   { id: 'r2', branch: '根', name: '择根', desc: '投胎时根骨四选一', cost: 8, max: 1 },
@@ -1089,6 +1118,9 @@ module.exports = {
   SKILLS,
   FATES,
   ARCANES,
+  TOME_GRADES,
+  TOMES,
+  TOME_TIERS,
   ROOTS,
   ROOT_RARITIES,
   ROOT_COMBOS,

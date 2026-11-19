@@ -9,6 +9,9 @@ const GRADES = content.GRADES;
 const SKILLS = content.SKILLS;
 const FATES = content.FATES;
 const ARCANES = content.ARCANES;
+const TOME_GRADES = content.TOME_GRADES;
+const TOMES = content.TOMES;
+const TOME_TIERS = content.TOME_TIERS;
 const ROOTS = content.ROOTS;
 const ROOT_RARITIES = content.ROOT_RARITIES;
 const ROOT_COMBOS = content.ROOT_COMBOS;
@@ -49,6 +52,11 @@ const MAX_SKILLS = 8;
 // 一世里靠奇缘最多能多出来的功法位。
 const MAX_EXTRA_SLOTS = 3;
 const MAX_GRADE = GRADES.length;
+// 藏经阁功法的品级接在天品之后。
+const TOME_MIN = MAX_GRADE + 1;
+const GRADE_NAMES = GRADES.concat(TOME_GRADES);
+// 已请出的藏经阁功法在传承里出现的权重，相对同系的普通功法。
+const TOME_WEIGHT = 0.5;
 const LEGACY_YEARS = 3;
 const FALLBACK_YEARS = 1;
 const FALLBACK_QI = 0.1;
@@ -276,6 +284,10 @@ function newRun(state, rng) {
     suddenCount: 0,
     suddenCooldown: 0,
     aftermath: null,
+    // 藏经阁功法的每世次数：已续命、已挡下的失败、已用掉的必成。
+    revived: false,
+    wards: 0,
+    sures: 0,
     death: null
   };
 }
@@ -289,6 +301,8 @@ function createState(now, rng) {
     lives: 0,
     best: -1,
     lamps: {},
+    // 藏经阁里已请出的功法：id → 品级。
+    tomes: {},
     epitaphs: [],
     carry: '',
     // 大机缘次数和攒大机缘的进度跨世保留。
@@ -309,7 +323,7 @@ function createState(now, rng) {
 }
 
 const SKILL_INDEX = new Map();
-ARCANES.concat(SKILLS).forEach((skill) => SKILL_INDEX.set(skill.id, skill));
+ARCANES.concat(SKILLS, TOMES).forEach((skill) => SKILL_INDEX.set(skill.id, skill));
 
 function skillInfo(id) {
   return SKILL_INDEX.get(id) || null;
@@ -321,6 +335,15 @@ function skillEntry(run, id) {
 
 function fateInfo(run) {
   return findById(FATES, run.fate) || {};
+}
+
+// 这一世持有的藏经阁功法里，名为 name 的规则当前的数值；没有就是 0。
+function mech(run, name) {
+  for (let i = 0; i < run.skills.length; i++) {
+    const skill = skillInfo(run.skills[i].id);
+    if (skill.tome && skill.mech === name) return skill.v[run.skills[i].level - TOME_MIN];
+  }
+  return 0;
 }
 
 function suddenInfo(id) {
@@ -518,10 +541,6 @@ function knownProgress(state) {
   return { known: known, total: total };
 }
 
-function fallbackYears(state) {
-  return FALLBACK_YEARS + tribTerm(state).years;
-}
-
 function lampMax(state, id) {
   return findById(LAMPS, id).max + (DEEP_LAMPS.indexOf(id) >= 0 ? state.heavenMax : 0);
 }
@@ -581,7 +600,13 @@ const MAX_FLIP = 0.6;
 const MAX_KEEP_QI = 0.9;
 const OLD_YEARS = 10;
 
+function tomeDesc(skill, level) {
+  const v = skill.v[level - TOME_MIN];
+  return skill.text.replace(/\{v\}/g, skill.fmt === 'pct' ? pctText(v) : String(v));
+}
+
 function skillDesc(skill, level) {
+  if (skill.tome) return tomeDesc(skill, level);
   return SKILL_STATS.filter((st) => skill[st.key]).map((st) => st.label + ' ' + st.val(skill[st.key] * level)).join('，');
 }
 
@@ -591,8 +616,12 @@ function skillUpgradeDesc(skill, from, to) {
     .map((st) => st.label + ' ' + st.val(skill[st.key] * from) + ' → ' + st.val(skill[st.key] * to)).join('，');
 }
 
+function gradeName(level) {
+  return GRADE_NAMES[level - 1];
+}
+
 function skillTitle(skill, level) {
-  return '《' + skill.name + '》（' + SCHOOLS[skill.school].name + '·' + (skill.arcane ? '秘法' : GRADES[level - 1] + '品') + '）';
+  return '《' + skill.name + '》（' + SCHOOLS[skill.school].name + '·' + (skill.arcane ? '秘法' : gradeName(level) + '品') + '）';
 }
 
 function arcaneFor(first, second) {
@@ -733,7 +762,7 @@ function qiRate(state) {
   const run = state.run;
   if (run.phase !== 'alive') return 0;
   const bonus = (rootOf(run).qi || 0) + sumSkills(run, 'qi') + sumSkills(run, 'skillQi') * run.skills.length +
-    (hasSet(run, 'pill', 2) ? 0.3 : 0) + 0.2 * lampLevel(state, 'r4');
+    (hasSet(run, 'pill', 2) ? 0.3 : 0) + 0.2 * lampLevel(state, 'r4') + mech(run, 'demonFuel') * Math.floor(run.demon / 10);
   const fate = fateInfo(run);
   const demon = run.mode === 'demon' ? 1 + MAX_DEMON * DEMON_QI_RATE : 1;
   const cave = [1, 1.12, 1.25][run.cave ? run.cave.array : 0];
@@ -798,6 +827,11 @@ function isFull(state) {
   return run.stage === STAGES.length - 1 && run.qi >= qiCap(state);
 }
 
+function gainLiveWick(state, amount) {
+  state.wick += amount;
+  state.totalWick += amount;
+}
+
 // 加灵气；小境界灵气满了自动突破，多出的带入下一个小境界。后期满了就停在上限等渡劫。
 function gainQi(state, amount) {
   const run = state.run;
@@ -818,6 +852,7 @@ function gainQi(state, amount) {
       ups++;
       run.stats.edge += sumSkills(run, 'stageEdge');
       run.lifeFlat += sumSkills(run, 'stageLife');
+      gainLiveWick(state, mech(run, 'wickLive'));
     } else {
       run.qi = qiCap(state);
       break;
@@ -878,8 +913,13 @@ function fxParts(state, fx) {
   return parts.length ? parts : ['无事发生'];
 }
 
+function sureLeft(run) {
+  return Math.max(0, mech(run, 'sure') - run.sures);
+}
+
 function riskChance(state, risk) {
   const run = state.run;
+  if (sureLeft(run) > 0) return 1;
   let p = risk.p + (hasSet(run, 'luck', 2) ? 0.1 : 0) + sumSkills(run, 'luckP') + (run.wake === 'win' ? WAKE_WIN : 0);
   if (yearsLeft(state) <= OLD_YEARS) p += sumSkills(run, 'oldLuck');
   p = Math.min(1, p);
@@ -906,7 +946,7 @@ function eventDef(state) {
         const skill = skillInfo(o.id);
         const owned = skillEntry(run, o.id);
         return {
-          label: owned ? '精进《' + skill.name + '》至' + GRADES[o.level - 1] + '品' : '修习《' + skill.name + '》',
+          label: owned ? '精进《' + skill.name + '》至' + gradeName(o.level) + '品' : '修习《' + skill.name + '》',
           years: legacyYears(state),
           learn: o
         };
@@ -923,7 +963,10 @@ function eventDef(state) {
 }
 
 function optionYears(state, opt) {
-  return Math.max(0, opt.years - (state.run.wake === 'rest' ? 1 : 0)) + tribTerm(state).years;
+  const years = Math.max(0, opt.years - (state.run.wake === 'rest' ? 1 : 0));
+  const cap = mech(state.run, 'yearCap');
+  // 劫期逾期的折寿不受《饮海吞山》封顶。
+  return (cap ? Math.min(years, cap) : years) + tribTerm(state).years;
 }
 
 function optionCost(state, opt) {
@@ -939,9 +982,9 @@ function optionDesc(state, opt) {
     const skill = skillInfo(opt.learn.id);
     const owned = skillEntry(state.run, skill.id);
     if (owned && owned.level < opt.learn.level) {
-      segments.push(SCHOOLS[skill.school].name + '·' + GRADES[owned.level - 1] + '品 → ' + GRADES[opt.learn.level - 1] + '品：' + skillUpgradeDesc(skill, owned.level, opt.learn.level));
+      segments.push(SCHOOLS[skill.school].name + '·' + gradeName(owned.level) + '品 → ' + gradeName(opt.learn.level) + '品：' + skillUpgradeDesc(skill, owned.level, opt.learn.level));
     } else {
-      segments.push(SCHOOLS[skill.school].name + '·' + GRADES[opt.learn.level - 1] + '品：' + skillDesc(skill, opt.learn.level));
+      segments.push(SCHOOLS[skill.school].name + '·' + gradeName(opt.learn.level) + '品：' + skillDesc(skill, opt.learn.level));
     }
   }
   const fixed = [];
@@ -958,7 +1001,11 @@ function optionDesc(state, opt) {
 }
 
 function fallbackQi(state) {
-  return FALLBACK_QI * (1 + lampLevel(state, 'y3') + sumSkills(state.run, 'seclude'));
+  return FALLBACK_QI * (1 + lampLevel(state, 'y3') + sumSkills(state.run, 'seclude')) * (mech(state.run, 'freeSeclude') || 1);
+}
+
+function fallbackYears(state) {
+  return (mech(state.run, 'freeSeclude') ? 0 : FALLBACK_YEARS) + tribTerm(state).years;
 }
 
 function rerollsLeft(state) {
@@ -1038,9 +1085,15 @@ function legacyOffers(state, rng) {
     pool.push(skill);
     weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 + library * 2 : 1) * pathMult(run, skill));
   });
+  TOMES.forEach((tome) => {
+    if (!tomeLevel(state, tome.id) || skillEntry(run, tome.id)) return;
+    pool.push(tome);
+    weights.push(TOME_WEIGHT * (rootSchools.indexOf(tome.school) >= 0 ? 3 : 1) * (counts[tome.school] > 0 ? 2 + library * 2 : 1) * pathMult(run, tome));
+  });
   dampNewSkills(state, pool, weights);
   const count = 3 + (hasSet(run, 'talisman', 4) ? 1 : 0);
   return sample(pool, weights, count, rng).map((skill) => {
+    if (skill.tome) return { id: skill.id, level: tomeLevel(state, skill.id) };
     const owned = skillEntry(run, skill.id);
     if (owned) return { id: skill.id, level: Math.min(MAX_GRADE, owned.level + 1) };
     return { id: skill.id, level: REALMS[run.realm].layer > 0 && rng() < 0.3 ? 2 : 1 };
@@ -1180,7 +1233,7 @@ function bigFates(state) {
 
 function bigForgettable(state) {
   const run = state.run;
-  return run.skills.filter((s) => !skillInfo(s.id).arcane && s.level > 1 && bigSurvives(state, bigWithLevel(run, s, s.level - 1)));
+  return run.skills.filter((s) => !skillInfo(s.id).arcane && !skillInfo(s.id).tome && s.level > 1 && bigSurvives(state, bigWithLevel(run, s, s.level - 1)));
 }
 
 function bigWick(run) {
@@ -1375,8 +1428,8 @@ function gainSkill(state, id, level, lines, tags) {
   if (owned) {
     tags.push('upgrade');
     const before = owned.level;
-    owned.level = Math.min(MAX_GRADE, Math.max(owned.level + 1, level));
-    lines.push('《' + skill.name + '》精进至' + GRADES[owned.level - 1] + '品：' + skillUpgradeDesc(skill, before, owned.level));
+    owned.level = skill.tome ? Math.max(owned.level, level) : Math.min(MAX_GRADE, Math.max(owned.level + 1, level));
+    lines.push('《' + skill.name + '》精进至' + gradeName(owned.level) + '品：' + skillUpgradeDesc(skill, before, owned.level));
   } else if (run.skills.length < maxSkills(state)) {
     run.skills.push({ id: id, level: level });
     lines.push('习得' + skillTitle(skill, level));
@@ -1559,11 +1612,36 @@ function becomeDemon(state) {
   run.log = run.log.slice(-MAX_LOG);
 }
 
+// 心魔满了：有《一字镇魔》就清零折寿，否则堕魔。
+function checkFall(state) {
+  const run = state.run;
+  if (run.demon < MAX_DEMON || run.mode === 'demon') return;
+  const years = mech(run, 'sealDemon');
+  if (!years) {
+    becomeDemon(state);
+    return;
+  }
+  const before = snapshot(state);
+  run.demon = 0;
+  run.age += years;
+  run.log.push({ age: run.age, title: '一字镇魔', text: '心魔满心，一个字把它压了回去：心魔清零，折寿 ' + years + ' 年。', detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+}
+
 // 返回是否身死。
 function checkDeath(state, cause) {
   const run = state.run;
   if (run.phase !== 'alive') return false;
-  if (run.demon >= MAX_DEMON && run.mode !== 'demon') becomeDemon(state);
+  checkFall(state);
+  const back = mech(run, 'revive');
+  if (run.age >= maxLife(state) && back && !run.revived && run.mode !== 'demon') {
+    const before = snapshot(state);
+    run.revived = true;
+    run.age = Math.max(0, maxLife(state) - back);
+    run.qi = 0;
+    run.log.push({ age: run.age, title: '长生药引', text: '寿元耗尽，一口药引吊住了命：灵气散尽，还剩 ' + yearsLeft(state) + ' 年。', detail: changeText(before, snapshot(state)) });
+    run.log = run.log.slice(-MAX_LOG);
+  }
   if (run.age >= maxLife(state)) {
     die(state, run.mode === 'demon' ? 'demon' : (cause || 'age'));
     return true;
@@ -1683,12 +1761,33 @@ function choose(state, index, rng) {
       run.qi -= cost;
       lines.push('灵气 -' + formatNumber(cost));
     }
-    if (opt.learn) gainSkill(state, opt.learn.id, opt.learn.level, lines, tags);
+    if (opt.learn) {
+      gainSkill(state, opt.learn.id, opt.learn.level, lines, tags);
+      const others = run.event.offers.filter((o) => o.id !== opt.learn.id && !skillEntry(run, o.id));
+      const echo = mech(run, 'echo');
+      if (echo && others.length && !run.pending && run.skills.length < maxSkills(state) && rng() < echo) {
+        const extra = pick(others, rng);
+        lines.push('《天书残页》多记下一门');
+        gainSkill(state, extra.id, extra.level, lines, tags);
+      }
+    }
     if (opt.fx) applyFx(state, opt.fx, rng, lines, tags);
     if (opt.risk) {
+      if (sureLeft(run) > 0) run.sures++;
       const win = rng() < p;
       const sub = [];
-      applyFx(state, win ? opt.risk.win : opt.risk.lose, rng, sub, tags);
+      const wards = mech(run, 'ward') - run.wards;
+      if (win || wards <= 0) {
+        applyFx(state, win ? opt.risk.win : opt.risk.lose, rng, sub, tags);
+      } else {
+        run.wards++;
+        sub.push('《敕令真符》挡下了后果，这一世还剩 ' + (wards - 1) + ' 次');
+      }
+      const twice = mech(run, 'twice');
+      if (win && twice && rng() < twice) {
+        sub.push('《天官赐福》再结算一次');
+        applyFx(state, opt.risk.win, rng, sub, tags);
+      }
       const bonus = sumSkills(run, 'winQi');
       if (win && bonus) addQiWithLines(state, qiRewardAmount(state, bonus), sub, tags);
       tags.push(win ? 'win' : 'lose');
@@ -1702,7 +1801,7 @@ function choose(state, index, rng) {
   }
   if (def.type === 'story') run.seen.push(run.event.id);
   // 已达满心魔就先堕魔，不能被这次选择末尾的安抚效果抹掉。
-  if (run.demon >= MAX_DEMON && run.mode !== 'demon') becomeDemon(state);
+  checkFall(state);
   run.choices++;
   run.realmChoices++;
   if (overdue) lines.push('劫期已过，多折 ' + overdue + ' 年');
@@ -1754,7 +1853,11 @@ function resolveReplace(state, index) {
   if (run.phase !== 'alive' || !run.pending) return false;
   if (index !== -1) {
     if (!run.skills[index]) return false;
+    const old = run.skills[index];
+    const oldSkill = skillInfo(old.id);
+    const relic = oldSkill.mech === 'relicEdge' ? 0 : mech(run, 'relicEdge');
     run.skills[index] = run.pending;
+    if (relic) run.stats.edge += relic * (oldSkill.arcane || oldSkill.tome ? TOME_MIN : old.level);
   }
   run.pending = null;
   // 换掉体系功法可能让寿元上限下降。
@@ -1769,6 +1872,8 @@ const AUTO_WORTH = {
   tick: 150, soothe: 3, keepQi: 10, yearsCut: 3, calm: 20, borrow: 20, seclude: 3, tribYears: 10, demonBody: 2,
   stageLife: 1.5, ageBody: 3, scar: 2, wick: 30, speed: 40, flip: 20, winQi: 15, luckP: 60, fool: 6, oldLuck: 10, store: 0.25
 };
+// 藏经阁功法改的是规则，没有数值可折算，按品级给一个固定分。
+const AUTO_TOME_WORTH = 12;
 const AUTO_BOND_2 = 5;
 const AUTO_BOND_4 = 12;
 // 随机得来的功法可能自带折寿，寿元上先留出这么多年的余量。
@@ -1792,6 +1897,7 @@ function autoBuildWorth(state, skills) {
     const skill = skillInfo(entry.id);
     if (run.aftermath && run.aftermath.id === 'backlash' && skill.arcane) return;
     counts[skill.school] = (counts[skill.school] || 0) + 1;
+    if (skill.tome) total += AUTO_TOME_WORTH * entry.level;
     SKILL_STATS.forEach((st) => {
       if (!skill[st.key]) return;
       const weight = ATTRS.indexOf(st.key) >= 0 ? autoAttrWeight(state, st.key) : AUTO_WORTH[st.key];
@@ -2197,7 +2303,7 @@ function retreatSea(state) {
 
 function tribulationChance(state, ratio) {
   const run = state.run;
-  return clamp(0.15 + 0.7 * ratio - 0.03 * Math.floor(run.demon / 10) +
+  return clamp(0.15 + 0.7 * ratio - (mech(run, 'demonFuel') ? 0 : 0.03 * Math.floor(run.demon / 10)) +
     (hasSet(run, 'sword', 2) ? 0.1 : 0) + 0.03 * lampLevel(state, 'm2') + sumSkills(run, 'trib') + run.tribBoon - HEAVEN_TRIB * run.heaven, 0.05, 0.98);
 }
 
@@ -2222,9 +2328,19 @@ function enterNextRealm(state, info, lines) {
   run.realmChoices = 0;
   run.stage = 0;
   run.qi = 0;
-  run.lifeFlat += info.lifeBonus;
   if (hasSet(run, 'sword', 4)) run.forceLegacy = true;
-  lines.push('突破至' + realmText(run), '寿元上限 +' + info.lifeBonus + ' 年');
+  lines.push('突破至' + realmText(run));
+  if (run.mode === 'demon') {
+    lines.push('魔躯燃寿已定，不加寿元');
+  } else {
+    run.lifeFlat += info.lifeBonus;
+    lines.push('寿元上限 +' + info.lifeBonus + ' 年');
+  }
+  const wick = mech(run, 'wickLive') * 5;
+  if (wick) {
+    gainLiveWick(state, wick);
+    lines.push('灯芯 +' + wick);
+  }
 }
 
 function failTribulation(state, info, lines) {
@@ -2317,29 +2433,45 @@ function attemptYuanTrial(state, rng, method, step) {
     { success: success, advanced: advanced });
 }
 
+// 斩灯剑意：后期灵气不必圆满也能渡劫。
+function tribQiReady(state) {
+  const run = state.run;
+  const part = mech(run, 'earlyTrib');
+  return part ? run.stage === STAGES.length - 1 && run.qi >= qiCap(state) * part : isFull(state);
+}
+
 function tribulationInfo(state) {
   const run = state.run;
   const trib = TRIBS[run.realm];
   if (!trib || trib.seaTrial) return null;
   const a = attrs(state);
   const plan = tribPlan(state)[run.realm];
+  const stand = Math.floor(Math.max(a.body, 0) * mech(run, 'bodyAll'));
   let ratio = 0;
   plan.tests.forEach((k) => {
-    ratio += Math.min(Math.max(a[k], 0) / plan.req, 1.2);
+    ratio += Math.min(Math.max(a[k], stand, 0) / plan.req, 1.2);
   });
   ratio /= plan.tests.length;
+  const demonOk = run.mode === 'demon' && mech(run, 'demonTrib') > 0;
+  const again = mech(run, 'reTrib');
+  // 魔修渡劫按比例打折；《无名一剑》把“失败后再判一次”折进显示的成功率里。
+  const final = (p) => {
+    if (demonOk) p *= mech(run, 'demonTrib');
+    return clamp(p + (1 - p) * p * again, 0.05, 0.98);
+  };
   const baseChance = tribulationChance(state, ratio);
   return Object.assign(tribulationTerms(state, trib), {
     name: trib.name,
     aspect: plan.aspect,
     tests: plan.tests,
     req: plan.req,
-    chance: baseChance,
-    borrowChance: clamp(baseChance + BORROW_TRIB, 0.05, 0.98),
+    chance: final(baseChance),
+    borrowChance: final(clamp(baseChance + BORROW_TRIB, 0.05, 0.98)),
     borrowReady: run.chance >= BORROW_CHANCE,
     borrowCost: BORROW_CHANCE,
     scatterYears: SCATTER_YEARS,
-    ready: run.phase === 'alive' && run.mode !== 'demon' && !run.pending && isFull(state)
+    demonOk: demonOk,
+    ready: run.phase === 'alive' && (run.mode !== 'demon' || demonOk) && !run.pending && tribQiReady(state)
   });
 }
 
@@ -2459,6 +2591,46 @@ function buyLamp(state, id) {
   return true;
 }
 
+function tomeLevel(state, id) {
+  return state.tomes[id] || 0;
+}
+
+// 这一档请出各品级的实际概率。已经没有功法能升到的品级不会出，它的概率按比例分给其余品级。
+function tomeOdds(state, id) {
+  const tier = findById(TOME_TIERS, id);
+  const odds = tier.odds.map((p, i) => (TOMES.some((tome) => tomeLevel(state, tome.id) < TOME_MIN + i) ? p : 0));
+  const total = odds.reduce((sum, p) => sum + p, 0);
+  return odds.map((p) => (total ? p / total : 0));
+}
+
+function tomeTierOpen(state, id) {
+  return !!findById(TOME_TIERS, id) && tomeOdds(state, id).some((p) => p > 0);
+}
+
+// 花灯芯从藏经阁请一门功法：先定品级，再从还没到这个品级的功法里挑一门，所以每次都有所得。
+function drawTome(state, id, rng) {
+  const tier = findById(TOME_TIERS, id);
+  if (!tier || !tomeTierOpen(state, id) || state.wick < tier.cost) return null;
+  const odds = tomeOdds(state, id);
+  let r = rng();
+  let grade = odds.length - 1;
+  while (!odds[grade]) grade--;
+  for (let i = 0; i < odds.length; i++) {
+    if (!odds[i]) continue;
+    if (r < odds[i]) {
+      grade = i;
+      break;
+    }
+    r -= odds[i];
+  }
+  const level = TOME_MIN + grade;
+  const tome = pick(TOMES.filter((item) => tomeLevel(state, item.id) < level), rng);
+  const before = tomeLevel(state, tome.id);
+  state.wick -= tier.cost;
+  state.tomes[tome.id] = level;
+  return { id: tome.id, level: level, before: before };
+}
+
 function toCount(value, max) {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n) || n <= 0) return 0;
@@ -2474,7 +2646,18 @@ function toText(value, max) {
   return typeof value === 'string' ? value.slice(0, max) : '';
 }
 
-function normalizeEvent(raw) {
+// 存档里一门功法的品级；返回 0 表示这门功法不该出现（藏经阁里还没请出）。
+function savedLevel(state, skill, level) {
+  if (skill.arcane) return 1;
+  if (skill.tome) return tomeLevel(state, skill.id) ? clamp(toCount(level), TOME_MIN, tomeLevel(state, skill.id)) : 0;
+  return clamp(toCount(level), 1, MAX_GRADE);
+}
+
+function learnable(id) {
+  return findById(SKILLS, id) || findById(TOMES, id);
+}
+
+function normalizeEvent(raw, state) {
   if (!raw || typeof raw !== 'object') return null;
   const rerolls = toCount(raw.rerolls, 1);
   if (raw.kind === 'legacy') {
@@ -2482,8 +2665,10 @@ function normalizeEvent(raw) {
     if (raw.big === true || !LEGACY_INTROS[raw.intro] || !Array.isArray(raw.offers)) return null;
     const offers = [];
     raw.offers.slice(0, 5).forEach((o) => {
-      if (!o || !findById(SKILLS, o.id) || findById(offers, o.id)) return;
-      offers.push({ id: o.id, level: clamp(toCount(o.level), 1, MAX_GRADE) });
+      const skill = o && learnable(o.id);
+      const level = skill ? savedLevel(state, skill, o.level) : 0;
+      if (!level || findById(offers, o.id)) return;
+      offers.push({ id: o.id, level: level });
     });
     if (!offers.length) return null;
     return { kind: 'legacy', intro: raw.intro, offers: offers, rerolls: rerolls };
@@ -2557,8 +2742,9 @@ function normalizeRun(state, raw, rng) {
   if (Array.isArray(raw.skills)) {
     raw.skills.forEach((s) => {
       const skill = s && skillInfo(s.id);
-      if (!skill || skillEntry(run, s.id) || run.skills.length >= skillCap(state, run)) return;
-      run.skills.push({ id: s.id, level: skill.arcane ? 1 : clamp(toCount(s.level), 1, MAX_GRADE) });
+      const level = skill ? savedLevel(state, skill, s.level) : 0;
+      if (!level || skillEntry(run, s.id) || run.skills.length >= skillCap(state, run)) return;
+      run.skills.push({ id: s.id, level: level });
     });
   }
   run.choices = toCount(raw.choices);
@@ -2596,6 +2782,9 @@ function normalizeRun(state, raw, rng) {
       }
     });
   }
+  run.revived = raw.revived === true;
+  run.wards = toCount(raw.wards, 99);
+  run.sures = toCount(raw.sures, 99);
   run.wake = WAKES[raw.wake] ? raw.wake : '';
   run.forceLegacy = raw.forceLegacy === true;
   run.freeRerolls = toCount(raw.freeRerolls, findById(LAMPS, 'y2').max + BIG_REROLLS);
@@ -2629,7 +2818,7 @@ function normalizeRun(state, raw, rng) {
     run.sea = normalizeSea(run, raw.sea);
     return run;
   }
-  run.event = normalizeEvent(raw.event);
+  run.event = normalizeEvent(raw.event, state);
   if (run.event && run.event.trigger && !run.sudden) run.sudden = { id: run.event.trigger, stage: run.event.stage };
   // 存档里的机缘已失效（例如事件被改名）时，把消耗的那次机缘还回去。
   if (raw.event && !run.event) {
@@ -2638,8 +2827,9 @@ function normalizeRun(state, raw, rng) {
   }
   const pending = raw.pending;
   const pendingSkill = pending && skillInfo(pending.id);
-  if (pendingSkill && !skillEntry(run, pending.id) && run.skills.length >= maxSkills(state)) {
-    run.pending = { id: pending.id, level: pendingSkill.arcane ? 1 : clamp(toCount(pending.level), 1, MAX_GRADE) };
+  const pendingLevel = pendingSkill ? savedLevel(state, pendingSkill, pending.level) : 0;
+  if (pendingLevel && !skillEntry(run, pending.id) && run.skills.length >= maxSkills(state)) {
+    run.pending = { id: pending.id, level: pendingLevel };
   }
   run.sea = normalizeSea(run, raw.sea);
   return run;
@@ -2667,6 +2857,11 @@ function normalizeState(raw, now, rng) {
   LAMPS.forEach((lamp) => {
     const level = toCount(lamps[lamp.id], lampMax(state, lamp.id));
     if (level) state.lamps[lamp.id] = level;
+  });
+  const tomes = raw.tomes || {};
+  TOMES.forEach((tome) => {
+    const level = toCount(tomes[tome.id], GRADE_NAMES.length);
+    if (level >= TOME_MIN) state.tomes[tome.id] = level;
   });
   if (Array.isArray(raw.epitaphs)) {
     state.epitaphs = raw.epitaphs.filter((e) => typeof e === 'string').slice(0, MAX_EPITAPHS).map((e) => e.slice(0, 300));
@@ -2748,6 +2943,8 @@ module.exports = {
   SKILLS,
   FATES,
   ARCANES,
+  TOMES,
+  TOME_TIERS,
   SUDDENS,
   SUDDEN_MAX,
   SUDDEN_COOLDOWN,
@@ -2800,6 +2997,7 @@ module.exports = {
   skillInfo,
   skillDesc,
   skillTitle,
+  gradeName,
   skillUpgradeDesc,
   mergeOptions,
   mergeSkills,
@@ -2866,6 +3064,10 @@ module.exports = {
   setHeaven,
   knownProgress,
   buyLamp,
+  tomeLevel,
+  tomeOdds,
+  tomeTierOpen,
+  drawTome,
   formatNumber,
   formatDuration
 };

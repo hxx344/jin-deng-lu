@@ -206,7 +206,8 @@ function mountainView(state, page, selected, context) {
     view.teaching = cave.library ? (cave.library === 2 ? '可传这世已习得的功法与秘法。' : '可传至天品，二级藏经室开放秘法。') : '可传至灵品，修建藏经室可提高上限。';
     run.skills.forEach((entry) => {
       const skill = skillInfo(entry.id);
-      if (skill.arcane && cave.library < 2) return;
+      // 藏经阁功法不在这里的功法表里，不能传给弟子。
+      if (!skill || (skill.arcane && cave.library < 2)) return;
       const book = { id: entry.id, level: cave.library ? entry.level : Math.min(2, entry.level) };
       if (disciple.book && disciple.book.id === book.id && disciple.book.level >= book.level) return;
       add('teach-' + entry.id, '传授' + skillName(book), '弟子研习此卷' + (disciple.book ? '，替换他手里的抄本' : '') + '。',

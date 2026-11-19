@@ -227,6 +227,9 @@ Page({
     autoCost: game.AUTO_LAMP.cost,
     logs: [],
     lamps: [],
+    tomeTiers: [],
+    tomes: [],
+    tomeCount: '',
     stats: [],
     epitaphs: [],
     sheet: HIDDEN_SHEET,
@@ -926,7 +929,7 @@ Page({
     const seaEntry = !run.sea && game.seaView(s);
     const full = game.isFull(s);
     let line;
-    if (run.mode === 'demon') {
+    if (run.mode === 'demon' && !(info && info.demonOk)) {
       line = '魔修：灵气产出 ×' + (1 + game.MAX_DEMON * game.DEMON_QI_RATE) + '，不能渡劫。普通延寿无效，只能服散续命。';
     } else if (info) {
       line = info.name + (info.aspect ? '「' + info.aspect + '」' : '') + '：考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req +
@@ -1112,6 +1115,7 @@ Page({
         sec('身死与轮回', [
           '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
           '灯芯用来点亮“灯纹”页里永久生效的加成，然后重新投胎，挑一副根骨。',
+          '“灯纹”页底部的藏经阁可以花灯芯请出仙、神、道品功法，品级随机。它们不加数值，而是各改一条规则，品级越高改得越狠。请出后，往后每一世的传承里都可能遇到它。',
           '每次投胎还会抽一张有得有失的命格：早慧、灯下黑或薄命。换一批只换根骨，不换命格。',
           '根骨分凡、良、珍、绝、仙、神六档，底色各不相同。两到五种根骨可能长在同一个人身上，加成相加，种数越多越稀有；另有几副不靠拼凑的稀有根骨。',
           '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
@@ -1242,7 +1246,7 @@ Page({
         {
           id: 'endure',
           label: '硬抗 · 成功率 ' + percent(info.chance) + '%',
-          desc: '成功：寿元上限 +' + info.lifeBonus + ' 年；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
+          desc: '成功：' + (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeBonus + ' 年') + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
           disabled: false
         },
         {
@@ -1507,7 +1511,7 @@ Page({
         kind: 'dead',
         text: run.death.text,
         wick: run.death.wick,
-        carry: game.canCarry(s) ? this.skillViews().filter((v) => !v.arcane).map((v) => ({ id: v.id, name: v.name, on: s.carry === v.id })) : []
+        carry: game.canCarry(s) ? this.skillViews().filter((v) => !v.arcane && !v.tome).map((v) => ({ id: v.id, name: v.name, on: s.carry === v.id })) : []
       };
     }
     return HIDDEN_SHEET;
@@ -1522,8 +1526,9 @@ Page({
         name: skill.name,
         school: school.name,
         color: school.color,
-        grade: skill.arcane ? '秘法' : game.GRADES[entry.level - 1] + '品',
+        grade: skill.arcane ? '秘法' : game.gradeName(entry.level) + '品',
         arcane: !!skill.arcane,
+        tome: !!skill.tome,
         suppressed: !!(skill.arcane && this.state.run.aftermath && this.state.run.aftermath.id === 'backlash'),
         canMerge: !skill.arcane && entry.level === game.GRADES.length && game.mergeOptions(this.state, skill.id).length > 0,
         desc: game.skillDesc(skill, entry.level)
@@ -1600,6 +1605,25 @@ Page({
           costText: game.formatNumber(cost),
           affordable: !maxed && s.wick >= cost
         };
+      });
+      const gradeText = (odds) => odds.map((p, i) => (p ? game.gradeName(game.GRADES.length + 1 + i) + '品 ' + Math.round(p * 100) + '%' : '')).filter(Boolean).join(' · ');
+      patch.tomeTiers = game.TOME_TIERS.map((tier) => {
+        const open = game.tomeTierOpen(s, tier.id);
+        return {
+          id: tier.id,
+          name: tier.name,
+          desc: open ? gradeText(game.tomeOdds(s, tier.id)) : '这一档能请出的品级都已收齐',
+          open: open,
+          costText: game.formatNumber(tier.cost),
+          affordable: open && s.wick >= tier.cost
+        };
+      });
+      const owned = game.TOMES.filter((tome) => game.tomeLevel(s, tome.id) > 0);
+      patch.tomeCount = owned.length + ' / ' + game.TOMES.length;
+      patch.tomes = owned.map((tome) => {
+        const school = game.SCHOOLS[tome.school];
+        const level = game.tomeLevel(s, tome.id);
+        return { id: tome.id, name: tome.name, school: school.name, color: school.color, grade: game.gradeName(level) + '品', desc: game.skillDesc(tome, level) };
       });
     } else {
       const seen = game.knownProgress(s);
@@ -1927,6 +1951,23 @@ Page({
       audio.play('bad');
       this.showBanner('灯芯不足');
     }
+  },
+
+  onDrawTome(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!game.tomeTierOpen(this.state, id)) return;
+    const got = game.drawTome(this.state, id, Math.random);
+    if (!got) {
+      audio.play('bad');
+      this.showBanner('灯芯不足');
+      return;
+    }
+    const tome = game.skillInfo(got.id);
+    this.play('bow');
+    this.afterAction();
+    this.showBanner(got.before
+      ? '《' + tome.name + '》由' + game.gradeName(got.before) + '品升为' + game.gradeName(got.level) + '品'
+      : '请出' + game.skillTitle(tome, got.level) + '，往后的传承里会遇到它');
   },
 
   onRetire() {

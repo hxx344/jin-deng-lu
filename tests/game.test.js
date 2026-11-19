@@ -1559,10 +1559,10 @@ test('联动：上一回的结果留下余势，只影响紧接着的下一回',
   assert.strictEqual(s.run.wake, '');
 });
 
-test('自动机缘：花 30 灯芯一次解锁，读档和轮回后可用', () => {
+test('自动机缘：花 100 灯芯一次解锁，读档和轮回后可用', () => {
   const id = game.AUTO_LAMP.id;
   const s = born();
-  s.wick = 29;
+  s.wick = 99;
   setEvent(s, 'a_trial');
   const before = JSON.stringify(s);
   assert.strictEqual(game.autoUnlocked(s), false);
@@ -1570,15 +1570,15 @@ test('自动机缘：花 30 灯芯一次解锁，读档和轮回后可用', () =
   assert.strictEqual(game.buyLamp(s, id), false);
   assert.strictEqual(JSON.stringify(s), before);
 
-  s.wick = 30;
+  s.wick = 100;
   assert.ok(game.buyLamp(s, id));
   assert.strictEqual(s.wick, 0);
   const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
   assert.ok(game.autoUnlocked(loaded));
   assert.ok(game.autoStep(loaded, () => 0).result);
-  loaded.wick = 60;
+  loaded.wick = 200;
   assert.strictEqual(game.buyLamp(loaded, id), false);
-  assert.strictEqual(loaded.wick, 60);
+  assert.strictEqual(loaded.wick, 200);
   game.retire(loaded);
   assert.ok(game.reincarnate(loaded, 0, () => 0));
   assert.ok(game.autoUnlocked(loaded));
@@ -2605,4 +2605,335 @@ test('见闻：没选过的选项只写牵涉哪几样，自动机缘不碰，�
   assert.strictEqual(fixed.known.nope, undefined);
   assert.strictEqual(fixed.known.a_chance_tide, 7);
   assert.strictEqual(game.knownProgress(fixed).known, 3);
+});
+
+test('藏经阁：花灯芯请出天品之上的功法，灯芯不足请不了，读档保留', () => {
+  const s = born();
+  s.wick = 59;
+  const before = JSON.stringify(s);
+  assert.strictEqual(game.drawTome(s, 'scrap', () => 0), null);
+  assert.strictEqual(game.drawTome(s, 'nope', () => 0), null);
+  assert.strictEqual(JSON.stringify(s), before);
+
+  s.wick = 60;
+  assert.deepStrictEqual(game.drawTome(s, 'scrap', () => 0), { id: 'tm_sw1', level: 5, before: 0 });
+  assert.strictEqual(s.wick, 0);
+  assert.strictEqual(game.tomeLevel(s, 'tm_sw1'), 5);
+  assert.strictEqual(game.skillTitle(game.skillInfo('tm_sw1'), 5), '《斩灯剑意》（剑·仙品）');
+
+  // 孤本只出神品和道品：随机数靠后时是道品，已有的功法直接换成更高品级
+  s.wick = 400;
+  assert.deepStrictEqual(game.drawTome(s, 'sole', seq([0.99, 0])), { id: 'tm_sw1', level: 7, before: 5 });
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  assert.deepStrictEqual(loaded.tomes, { tm_sw1: 7 });
+  const dirty = game.normalizeState(Object.assign(JSON.parse(JSON.stringify(s)), { tomes: { tm_sw1: 4, tm_sw2: 99, sw1: 6, nope: 5 } }), 0, () => 0);
+  assert.deepStrictEqual(dirty.tomes, { tm_sw2: 7 });
+});
+
+test('藏经阁：每次请出都有所得，品级只升不降，收齐后这一档关闭', () => {
+  game.TOME_TIERS.forEach((tier) => near(tier.odds.reduce((a, b) => a + b, 0), 1));
+  const rng = mulberry(7);
+  const s = born();
+  s.wick = 1e6;
+  let draws = 0;
+  while (game.tomeTierOpen(s, 'scrap')) {
+    const got = game.drawTome(s, 'scrap', rng);
+    assert.ok(got.level > got.before);
+    draws++;
+  }
+  // 残卷不出道品：全部到神品后关闭，最多每门两次
+  assert.ok(draws <= game.TOMES.length * 2);
+  assert.ok(game.TOMES.every((tome) => game.tomeLevel(s, tome.id) === 6));
+  assert.strictEqual(game.drawTome(s, 'scrap', rng), null);
+  assert.deepStrictEqual(game.tomeOdds(s, 'copy'), [0, 0, 1]);
+  for (let i = 0; i < game.TOMES.length; i++) assert.strictEqual(game.drawTome(s, 'copy', rng).level, 7);
+  assert.ok(game.TOME_TIERS.every((tier) => !game.tomeTierOpen(s, tier.id)));
+  assert.strictEqual(s.wick, 1e6 - draws * 60 - game.TOMES.length * 150);
+});
+
+test('藏经阁：请出的功法才会出现在传承里，品级按请出时的算，不占普通功法库', () => {
+  const seen = (s, rng) => {
+    const ids = {};
+    for (let i = 0; i < 400; i++) {
+      s.run.event = null;
+      s.run.forceLegacy = true;
+      s.run.chance = 10;
+      assert.ok(game.drawEvent(s, rng));
+      s.run.event.offers.forEach((o) => {
+        ids[o.id] = o.level;
+      });
+    }
+    return ids;
+  };
+  const s = born();
+  assert.ok(game.TOMES.every((tome) => !game.SKILLS.some((skill) => skill.id === tome.id) && game.SCHOOLS[tome.school]));
+  assert.ok(Object.keys(seen(s, mulberry(1))).every((id) => id.indexOf('tm_') !== 0));
+  s.tomes.tm_bo1 = 6;
+  const ids = seen(s, mulberry(1));
+  assert.deepStrictEqual(Object.keys(ids).filter((id) => id.indexOf('tm_') === 0), ['tm_bo1']);
+  assert.strictEqual(ids.tm_bo1, 6);
+
+  s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'tm_bo1', level: 6 }], rerolls: 0 };
+  assert.ok(game.eventView(s).options[0].desc.indexOf('体·神品：渡劫考核的每一项，都可以用躯的 80% 顶替') >= 0);
+  game.choose(s, 0, () => 0);
+  assert.deepStrictEqual(s.run.skills, [{ id: 'tm_bo1', level: 6 }]);
+  assert.strictEqual(game.setCounts(s.run).body, 1);
+  // 学会后这一世不再出现
+  assert.ok(Object.keys(seen(s, mulberry(2))).every((id) => id.indexOf('tm_') !== 0));
+  assert.strictEqual(game.mergeOptions(s).length, 0);
+
+  const raw = JSON.parse(JSON.stringify(s));
+  assert.deepStrictEqual(game.normalizeState(raw, 0, () => 0).run.skills, [{ id: 'tm_bo1', level: 6 }]);
+  delete raw.tomes;
+  assert.deepStrictEqual(game.normalizeState(raw, 0, () => 0).run.skills, []);
+
+  // 前世功法只能带普通功法
+  s.lamps.m1 = 1;
+  game.retire(s);
+  assert.strictEqual(game.canCarry(s), false);
+  assert.strictEqual(game.setCarry(s, 'tm_bo1'), false);
+});
+
+// 学会一门藏经阁功法（先在藏经阁里记为已请出）。
+function hold(s, id, level) {
+  s.tomes[id] = level;
+  s.run.skills.push({ id: id, level: level });
+  return s;
+}
+
+// 第一个不带条件、不耗灵气的概率型选项。
+function riskEvent(s) {
+  const def = game.EVENTS.filter((e) => e.type === 'adventure' && !e.trigger && !e.need && e.options.some((o) => o.risk && !o.cost && !o.need && !o.school))[0];
+  setEvent(s, def.id);
+  return def.options.findIndex((o) => o.risk && !o.cost && !o.need && !o.school);
+}
+
+function lateStage(s, part) {
+  s.run.stage = 2;
+  s.run.qi = game.qiCap(s) * (part === undefined ? 1 : part);
+  return s;
+}
+
+test('藏经阁功法只改规则不加数值，说明按品级写出', () => {
+  const s = hold(born(), 'tm_bo1', 6);
+  assert.deepStrictEqual(game.attrs(s), game.attrs(born()));
+  assert.strictEqual(game.maxLife(s), game.maxLife(born()));
+  near(game.qiRate(s), game.qiRate(born()));
+  const mechs = {};
+  game.TOMES.forEach((tome) => {
+    assert.ok(!mechs[tome.mech], tome.id);
+    mechs[tome.mech] = true;
+    assert.strictEqual(tome.v.length, 3, tome.id);
+    [5, 6, 7].forEach((level) => assert.ok(game.skillDesc(tome, level).indexOf('{') < 0, tome.id));
+    assert.notStrictEqual(game.skillDesc(tome, 5), game.skillDesc(tome, 7), tome.id);
+  });
+  assert.strictEqual(game.skillDesc(game.skillInfo('tm_sw1'), 6), '不必等灵气圆满：后期灵气到丹田容量的 65% 就能渡劫');
+  assert.strictEqual(game.skillDesc(game.skillInfo('tm_pi1'), 6), '“闭关不理”不再耗寿元，灵气收益 ×1.5');
+});
+
+test('藏经阁·剑：提前渡劫、换功法涨锋、渡劫失败再判一次', () => {
+  let s = lateStage(born(), 0.8);
+  assert.strictEqual(game.tribulationInfo(s).ready, false);
+  hold(s, 'tm_sw1', 5);
+  assert.strictEqual(game.tribulationInfo(s).ready, true);
+  s.run.qi -= 1;
+  assert.strictEqual(game.tribulationInfo(s).ready, false);
+  s.run.skills[0].level = 7;
+  s.run.qi = game.qiCap(s) * 0.5;
+  assert.strictEqual(game.tribulationInfo(s).ready, true);
+  s.run.stage = 1;
+  assert.strictEqual(game.tribulationInfo(s).ready, false);
+
+  s = born();
+  give(s, ['sw1', 'sw3', 'sw4', 'pi1', 'pi2', 'ta1', 'ta2'], 3);
+  hold(s, 'tm_sw2', 6);
+  const edge = s.run.stats.edge;
+  s.run.pending = { id: 'bo3', level: 1 };
+  assert.ok(game.resolveReplace(s, 0));
+  assert.strictEqual(s.run.stats.edge, edge + 2 * 3);
+  // 放弃新功法不算；把剑冢自己换掉也不算
+  s.run.pending = { id: 'bo6', level: 1 };
+  assert.ok(game.resolveReplace(s, -1));
+  s.run.pending = { id: 'bo6', level: 1 };
+  assert.ok(game.resolveReplace(s, 7));
+  assert.strictEqual(s.run.stats.edge, edge + 6);
+
+  const p = game.tribulationInfo(lateStage(born())).chance;
+  near(game.tribulationInfo(hold(lateStage(born()), 'tm_sw3', 6)).chance, p + (1 - p) * p * 0.8);
+});
+
+test('藏经阁·丹：闭关不耗寿、寿尽续命一次、心魔转为灵气产出', () => {
+  let s = hold(born(), 'tm_pi1', 6);
+  setEvent(s, 'a_trial');
+  assert.strictEqual(game.eventView(s).fallback.years, 0);
+  game.choose(s, -1, () => 0);
+  assert.strictEqual(s.run.age, 0);
+  assert.strictEqual(s.run.qi, 15);
+
+  s = hold(born(), 'tm_pi2', 6);
+  const life = game.maxLife(s);
+  s.run.age = life - 1;
+  s.run.qi = 50;
+  setEvent(s, 'a_trial');
+  assert.strictEqual(game.choose(s, -1, () => 0).dead, false);
+  assert.strictEqual(s.run.age, life - 8);
+  assert.strictEqual(s.run.qi, 0);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0).run.revived, true);
+  s.run.age = life - 1;
+  setEvent(s, 'a_trial');
+  assert.strictEqual(game.choose(s, -1, () => 0).dead, true);
+
+  const plain = lateStage(born());
+  s = hold(lateStage(born()), 'tm_pi3', 5);
+  s.run.demon = 50;
+  near(game.tribulationInfo(s).chance, game.tribulationInfo(plain).chance);
+  near(game.qiRate(s), game.qiRate(plain) * 1.25);
+  plain.run.demon = 50;
+  assert.ok(game.tribulationInfo(plain).chance < game.tribulationInfo(s).chance);
+});
+
+test('藏经阁·符：传承多学一门、挡下失败的后果、心魔满了不堕魔', () => {
+  let s = hold(born(), 'tm_ta1', 7);
+  const offers = [{ id: 'sw1', level: 1 }, { id: 'bo3', level: 2 }, { id: 'pi1', level: 1 }];
+  s.run.event = { kind: 'legacy', intro: 0, offers: offers, rerolls: 0 };
+  game.choose(s, 0, () => 0);
+  assert.deepStrictEqual(s.run.skills.slice(1), [{ id: 'sw1', level: 1 }, { id: 'bo3', level: 2 }]);
+  s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'pi1', level: 1 }, { id: 'pi2', level: 1 }], rerolls: 0 };
+  game.choose(s, 0, () => 0.9);
+  assert.strictEqual(s.run.skills.length, 4);
+
+  s = hold(born(), 'tm_ta2', 5);
+  for (let i = 0; i < 3; i++) {
+    const index = riskEvent(s);
+    const before = JSON.stringify([s.run.stats, s.run.demon, s.run.lifeFlat]);
+    const r = game.choose(s, index, () => 0.999);
+    assert.ok(r.tags.indexOf('lose') >= 0);
+    const warded = r.lines.join('').indexOf('敕令真符') >= 0;
+    assert.strictEqual(warded, i < 2);
+    if (warded) assert.strictEqual(JSON.stringify([s.run.stats, s.run.demon, s.run.lifeFlat]), before);
+    if (s.run.phase !== 'alive') break;
+  }
+  assert.strictEqual(s.run.wards, 2);
+
+  s = hold(born(), 'tm_ta3', 5);
+  s.run.demon = 100;
+  setEvent(s, 'a_trial');
+  game.choose(s, -1, () => 0);
+  assert.strictEqual(s.run.mode, 'human');
+  assert.strictEqual(s.run.demon, 0);
+  assert.strictEqual(s.run.age, 31);
+});
+
+test('藏经阁·体：躯顶替考核、单次耗寿封顶、魔修也能渡劫', () => {
+  const plain = lateStage(born());
+  plain.run.stats = { edge: 0, body: 100, mind: 0 };
+  const both = lateStage(born());
+  both.run.stats = { edge: 0, body: 100, mind: 100 };
+  let s = hold(lateStage(born()), 'tm_bo1', 7);
+  s.run.stats = { edge: 0, body: 100, mind: 0 };
+  assert.ok(game.tribulationInfo(plain).chance < game.tribulationInfo(s).chance);
+  near(game.tribulationInfo(s).chance, game.tribulationInfo(both).chance);
+
+  s = born();
+  s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 1 }], rerolls: 0 };
+  assert.strictEqual(game.eventView(s).options[0].years, 3);
+  hold(s, 'tm_bo2', 7);
+  assert.strictEqual(game.eventView(s).options[0].years, 1);
+  game.choose(s, 0, () => 0.9);
+  assert.strictEqual(s.run.age, 1);
+
+  s = born();
+  s.run.demon = 100;
+  setEvent(s, 'a_trial');
+  game.choose(s, -1, () => 0);
+  assert.strictEqual(s.run.mode, 'demon');
+  lateStage(s);
+  assert.strictEqual(game.tribulationInfo(s).ready, false);
+  hold(s, 'tm_bo3', 7);
+  const info = game.tribulationInfo(s);
+  assert.ok(info.ready && info.demonOk);
+  const life = game.maxLife(s);
+  const r = game.attemptTribulation(s, () => 0, 'endure');
+  assert.ok(r.success);
+  assert.strictEqual(s.run.realm, 1);
+  assert.strictEqual(game.maxLife(s), life);
+});
+
+test('藏经阁·运：活着攒灯芯、成功奖励再结算、前几次必成', () => {
+  let s = hold(born(), 'tm_lu1', 6);
+  s.run.qi = game.qiCap(s) - 1;
+  setEvent(s, 'a_trial');
+  game.choose(s, -1, () => 0);
+  assert.strictEqual(s.run.stage, 1);
+  assert.strictEqual(s.wick, 2);
+  lateStage(s);
+  assert.ok(game.attemptTribulation(s, () => 0, 'endure').success);
+  assert.strictEqual(s.wick, 12);
+  assert.strictEqual(s.totalWick, 12);
+
+  s = hold(born(), 'tm_lu2', 5);
+  let r = game.choose(s, riskEvent(s), () => 0);
+  assert.ok(r.tags.indexOf('win') >= 0 && r.lines.join('').indexOf('再结算一次') >= 0);
+  s = born();
+  r = game.choose(s, riskEvent(s), () => 0);
+  assert.ok(r.lines.join('').indexOf('再结算一次') < 0);
+
+  s = hold(born(), 'tm_lu3', 5);
+  s.run.lifeFlat = 500;
+  for (let i = 0; i < 4; i++) {
+    r = game.choose(s, riskEvent(s), () => 0.999);
+    assert.strictEqual(r.tags.indexOf('win') >= 0, i < 3);
+  }
+  assert.strictEqual(s.run.sures, 3);
+});
+
+test('藏经阁与劫期、劫相、重天、大机缘、战力的衔接', () => {
+  // 劫期逾期的折寿不被《饮海吞山》封顶，也不被《九转炉心》免掉
+  let s = hold(hold(born(), 'tm_bo2', 7), 'tm_pi1', 5);
+  s.run.realmChoices = game.tribTerm(s).term;
+  const late = game.tribTerm(s).years;
+  assert.ok(late > 0);
+  s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 1 }], rerolls: 0 };
+  const view = game.eventView(s);
+  assert.strictEqual(view.options[0].years, 1 + late);
+  assert.strictEqual(view.fallback.years, late);
+  game.choose(s, -1, () => 0);
+  assert.strictEqual(s.run.age, late);
+
+  // 单项劫相只考锋时，《骸骨金身》用躯顶替这一项
+  s = hold(lateStage(born()), 'tm_bo1', 7);
+  s.run.tribs = ['e', 'bm', 'eb'];
+  s.run.stats = { edge: 0, body: 100, mind: 0 };
+  const edged = lateStage(born());
+  edged.run.tribs = ['e', 'bm', 'eb'];
+  edged.run.stats = { edge: 100, body: 0, mind: 0 };
+  near(game.tribulationInfo(s).chance, game.tribulationInfo(edged).chance);
+
+  // 重天的成功率扣减对魔修渡劫同样生效
+  s = hold(lateStage(born()), 'tm_bo3', 7);
+  s.run.mode = 'demon';
+  s.run.stats = { edge: 3, body: 3, mind: 3 };
+  const low = game.tribulationInfo(s).chance;
+  s.run.heaven = 2;
+  assert.ok(game.tribulationInfo(s).chance < low);
+
+  // 大机缘的“仙蜕”“忘字”不改藏经阁功法的品级
+  let forgot = 0;
+  for (let i = 0; i < 300; i++) {
+    s = hold(born(), 'tm_lu3', 6);
+    give(s, ['sw1'], 3);
+    s.big = 1;
+    const r = game.drawBig(s, mulberry(i));
+    assert.ok(r);
+    if (r.lines.join('').indexOf('跌回') >= 0) forgot++;
+    const held = s.run.skills.filter((entry) => entry.id === 'tm_lu3')[0];
+    if (held) assert.strictEqual(held.level, 6);
+  }
+  assert.ok(forgot > 0);
+
+  // 藏经阁功法按品级计入战力
+  s = born();
+  const base = game.combatPowerDetails(s).total;
+  hold(s, 'tm_sw1', 7);
+  assert.strictEqual(game.combatPowerDetails(s).total, base + 29);
 });

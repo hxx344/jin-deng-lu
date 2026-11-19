@@ -212,7 +212,7 @@
         <view class="info">
           <view class="name">
             <text>{{item.name}}</text>
-            <text class="tag {{item.arcane ? 'tag-arcane' : ''}}">{{item.grade}}</text>
+            <text class="tag {{item.arcane ? 'tag-arcane' : (item.tome ? 'tag-tome' : '')}}">{{item.grade}}</text>
             <text wx:if="{{item.suppressed}}" class="tag tag-suppressed">余波压制</text>
           </view>
           <view class="desc">{{item.desc}}</view>
@@ -260,6 +260,35 @@
             <image class="btn-coin" src="/assets/wick.svg" mode="aspectFit" />
             <text>{{item.costText}}</text>
           </view>
+        </view>
+      </view>
+      <view class="section">藏经阁 {{tomeCount}}</view>
+      <view class="tome-note">花灯芯请出天品之上的功法，品级随机。它们不加数值，而是各改一条规则。请出后它会出现在往后每一世的传承里；再次请到更高品级时直接替换。</view>
+      <view wx:for="{{tomeTiers}}" wx:key="id" class="card">
+        <view class="badge badge-tome">藏</view>
+        <view class="info">
+          <view class="name"><text>{{item.name}}</text></view>
+          <view class="desc">{{item.desc}}</view>
+        </view>
+        <view wx:if="{{!item.open}}" class="btn btn-off">
+          <text class="btn-title">已收齐</text>
+        </view>
+        <view wx:else class="btn {{item.affordable ? '' : 'btn-off'}}" hover-class="btn-hover" hover-stay-time="60" data-id="{{item.id}}" bindtap="onDrawTome">
+          <text class="btn-title">请出</text>
+          <view class="btn-cost">
+            <image class="btn-coin" src="/assets/wick.svg" mode="aspectFit" />
+            <text>{{item.costText}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:for="{{tomes}}" wx:key="id" class="card">
+        <view class="badge" style="background: {{item.color}};">{{item.school}}</view>
+        <view class="info">
+          <view class="name">
+            <text>{{item.name}}</text>
+            <text class="tag tag-tome">{{item.grade}}</text>
+          </view>
+          <view class="desc">{{item.desc}}</view>
         </view>
       </view>
     </block>

@@ -3609,6 +3609,23 @@
   color: #d9c5ff;
 }
 
+.tag-tome {
+  background: rgba(255, 214, 102, 0.22);
+  color: #ffe08a;
+}
+
+.badge-tome {
+  background: linear-gradient(135deg, #ffe08a, #b8791f);
+  color: #3a2408;
+}
+
+.tome-note {
+  margin: 0 6rpx 16rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #a89a88;
+}
+
 .tag-suppressed {
   background: rgba(255, 133, 102, 0.16);
   color: #ffab91;

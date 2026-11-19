@@ -3,7 +3,8 @@ const { REALMS, STAGES } = require('./content');
 const ATTRIBUTE_WEIGHTS = { edge: 1.2, body: 1.1, mind: 1.1 };
 const OVER_CAP_WEIGHT = 0.55;
 const BALANCE_WEIGHT = 0.25;
-const MASTERY_BY_GRADE = [2, 4, 7, 11];
+// 凡、灵、玄、天品，之后是藏经阁的仙、神、道品。
+const MASTERY_BY_GRADE = [2, 4, 7, 11, 16, 22, 29];
 const ARCANE_MASTERY = 29;
 const BOND_BY_COUNT = { two: 4, four: 10 };
 const UNBORN_OPPONENT_POWER = 8;
