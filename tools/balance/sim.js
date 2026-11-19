@@ -19,6 +19,8 @@ const CONFIG = {
   tribThreshold: 0.7,
   overdueThreshold: 0.45,
   lastDitchYears: 8,
+  // 认真玩：余雷的成功率到这个数才多引一道。
+  extraThreshold: 0.85,
   // 挂机玩：成功率过了这个数就渡。
   idleThreshold: 0.5,
   reportLives: [1, 2, 4, 8, 12]
@@ -226,6 +228,9 @@ const POLICIES = {
       }
       return false;
     },
+    extraBolt(state, info, sim) {
+      return info.bolts.chance >= sim.config.extraThreshold && game.yearsLeft(state) > info.failYears + 20;
+    },
     wait(state, sim) {
       const run = state.run;
       if (run.mode === 'demon' || game.isFull(state) || game.yearsLeft(state) <= sim.config.lastDitchYears) return false;
@@ -270,9 +275,20 @@ function playLife(state, policy, rng, config, clock) {
   };
   const sim = {
     config: config,
+    // 逐道雷的天劫一口气渡完：必接的雷按 method 走，借不起就硬接；余雷只有打法愿意时才引。
     tribulation(method) {
-      const result = game.attemptTribulation(state, rng, method);
-      if (result) life.tribs.push({ name: result.name, success: result.success });
+      let result = null;
+      for (;;) {
+        const info = game.tribulationInfo(state);
+        if (!info || !info.ready) break;
+        let step = method === 'borrow' && !info.borrowReady ? 'endure' : method;
+        if (info.bolts && info.bolts.extra) step = policy.extraBolt && policy.extraBolt(state, info, sim) ? 'endure' : 'settle';
+        const next = game.attemptTribulation(state, rng, step);
+        if (!next) break;
+        result = next;
+        if (next.done) break;
+      }
+      if (result) life.tribs.push({ name: result.name, success: result.broke });
       return !!result;
     },
     yuanTrial(method, step) {
@@ -305,21 +321,21 @@ function playLife(state, policy, rng, config, clock) {
       game.retreatSea(state);
       continue;
     }
-    if (policy.wait(state, sim)) {
-      tick(30);
-      continue;
-    }
+    // 属性够了、只差灵气时不再冒险：机缘照翻，但只选“闭关不理”。
+    const waiting = policy.wait(state, sim);
     // 大机缘当场结算，没有选项。
-    if (game.drawBig(state, rng)) {
+    if (!waiting && game.drawBig(state, rng)) {
       if (run.phase === 'alive' && run.pending) game.resolveReplace(state, policy.replace(state, rng));
       tick(config.choiceSeconds);
       continue;
     }
     if (!game.drawEvent(state, rng)) {
-      tick(Math.max(1, (1 - run.chance) * game.chanceInterval(state)));
+      // 机缘用尽：静坐一年；连静坐都不行就坐化。
+      if (!game.meditate(state)) game.retire(state);
+      tick(config.choiceSeconds);
       continue;
     }
-    const index = policy.choose(state, rng);
+    const index = waiting && !game.eventView(state).fallback.fatal ? -1 : policy.choose(state, rng);
     if (index === null || !game.choose(state, index, rng)) {
       // 没有不送命的选项：能渡劫就搏一把，否则坐化。
       const trib = game.tribulationInfo(state);
@@ -471,15 +487,16 @@ function render(data) {
     '## 口径',
     '',
     '- 每种打法 ' + config.saves + ' 个存档，每个存档连续玩 ' + config.lives + ' 世，随机种子 ' + config.seed + ' 起逐档加一，结果可完全复现。',
-    '- 时间：一直在线，有机缘就翻，每次选择或操作算 ' + config.choiceSeconds + ' 秒；机缘用完就等下一次。没有模拟离线。',
+    '- 时间：一世之内不用等，灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐（每次耗 1 年寿元）；每次选择或操作算 ' + config.choiceSeconds + ' 秒，“时长”就是操作次数乘这个数。',
     '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。“灯纹全满”把随重天加深的等级也算在内。',
     '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '圆满，在最高一重做到就解锁下一重。',
     '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
     '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',
     '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍和道途随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
     '- **挂机玩**：见过的选项全交给游戏自带的“自动机缘”估分；道途选手里功法最多的一系；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨。',
-    '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就停手等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
-    '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽、散功保命、主动降重天、离线收益。',
+    '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
+    '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
+    '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽与灯油、散功保命、主动降重天。',
     ''
   ];
   Object.keys(data.results).forEach((id) => {

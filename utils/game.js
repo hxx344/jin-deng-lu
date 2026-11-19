@@ -34,8 +34,13 @@ const EVENTS = content.EVENTS;
 
 const BASE_QI_CAP = 100;
 const BASE_LIFE = 60;
+// 一世之内的时间只随寿元走：每耗 1 年寿元，灵气和机缘按这么多秒结算。机缘间隔和各境界的灵气产出仍以秒计。
+const YEAR_SECONDS = 12;
 const CHANCE_INTERVAL_SEC = 60;
 const BASE_MAX_CHANCE = 60;
+// 灯油按现实时间积攒，离线也攒，跨世保留；一滴换一次机缘重抽。
+const OIL_INTERVAL_SEC = 900;
+const OIL_MAX = 6;
 // 灯纹“多缘”每级、运系 4 门羁绊加的机缘上限。
 const LAMP_CHANCE = 12;
 const LUCK_SET_CHANCE = 36;
@@ -76,6 +81,9 @@ const POWDER_YEARS = 3;
 const POWDER_MAX = 3;
 const BORROW_CHANCE = 30;
 const BORROW_TRIB = 0.15;
+// 逐道雷的天劫每道雷单独借势：耗的机缘和这一道加的成功率。
+const BOLT_BORROW_CHANCE = 10;
+const BOLT_BORROW_TRIB = 0.1;
 const SCATTER_YEARS = 10;
 const MAX_LOG = 30;
 const MAX_EPITAPHS = 10;
@@ -274,6 +282,8 @@ function newRun(state, rng) {
     tribBoon: 0,
     lastTitle: '',
     lastTrib: null,
+    // 逐道雷的天劫渡到一半：bolt 是已接住的必接雷数，gains 是已接住的余雷数。
+    trib: null,
     sea: null,
     materials: 0,
     mountainChoices: 0,
@@ -310,6 +320,7 @@ function createState(now, rng) {
     bigCount: 0,
     arena: ARENA_MAX,
     arenaPoints: 0,
+    oil: 0,
     mountainLegacy: null,
     // 重天：heaven 是下一世要去的那一重，heavenMax 是已解锁的最高一重。
     heaven: 0,
@@ -861,24 +872,46 @@ function gainQi(state, amount) {
   return { gained: gained, ups: ups };
 }
 
-// 结算从 lastTime 到 now 的灵气和机缘。寿元不随时间流逝，所以离线多久都不会死。
+// 结算从 lastTime 到 now 的现实时间：只攒竞技场次数和灯油。一世之内的灵气、机缘和寿元都不随现实时间变。
 function advance(state, now) {
-  const run = state.run;
   const elapsed = Math.max(0, (now - state.lastTime) / 1000);
   state.lastTime = now;
-  const result = { elapsed: elapsed, qi: 0, ups: 0, chance: 0 };
+  const before = Math.floor(state.oil);
   state.arena = Math.min(ARENA_MAX, state.arena + elapsed / ARENA_INTERVAL_SEC);
-  if (run.phase !== 'alive') return result;
+  state.oil = Math.min(OIL_MAX, state.oil + elapsed / OIL_INTERVAL_SEC);
+  return { elapsed: elapsed, oil: Math.floor(state.oil) - before };
+}
+
+// 这一世过了 seconds 秒：结算灵气和机缘。
+function passTime(state, seconds) {
+  const run = state.run;
+  const result = { qi: 0, ups: 0, chance: 0 };
+  if (run.phase !== 'alive' || !(seconds > 0)) return result;
   const max = maxChance(state);
   if (run.chance < max) {
     const before = run.chance;
-    run.chance = Math.min(max, run.chance + elapsed / chanceInterval(state));
+    run.chance = Math.min(max, run.chance + seconds / chanceInterval(state));
     result.chance = Math.floor(run.chance) - Math.floor(before);
   }
-  const q = gainQi(state, qiRate(state) * elapsed);
+  const q = gainQi(state, qiRate(state) * seconds);
   result.qi = q.gained;
   result.ups = q.ups;
   return result;
+}
+
+// 过 years 年；期间小境界突破的话记进 lines 和 tags。
+function passYears(state, years, lines, tags) {
+  const got = passTime(state, years * YEAR_SECONDS);
+  if (got.ups && lines) {
+    lines.push('灵气充盈，突破至' + realmText(state.run));
+    if (tags) tags.push('stageup');
+  }
+  return got;
+}
+
+// 攒一次机缘要过多少年。
+function chanceYears(state) {
+  return chanceInterval(state) / YEAR_SECONDS;
 }
 
 
@@ -1011,7 +1044,7 @@ function fallbackYears(state) {
 function rerollsLeft(state) {
   const run = state.run;
   if (!run.event || run.event.fruit || run.event.trigger) return 0;
-  return (run.event.rerolls || 0) + run.freeRerolls;
+  return (run.event.rerolls || 0) + run.freeRerolls + Math.floor(state.oil);
 }
 
 function eventView(state) {
@@ -1044,6 +1077,7 @@ function eventView(state) {
       fatal: fallbackYears(state) >= left
     },
     rerolls: rerollsLeft(state),
+    oil: rerollsLeft(state) ? Math.floor(state.oil) : 0,
     wake: [
       WAKES[run.wake] ? WAKES[run.wake].name + '：' + WAKES[run.wake].text : '',
       aftermathText(state),
@@ -1173,7 +1207,37 @@ function generateEvent(state, rng, forcedType, excludeId) {
 
 function canDraw(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && run.chance >= 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance >= 1;
+}
+
+// 机缘用尽时只能静坐：耗 1 年寿元（劫期过了照样多折），让灵气和机缘跟着年岁涨。
+function canMeditate(state) {
+  const run = state.run;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance < 1;
+}
+
+function meditateYears(state) {
+  return 1 + tribTerm(state).years;
+}
+
+function meditate(state) {
+  if (!canMeditate(state)) return null;
+  const run = state.run;
+  const before = snapshot(state);
+  const years = meditateYears(state);
+  run.age += years;
+  const lines = ['耗 ' + years + ' 年寿元'];
+  const tags = ['seclude'];
+  const got = passTime(state, years * YEAR_SECONDS);
+  if (got.qi >= 1) lines.push('灵气 +' + formatNumber(Math.round(got.qi)));
+  if (got.ups) {
+    lines.push('突破至' + realmText(run));
+    tags.push('stageup');
+  }
+  run.log.push({ age: run.age, title: '静坐', text: '机缘未至，静坐了一阵：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  const dead = checkDeath(state);
+  return { title: '静坐', label: '机缘未至，静坐了一阵', lines: lines, tags: tags, dead: dead };
 }
 
 function drawEvent(state, rng) {
@@ -1378,7 +1442,7 @@ const BIG_EFFECTS = {
 
 function canDrawBig(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.sudden && state.big >= 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.sudden && state.big >= 1;
 }
 
 // 眼下能落下来的大机缘。
@@ -1413,7 +1477,8 @@ function rerollEvent(state, rng) {
   const old = run.event;
   let rerolls = old.rerolls || 0;
   if (rerolls > 0) rerolls--;
-  else run.freeRerolls--;
+  else if (run.freeRerolls > 0) run.freeRerolls--;
+  else state.oil -= 1;
   const type = old.kind === 'legacy' ? 'legacy' : findById(EVENTS, old.id).type;
   run.event = generateEvent(state, rng, type, old.id);
   run.event.rerolls = rerolls;
@@ -1708,7 +1773,7 @@ function powderInfo(state) {
     cost: cost,
     years: POWDER_YEARS,
     left: Math.max(0, POWDER_MAX - run.powders),
-    ready: run.phase === 'alive' && run.mode === 'demon' && run.qi >= cost && run.powders < POWDER_MAX,
+    ready: run.phase === 'alive' && run.mode === 'demon' && !run.trib && run.qi >= cost && run.powders < POWDER_MAX,
     visible: run.phase === 'alive' && run.mode === 'demon'
   };
 }
@@ -1744,7 +1809,9 @@ function choose(state, index, rng) {
   if (index === -1) {
     label = '闭关不理';
     wake = 'rest';
-    run.age += fallbackYears(state);
+    const years = fallbackYears(state);
+    run.age += years;
+    passYears(state, years, lines, tags);
     tags.push('seclude');
     addQiWithLines(state, qiRewardAmount(state, fallbackQi(state)), lines, tags);
   } else {
@@ -1756,11 +1823,13 @@ function choose(state, index, rng) {
     learnOption(state, opt);
     // 成功率按做选择时看到的算，不受这次耗掉的寿元影响。
     const p = opt.risk ? riskChance(state, opt.risk) : 0;
-    run.age += optionYears(state, opt);
+    const years = optionYears(state, opt);
+    run.age += years;
     if (cost) {
       run.qi -= cost;
       lines.push('灵气 -' + formatNumber(cost));
     }
+    passYears(state, years, lines, tags);
     if (opt.learn) {
       gainSkill(state, opt.learn.id, opt.learn.level, lines, tags);
       const others = run.event.offers.filter((o) => o.id !== opt.learn.id && !skillEntry(run, o.id));
@@ -2046,7 +2115,7 @@ function autoResolve(state) {
 // stuck 为真表示这个机缘没有稳妥的选项，留在原处等玩家决定。
 function autoStep(state, rng) {
   const run = state.run;
-  if (!autoUnlocked(state) || run.phase !== 'alive' || atSea(run)) return null;
+  if (!autoUnlocked(state) || run.phase !== 'alive' || atSea(run) || run.trib) return null;
   const out = { result: null, replaced: '', stuck: false };
   if (run.pending) {
     out.replaced = autoResolve(state);
@@ -2058,7 +2127,12 @@ function autoStep(state, rng) {
       if (run.pending) out.replaced = autoResolve(state);
       return out;
     }
-    if (!drawEvent(state, rng)) return null;
+    if (!drawEvent(state, rng)) {
+      // 机缘用尽就替他静坐，但不坐到寿尽。
+      if (!canMeditate(state) || meditateYears(state) >= yearsLeft(state)) return null;
+      out.result = meditate(state);
+      return out;
+    }
   }
   const index = autoPick(state);
   out.result = index === null ? null : choose(state, index, rng);
@@ -2237,8 +2311,10 @@ function mountainView(state, page, disciple) {
 
 function chooseMountain(state, page, disciple, stamp, id, name, rng = Math.random) {
   const before = snapshot(state);
+  const age = state.run.age;
   const result = mountain.chooseMountain(state, page, disciple, stamp, id, name, mountainContext(state), rng);
   if (!result) return null;
+  passYears(state, state.run.age - age, result.lines);
   const tags = [];
   if (result.book) gainSkill(state, result.book.id, result.book.level, result.lines, tags);
   if (result.demon || result.chance) {
@@ -2263,12 +2339,14 @@ function chooseSea(state, id, tide) {
   const lines = [];
   if (!run.sea) {
     run.age += 1;
+    passYears(state, 1, lines, tags);
     run.sea = { route: id, tide: 1, landed: false, anchor: false, clue: false, saltPassed: false };
   } else {
     const sea = run.sea;
     const route = findById(SEA_ROUTES, sea.route);
     const option = findById(route.scenes[sea.tide - 1].options, id);
     run.age += option.years;
+    passYears(state, option.years, lines, tags);
     run.chance -= option.chance || 0;
     const demon = demonGain(state, option.demon || 0);
     if (demon) {
@@ -2301,10 +2379,65 @@ function retreatSea(state) {
   return seaResult(state, '枯海沉舟', '沿接引绳返航', lines, [], before);
 }
 
-function tribulationChance(state, ratio) {
+// 渡劫成功率由哪几项加出来，按顺序列给玩家看；为零的项不列。
+function tribulationParts(state, ratio) {
   const run = state.run;
-  return clamp(0.15 + 0.7 * ratio - (mech(run, 'demonFuel') ? 0 : 0.03 * Math.floor(run.demon / 10)) +
-    (hasSet(run, 'sword', 2) ? 0.1 : 0) + 0.03 * lampLevel(state, 'm2') + sumSkills(run, 'trib') + run.tribBoon - HEAVEN_TRIB * run.heaven, 0.05, 0.98);
+  return [
+    ['属性', 0.15 + 0.7 * ratio],
+    ['心魔', mech(run, 'demonFuel') ? 0 : -0.03 * Math.floor(run.demon / 10)],
+    ['剑系羁绊', hasSet(run, 'sword', 2) ? 0.1 : 0],
+    ['灯纹「劫后余生」', 0.03 * lampLevel(state, 'm2')],
+    ['功法', sumSkills(run, 'trib')],
+    ['大机缘的雷', run.tribBoon],
+    ['重天', -HEAVEN_TRIB * run.heaven]
+  ].filter((part) => Math.abs(part[1]) > 1e-9).map((part) => ({ label: part[0], value: part[1] }));
+}
+
+function tribulationChance(state, ratio) {
+  return clamp(tribulationParts(state, ratio).reduce((sum, part) => sum + part.value, 0), 0.05, 0.98);
+}
+
+function boltRewardText(tests, reward) {
+  const parts = [];
+  if (reward.attr) parts.push(tests.map((k) => ATTR_NAMES[k]).join('、') + (tests.length > 1 ? '各 +' : ' +') + reward.attr);
+  if (reward.life) parts.push('寿元上限 +' + reward.life + ' 年');
+  if (reward.wick) parts.push('灯芯 +' + reward.wick);
+  return parts.join('，');
+}
+
+// 逐道雷的天劫眼下的局面。overall 是整场全部硬接的成功率。
+function boltView(state, trib, tests, overall) {
+  const run = state.run;
+  const session = run.trib || { bolt: 0, gains: 0 };
+  const total = trib.bolts.length;
+  const extra = session.bolt >= total;
+  const main = trib.bolts.map((weight) => Math.pow(overall, weight));
+  const spare = trib.extra.map((item) => Math.min(item.cap, Math.pow(overall, item.pow)));
+  const chance = extra ? spare[session.gains] : main[session.bolt];
+  const boost = (p) => Math.min(0.99, p + BOLT_BORROW_TRIB);
+  // 借势按机缘够借几道算，先借给最难的几道。
+  let borrows = Math.floor(run.chance / BOLT_BORROW_CHANCE);
+  let left = 1;
+  let leftBorrow = 1;
+  for (let i = total - 1; i >= session.bolt; i--) {
+    left *= main[i];
+    leftBorrow *= borrows-- > 0 ? boost(main[i]) : main[i];
+  }
+  return {
+    total: total,
+    extraTotal: trib.extra.length,
+    passed: session.bolt,
+    gains: session.gains,
+    active: !!run.trib,
+    extra: extra,
+    index: extra ? session.gains + 1 : session.bolt + 1,
+    chance: chance,
+    borrowChance: boost(chance),
+    left: extra ? chance : left,
+    leftBorrow: extra ? boost(chance) : leftBorrow,
+    reward: extra ? boltRewardText(tests, trib.extra[session.gains]) : '',
+    held: trib.extra.slice(0, session.gains).map((item) => boltRewardText(tests, item))
+  };
 }
 
 function tribulationTerms(state, trib) {
@@ -2409,6 +2542,7 @@ function attemptYuanTrial(state, rng, method, step) {
   run.lastTrib = { name: '元婴劫·' + info.name, chance: option.chance };
   if (option.years) {
     run.age += option.years;
+    passYears(state, option.years, lines);
     lines.push('耗 ' + option.years + ' 年寿元');
   }
   if (option.chances) {
@@ -2460,7 +2594,7 @@ function tribulationInfo(state) {
     return clamp(p + (1 - p) * p * again, 0.05, 0.98);
   };
   const baseChance = tribulationChance(state, ratio);
-  return Object.assign(tribulationTerms(state, trib), {
+  const info = Object.assign(tribulationTerms(state, trib), {
     name: trib.name,
     aspect: plan.aspect,
     tests: plan.tests,
@@ -2471,8 +2605,103 @@ function tribulationInfo(state) {
     borrowCost: BORROW_CHANCE,
     scatterYears: SCATTER_YEARS,
     demonOk: demonOk,
-    ready: run.phase === 'alive' && (run.mode !== 'demon' || demonOk) && !run.pending && tribQiReady(state)
+    parts: tribulationParts(state, ratio),
+    // 逐道雷渡到一半时不再看灵气和魔修身份，否则这场劫既渡不完也退不出。
+    ready: run.phase === 'alive' && !run.pending && (!!run.trib || ((run.mode !== 'demon' || demonOk) && tribQiReady(state)))
   });
+  if (trib.bolts) {
+    // chance 和 borrowChance 改成“剩下的必接雷全过”的把握，渡到余雷时是下一道余雷的把握。
+    info.bolts = boltView(state, trib, plan.tests, info.chance);
+    info.chance = info.bolts.left;
+    info.borrowChance = info.bolts.leftBorrow;
+    info.borrowReady = run.chance >= BOLT_BORROW_CHANCE;
+    info.borrowCost = BOLT_BORROW_CHANCE;
+  }
+  return info;
+}
+
+// 逐道雷：必接的雷用 endure 硬接或 borrow 借势，一道没接住整场就败；也可以 scatter 散功。
+// 必接的雷全过后进入余雷：settle 收劫破境，或继续 endure、borrow 多引一道。余雷没接住照样破境，但淬体所得尽失，还要折寿、涨心魔。
+function attemptBolt(state, rng, method, info) {
+  const run = state.run;
+  const bolts = info.bolts;
+  if ((bolts.extra ? ['endure', 'borrow', 'settle'] : ['endure', 'borrow', 'scatter']).indexOf(method) < 0) return null;
+  if (method === 'borrow' && run.chance < BOLT_BORROW_CHANCE) return null;
+  const trib = TRIBS[run.realm];
+  const lines = [];
+  const before = snapshot(state);
+  const out = { name: info.name, method: method, success: false, chance: 0, lines: lines, dead: false, done: true, broke: false, bolt: bolts.index, extra: bolts.extra };
+  const settle = (gains) => {
+    enterNextRealm(state, info, lines);
+    trib.extra.slice(0, gains).forEach((reward) => {
+      info.tests.forEach((k) => { run.stats[k] += reward.attr || 0; });
+      run.lifeFlat += reward.life || 0;
+      gainLiveWick(state, reward.wick || 0);
+      lines.push('余雷淬体：' + boltRewardText(info.tests, reward));
+    });
+    out.broke = true;
+  };
+  if (method === 'scatter') {
+    run.lastTrib = { name: info.name, chance: 0, method: method };
+    run.age += SCATTER_YEARS;
+    run.qi = qiCap(state) * 0.5;
+    run.age = Math.min(run.age, maxLife(state) - 1);
+    lines.push('散功：折寿 ' + SCATTER_YEARS + ' 年，不会身死', '灵气散去一半');
+  } else if (method === 'settle') {
+    out.success = true;
+    settle(bolts.gains);
+  } else {
+    const chance = method === 'borrow' ? bolts.borrowChance : bolts.chance;
+    out.chance = chance;
+    run.lastTrib = { name: info.name, chance: chance, method: method };
+    if (method === 'borrow') {
+      run.chance -= BOLT_BORROW_CHANCE;
+      lines.push('借势：机缘 -' + BOLT_BORROW_CHANCE + '，这一道成功率 +' + pctText(BOLT_BORROW_TRIB));
+    }
+    const session = run.trib || { bolt: 0, gains: 0 };
+    out.success = rng() < chance;
+    if (!bolts.extra && out.success) {
+      session.bolt++;
+      run.trib = session;
+      lines.push('接住了第 ' + session.bolt + ' 道雷');
+      if (session.bolt < bolts.total) {
+        out.done = false;
+      } else if (trib.extra.length) {
+        out.done = false;
+        lines.push('必接的雷已过，劫云未散：可以收劫破境，也可以再引余雷淬体');
+      } else {
+        settle(0);
+      }
+    } else if (!bolts.extra) {
+      lines.push('第 ' + bolts.index + ' 道雷没接住');
+      failTribulation(state, info, lines);
+    } else if (out.success) {
+      session.gains++;
+      lines.push('接住了第 ' + session.gains + ' 道余雷');
+      if (session.gains < trib.extra.length) {
+        out.done = false;
+        lines.push(boltRewardText(info.tests, trib.extra[session.gains - 1]) + '（收劫时到手）');
+      } else {
+        settle(session.gains);
+      }
+    } else {
+      lines.push('第 ' + bolts.index + ' 道余雷没接住，淬体所得尽失');
+      settle(0);
+      run.age += info.failYears;
+      run.demon = clamp(run.demon + info.failDemon, 0, MAX_DEMON);
+      if (info.safe) run.age = Math.min(run.age, maxLife(state) - 1);
+      lines.push('折寿 ' + info.failYears + ' 年', '心魔 +' + info.failDemon);
+    }
+  }
+  if (!out.done) return out;
+  run.trib = null;
+  run.tribBoon = 0;
+  if (out.broke) maybeSudden(state, rng, 'thunder');
+  const head = method === 'scatter' ? '散功，渡劫失败：' : (out.broke ? '渡劫成功：' : '渡劫失败：');
+  run.log.push({ age: run.age, title: info.name, text: head + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  out.dead = checkDeath(state, 'trib');
+  return out;
 }
 
 // method：endure 硬抗（默认），borrow 耗机缘借势，scatter 散功保命。
@@ -2480,6 +2709,7 @@ function attemptTribulation(state, rng, method) {
   const run = state.run;
   const info = tribulationInfo(state);
   method = method || 'endure';
+  if (info && info.ready && info.bolts) return attemptBolt(state, rng, method, info);
   if (!info || !info.ready || ['endure', 'borrow', 'scatter'].indexOf(method) < 0) return null;
   if (method === 'borrow' && run.chance < BORROW_CHANCE) return null;
   const lines = [];
@@ -2511,7 +2741,7 @@ function attemptTribulation(state, rng, method) {
   run.log.push({ age: run.age, title: info.name, text: methodName + (success ? '，渡劫成功：' : '，渡劫失败：') + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   const dead = checkDeath(state, 'trib');
-  return { name: info.name, method: method, success: success, chance: chance, lines: lines, dead: dead };
+  return { name: info.name, method: method, success: success, chance: chance, lines: lines, dead: dead, done: true, broke: success };
 }
 
 function retire(state) {
@@ -2818,6 +3048,12 @@ function normalizeRun(state, raw, rng) {
     run.sea = normalizeSea(run, raw.sea);
     return run;
   }
+  const boltTrib = TRIBS[run.realm] && TRIBS[run.realm].bolts ? TRIBS[run.realm] : null;
+  if (boltTrib && raw.trib && typeof raw.trib === 'object') {
+    const bolt = toCount(raw.trib.bolt, boltTrib.bolts.length);
+    const gains = bolt === boltTrib.bolts.length ? toCount(raw.trib.gains, boltTrib.extra.length - 1) : 0;
+    if (bolt) run.trib = { bolt: bolt, gains: gains };
+  }
   run.event = normalizeEvent(raw.event, state);
   if (run.event && run.event.trigger && !run.sudden) run.sudden = { id: run.event.trigger, stage: run.event.stage };
   // 存档里的机缘已失效（例如事件被改名）时，把消耗的那次机缘还回去。
@@ -2871,6 +3107,7 @@ function normalizeState(raw, now, rng) {
   state.big = toCount(raw.big, MAX_BIG);
   state.bigCount = toCount(raw.bigCount, BIG_EVERY - 1);
   if (raw.arena !== undefined) state.arena = clamp(toNumber(raw.arena), 0, ARENA_MAX);
+  state.oil = clamp(toNumber(raw.oil), 0, OIL_MAX);
   state.arenaPoints = toCount(raw.arenaPoints);
   state.run = normalizeRun(state, raw.run, rng);
   // 挑好的前世功法在身死后、投胎选灵根前都要保留。
@@ -2988,6 +3225,15 @@ module.exports = {
   yearsLeft,
   maxChance,
   chanceInterval,
+  chanceYears,
+  YEAR_SECONDS,
+  OIL_MAX,
+  OIL_INTERVAL_SEC,
+  passTime,
+  passYears,
+  canMeditate,
+  meditateYears,
+  meditate,
   realmText,
   layerIndex,
   layerName,

@@ -3702,3 +3702,104 @@ button.sheet-btn::after {
   border-color: rgba(255, 76, 105, 0.65);
   box-shadow: 0 0 32rpx rgba(255, 45, 85, 0.5);
 }
+
+/* 逐道雷的天劫 */
+.bolt-track {
+  display: flex;
+  align-items: center;
+  margin-top: 14rpx;
+}
+
+.bolt-pip {
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: 14rpx;
+  border: 3rpx solid rgba(199, 179, 255, 0.35);
+  border-radius: 50%;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 58rpx;
+  text-align: center;
+  color: #8c8275;
+}
+
+.bolt-pip-extra {
+  border-style: dashed;
+}
+
+.bolt-pip-done {
+  border-color: #ffd58a;
+  background: rgba(255, 200, 110, 0.28);
+  color: #ffe9bd;
+  animation: bolt-pop 0.5s ease-out;
+}
+
+.bolt-pip-now {
+  border-color: #c7b3ff;
+  color: #e6dcff;
+  animation: bolt-pulse 1s ease-in-out infinite;
+}
+
+.bolt-parts {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 10rpx;
+}
+
+.bolt-part {
+  margin: 0 10rpx 8rpx 0;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(120, 220, 200, 0.12);
+  font-size: 22rpx;
+  color: #9fe3d2;
+  opacity: 0;
+  animation: bolt-part-in 0.35s ease-out forwards;
+}
+
+.bolt-part-num {
+  margin-left: 8rpx;
+  font-weight: 700;
+}
+
+.bolt-part-bad {
+  background: rgba(224, 74, 74, 0.18);
+  color: #ff9c8f;
+}
+
+.bolt-fall,
+.bolt-last {
+  margin: 6rpx 0 12rpx;
+  padding: 12rpx 18rpx;
+  border-radius: 14rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.bolt-fall {
+  background: rgba(199, 179, 255, 0.16);
+  color: #e6dcff;
+  animation: bolt-pulse 0.35s ease-in-out infinite;
+}
+
+.bolt-last {
+  background: rgba(255, 200, 110, 0.16);
+  color: #ffe9bd;
+  animation: bolt-pop 0.5s ease-out;
+}
+
+@keyframes bolt-pop {
+  0% { transform: scale(0.8); filter: brightness(2.2); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); filter: none; }
+}
+
+@keyframes bolt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes bolt-part-in {
+  from { opacity: 0; transform: translateY(10rpx); }
+  to { opacity: 1; transform: translateY(0); }
+}

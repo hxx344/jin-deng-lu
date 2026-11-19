@@ -60,8 +60,12 @@ test('开府与扩建使用同一份灵材和灵气，旧档和早期境界仍�
   assert.equal(state.run.materials, 2);
   const quote = game.mountainView(state, 'cave', '');
   const oldQi = state.run.qi;
+  const oldAge = state.run.age;
   act(state, 'cave', 'open');
-  assert.equal(state.run.qi, oldQi - quote.options[0].qi);
+  // 开府耗的寿元同时过时间，灵气按年岁回涨
+  const gain = game.qiRate(state) * game.YEAR_SECONDS * (state.run.age - oldAge);
+  assert.ok(state.run.age > oldAge);
+  assert.ok(Math.abs(state.run.qi - (oldQi - quote.options[0].qi + gain)) < 1e-6);
   assert.equal(state.run.materials, 0);
   assert.equal(game.chooseMountain(state, 'cave', '', quote.stamp, 'array'), null);
   assert.equal(game.mountainView(state, 'sect', '').page, 'cave');
@@ -89,7 +93,7 @@ test('突破改变设施价格后，过时的设施报价不能扣掉更多灵�
   const state = cultivator(KIN);
   fund(state);
   const view = game.mountainView(state, 'cave', '');
-  game.advance(state, NOW + 3600000);
+  game.passTime(state, 3600);
   const qi = state.run.qi;
   assert.equal(game.chooseMountain(state, 'cave', '', view.stamp, 'open'), null);
   assert.equal(state.run.qi, qi);

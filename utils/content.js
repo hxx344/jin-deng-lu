@@ -184,8 +184,11 @@ const STAGES = [
 ];
 
 // TRIBS[i] 是从第 i 个境界突破到下一个境界的天劫。
+// 带 bolts 的天劫逐道雷渡：整场成功率 P 按权重拆给每道必接的雷（第 i 道是 P 的 bolts[i] 次方，权重合计为 1，全部硬接时合起来仍是 P）。
+// extra 是破境前可以多引的余雷：成功率是 P 的 pow 次方、不超过 cap，接住后收劫时考的每项属性 +attr、寿元上限 +life、灯芯 +wick。
 const TRIBS = [
-  { name: '引气劫', tests: ['body', 'mind'], req: 16, life: 30, failYears: 15 },
+  { name: '引气劫', tests: ['body', 'mind'], req: 16, life: 30, failYears: 15, bolts: [0.2, 0.3, 0.5],
+    extra: [{ pow: 0.6, cap: 0.9, attr: 2, life: 5 }, { pow: 0.9, cap: 0.8, attr: 3, wick: 2 }] },
   { name: '筑基劫', tests: ['edge', 'body'], req: 48, life: 60, failYears: 25 },
   { name: '金丹劫', tests: ['edge', 'mind'], req: 140, life: 150, failYears: 50 },
   { name: '元婴劫', tests: ['edge', 'body', 'mind'], req: 180, life: 300, failYears: 24, seaTrial: true }

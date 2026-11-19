@@ -15,7 +15,7 @@ const HIDDEN_MODAL = { show: false, title: '', content: '', highlight: '', confi
 const HIDDEN_SHEET = { kind: '' };
 const TIP_KEY = 'jindeng_tip_v1';
 const TIP_INFO = [
-  { at: 'hud', text: '寿元只在做选择时流逝，挂机和离线都不扣。寿元耗尽就身死，带着灯芯重来。' },
+  { at: 'hud', text: '寿元只在做选择时流逝，放着不动不会少；灵气和机缘跟着耗掉的寿元涨。寿元耗尽就身死，带着灯芯重来。' },
   { at: 'tabs', text: '学到的功法、羁绊和属性都在这几页里。灵气攒满后要渡劫，考的属性会在“功法”页标出来。' },
   { at: 'help', text: '规则记不清的时候，点右上角的“?”看游戏指南。' }
 ];
@@ -80,10 +80,16 @@ const SOUNDS = {
 };
 // 天劫动画里第三道雷落下的时刻，和 wxss 里 storm-* 动画的 67% 对应。
 const STORM_HIT_MS = 2800;
+// 逐道雷：点下“接”到揭晓之间停这么久。
+const BOLT_FALL_MS = 700;
 const FIDGETS = ['yawn', 'look', 'doze', 'scratch'];
 const FIDGET_MIN_MS = 7000;
 const FIDGET_SPAN_MS = 8000;
 const SKILL_ACTIONS = { sword: 'slash', pill: 'pill', talisman: 'talisman', body: 'flex', luck: 'lucky' };
+
+function yearsText(years) {
+  return String(Math.round(years * 10) / 10);
+}
 
 // 一次结算可能同时发生好几件事，只演最要紧的那一件。
 function actionForTags(tags) {
@@ -340,19 +346,16 @@ Page({
   },
 
   onShow() {
-    const before = game.realmText(this.state.run);
     const result = game.advance(this.state, Date.now());
-    if (this.state.run.phase === 'alive' && result.elapsed >= OFFLINE_NOTICE_SEC) {
-      const after = game.realmText(this.state.run);
+    if (result.elapsed >= OFFLINE_NOTICE_SEC && result.oil > 0) {
       this.openModal({
         title: '你回到灯前',
-        content: '你离开了 ' + game.formatDuration(result.elapsed) + '。' +
-          (after !== before ? '期间突破至' + after + '。' : '') +
-          '攒下机缘 ' + result.chance + ' 次。寿元只在你做出选择时流逝，离开多久都不会少。',
-        highlight: '灵气 +' + game.formatNumber(Math.round(result.qi)),
+        content: '你离开了 ' + game.formatDuration(result.elapsed) + '。灯里现在有 ' + Math.floor(this.state.oil) + ' / ' + game.OIL_MAX +
+          ' 滴灯油，一滴能在机缘面板上换一个机缘。这一世的灵气、机缘和寿元不随现实时间变，接着走就行。',
+        highlight: '灯油 +' + result.oil,
         confirmText: '知道了'
       });
-      this.play('stretch');
+      if (this.state.run.phase === 'alive') this.play('stretch');
     }
     this.wasFull = Math.floor(this.state.run.chance) >= game.maxChance(this.state);
     this.refresh();
@@ -390,11 +393,7 @@ Page({
 
   tick() {
     const now = Date.now();
-    const result = game.advance(this.state, now);
-    if (result.ups) {
-      this.showBanner('灵气充盈，突破至' + game.realmText(this.state.run));
-      if (this.act !== 'thunder') this.play('breakthrough');
-    }
+    game.advance(this.state, now);
     this.autoTick(now);
     this.idleTick(now);
     this.refresh();
@@ -833,6 +832,8 @@ Page({
   stopAct() {
     clearTimeout(this.actTimer);
     clearTimeout(this.stormTimer);
+    clearTimeout(this.boltTimer);
+    this.boltFalling = false;
     audio.stop('thunder');
     this.act = '';
     this.holdRealm = null;
@@ -906,14 +907,15 @@ Page({
       cap: game.formatNumber(cap),
       power: born ? game.formatNumber(power) : '—',
       qiPct: Math.min(100, Math.floor(run.qi / cap * 100)),
-      rate: game.formatNumber(game.qiRate(s)),
+      rate: game.formatNumber(game.qiRate(s) * game.YEAR_SECONDS),
+      oil: Math.floor(s.oil) + ' / ' + game.OIL_MAX,
       years: run.phase === 'alive' ? left : '-',
       lifeLow: run.phase === 'alive' && left <= 10,
       demon: run.demon + ' / ' + game.MAX_DEMON,
       demonHigh: run.demon >= 50,
       big: s.bigCount + ' / ' + game.BIG_EVERY,
       mode: run.phase === 'alive' && run.mode === 'demon' ? '魔修' : '',
-      chanceRate: game.formatDuration(Math.round(game.chanceInterval(s))) + ' / 次',
+      chanceRate: born ? Math.floor(run.chance) + ' / ' + game.maxChance(s) + ' · ' + yearsText(game.chanceYears(s)) + ' 年 +1' : '-',
       aftermath: run.phase === 'alive' ? game.aftermathText(s) : ''
     };
   },
@@ -951,6 +953,9 @@ Page({
     if (boarding) {
       title = '继续沉舟探索';
       sub = '查看本章与返航选项';
+    } else if (run.trib) {
+      title = '天劫未了';
+      sub = info && info.bolts && info.bolts.extra ? '劫云未散：收劫，或再引余雷' : '下一道雷在等你';
     } else if (run.pending) {
       title = '取舍功法';
       sub = '新功法还在等你决定';
@@ -961,10 +966,18 @@ Page({
       title = '翻开机缘';
       sub = '已攒 ' + count + ' / ' + max + ' 次';
     } else {
-      title = '机缘未至';
-      sub = game.formatDuration(Math.ceil((1 - run.chance) * game.chanceInterval(s))) + '后有新的机缘';
-      off = true;
+      const years = game.meditateYears(s);
+      title = '静坐';
+      sub = '机缘用尽 · 耗 ' + years + ' 年寿元等它回来';
+      off = years >= game.yearsLeft(s);
     }
+    let tribSub = '';
+    if (yuan && yuan.ready) tribSub = yuan.name + ' ' + yuan.step + ' / 2';
+    else if (info && info.ready && info.bolts) {
+      tribSub = info.bolts.extra ? '余雷第 ' + info.bolts.index + ' 道 · ' + percent(info.bolts.chance) + '%'
+        : (info.bolts.active ? '第 ' + info.bolts.index + ' / ' + info.bolts.total + ' 道雷 · ' + percent(info.bolts.chance) + '%' : info.bolts.total + ' 道雷 · 全过的把握 ' + percent(info.chance) + '%');
+    } else if (info && info.ready) tribSub = '成功率 ' + percent(info.chance) + '%';
+    if (tribSub && run.tribBoon) tribSub += ' · 有雷相助';
     const powder = game.powderInfo(s);
     const mountain = game.mountainReady(s);
     const quest = run.sect && run.sect.quest;
@@ -984,7 +997,7 @@ Page({
       off: off,
       sea: seaEntry ? '进入枯海' : '',
       trib: yuan && yuan.ready ? '渡元婴劫' : (info && info.ready ? '渡' + info.name : ''),
-      tribSub: yuan && yuan.ready ? yuan.name + ' ' + yuan.step + ' / 2' : (info && info.ready ? '成功率 ' + percent(info.chance) + '%' + (run.tribBoon ? ' · 有雷相助' : '') : ''),
+      tribSub: tribSub,
       big: !boarding && s.big > 0 ? '大机缘' : '',
       bigSub: '可用 ' + s.big + ' 次',
       mountainTitle: mountain ? (run.sect ? run.sect.name : (run.cave ? '洞府与山门' : '洞府')) : '',
@@ -1012,7 +1025,7 @@ Page({
       return { at: 'sheet', text: '每个选项都写明了代价和收益，右边是要耗掉的寿元。挑一个点下去。', next: '' };
     }
     if (run.choices === 0) {
-      return { at: 'main', text: '灵气会自己涨。你要做的只有一件事：点这里翻开机缘。', next: '' };
+      return { at: 'main', text: '灵气会随年岁自己涨。你要做的只有一件事：点这里翻开机缘。', next: '' };
     }
     const info = TIP_INFO[this.tipStep];
     return { at: info.at, text: info.text, next: this.tipStep === TIP_INFO.length - 1 ? '开始修行' : '下一步' };
@@ -1048,12 +1061,14 @@ Page({
     const sec = (title, lines) => [{ head: true, text: title }].concat(lines.map((text) => ({ head: false, text: text })));
     const rows = [].concat(
         sec('怎么玩', [
-          '灵气自己涨，离线也涨，不用点。',
+          '灵气和机缘跟着年岁涨：每耗掉 1 年寿元，灵气和机缘就各涨一截。一世之内不用等，想走多快走多快。',
           '你要做的只有一件事：翻开机缘，在几个选项里挑一个。选过的选项会写明代价和收益；没选过的只写牵涉哪几样，后果要亲自试一次才知道，试过就永远记得（跨世保留）。',
-          '寿元只在做选择时流逝，挂机和离线都不扣。寿元耗尽就身死，然后带着灯芯重来。'
+          '寿元只在做选择和静坐时流逝，放着不动、离线都不扣。寿元耗尽就身死，然后带着灯芯重来。'
         ]),
         sec('机缘', [
-          '每 ' + game.formatDuration(Math.round(game.chanceInterval(s))) + '攒 1 次，最多存 ' + game.maxChance(s) + ' 次，离线也攒。',
+          '翻一次机缘耗 1 次。每过 ' + yearsText(game.chanceYears(s)) + ' 年寿元攒回 1 次，最多存 ' + game.maxChance(s) + ' 次，投胎时是满的。',
+          '机缘用尽时主按钮变成“静坐”：每次耗 1 年寿元，让灵气和机缘跟着涨。所以机缘别乱花，借势、枯海和元婴劫的准备也要用它。',
+          '灯油：现实时间每 ' + game.formatDuration(game.OIL_INTERVAL_SEC) + '攒 1 滴，离线也攒，最多 ' + game.OIL_MAX + ' 滴，换一世也带着。机缘不合心意时，可以在机缘面板上用 1 滴换一个。',
           '传承：学功法或升品。奇遇：有风险的交易，成功率写在选项上。因果：现在种因，几次选择之后结果。闲事：小得小失。',
           '拿不准就选“闭关不理”，耗 1 年换一点灵气。也可以点“稍后再选”先收起来。',
           '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，没见过后果的选项他也不碰（只会闭关）；择道、渡劫、坐化和投胎仍由你决定。',
@@ -1086,7 +1101,9 @@ Page({
           '凡胎、引气、筑基、金丹、元婴，各分前、中、后期。小境界灵气满了自动突破。',
           '前三场天劫每一世的“劫相”都不同：有的考两项，有的只考一项但要求高出三成多。主界面和“功法”页会标出这一场考什么、需要多少。',
           '劫期：每个境界只能从容做一定次数的机缘（主界面写着还剩几次）。过了劫期，每次机缘都多折寿元，越拖越重。所以不能无限攒属性，要估着劫期决定什么时候渡劫。',
-          '前三场天劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功保命（折寿 10 年，保住一半灵气）。',
+          '引气劫要一道雷一道雷地接。必接的雷有 3 道，一道比一道难，每道落下前可以硬接、耗 10 次机缘借势（这一道 +10%），或散功保命。一道没接住，整场就败。',
+          '3 道全过后劫云不会马上散：可以收劫破境，也可以再引余雷淬体，最多 2 道。接住的余雷在收劫时兑成属性、寿元上限或灯芯；没接住照样破境，但淬体所得全丢，还要折寿、涨心魔。贪不贪由你。',
+          '筑基劫和金丹劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功保命（折寿 10 年，保住一半灵气）。',
           '成功率低就先别渡，多翻几次机缘把被考的属性堆上去；寿元不够时也可以主动散功保命。'
         ]),
         sec('枯海与元婴劫', [
@@ -1238,6 +1255,7 @@ Page({
     }
     const info = game.tribulationInfo(this.state);
     if (!info) return HIDDEN_SHEET;
+    if (info.bolts) return this.boltView(info);
     return {
       kind: 'trib',
       title: info.name,
@@ -1263,6 +1281,75 @@ Page({
           disabled: false
         }
       ]
+    };
+  },
+
+  // 逐道雷的天劫：一排雷的进度、成功率的来历，和这一道怎么接。
+  boltView(info) {
+    const bolts = info.bolts;
+    const chance = Math.floor(this.state.run.chance);
+    const fail = '折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon;
+    const borrowNote = info.borrowReady ? '当前机缘 ' + chance + ' 次' : '机缘不足 ' + info.borrowCost + ' 次';
+    const pips = [];
+    for (let i = 0; i < bolts.total + bolts.extraTotal; i++) {
+      const extra = i >= bolts.total;
+      const passed = extra ? i - bolts.total < bolts.gains : i < bolts.passed;
+      const now = !passed && (extra ? bolts.extra && i - bolts.total === bolts.gains : i === bolts.passed);
+      pips.push({ key: i, text: extra ? '余' : String(i + 1), state: passed ? 'done' : (now ? 'now' : 'wait'), extra: extra });
+    }
+    const broke = info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeBonus + ' 年';
+    const options = bolts.extra ? [
+      {
+        id: 'settle',
+        label: '收劫 · 破境',
+        desc: broke + (bolts.held.length ? '；带走淬体所得：' + bolts.held.join('；') : '') + '。',
+        disabled: false
+      },
+      {
+        id: 'endure',
+        label: '再引一道余雷 · ' + percent(bolts.chance) + '%',
+        desc: '接住：' + bolts.reward + '（收劫时到手）。没接住：照样破境，但淬体所得尽失，' + fail + '。',
+        disabled: false
+      },
+      {
+        id: 'borrow',
+        label: '借势引余雷 · ' + percent(bolts.borrowChance) + '%',
+        desc: '先耗 ' + info.borrowCost + ' 次机缘，这一道成功率 +10%；其余同上。',
+        disabled: !info.borrowReady,
+        note: borrowNote
+      }
+    ] : [
+      {
+        id: 'endure',
+        label: '硬接 · 这一道 ' + percent(bolts.chance) + '%',
+        desc: '接住就轮到下一道。没接住整场失败：' + fail + '，' + info.keepText + '。',
+        disabled: false
+      },
+      {
+        id: 'borrow',
+        label: '借势 · 这一道 ' + percent(bolts.borrowChance) + '%',
+        desc: '先耗 ' + info.borrowCost + ' 次机缘，这一道成功率 +10%；成败结果与硬接相同。',
+        disabled: !info.borrowReady,
+        note: borrowNote
+      },
+      {
+        id: 'scatter',
+        label: '散功 · 不接了，不会身死',
+        desc: '折寿 ' + info.scatterYears + ' 年，不涨心魔，灵气固定保住一半。',
+        disabled: false
+      }
+    ];
+    return {
+      kind: 'bolt',
+      title: info.name + (info.aspect ? '「' + info.aspect + '」' : ''),
+      step: bolts.extra ? '余雷 第 ' + bolts.index + ' / ' + bolts.extraTotal + ' 道' : '第 ' + bolts.index + ' / ' + bolts.total + ' 道雷',
+      text: '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req +
+        (bolts.extra ? '。必接的雷已经过了，劫云还没散。' : '。必接的雷一道比一道难，剩下的全过的把握是 ' + percent(info.chance) + '%。'),
+      pips: pips,
+      parts: info.parts.map((part, i) => ({ key: i, label: part.label, value: (part.value > 0 ? '+' : '') + Math.round(part.value * 100) + '%', bad: part.value < 0 })),
+      last: this.boltLast || '',
+      falling: !!this.boltFalling,
+      options: options
     };
   },
 
@@ -1464,6 +1551,7 @@ Page({
         else if (r.nextMountain && !run.pending && game.mountainReady(s)) nextText = '返回山门';
         else if (r.voyage && game.atSea(run)) nextText = '继续探索';
         else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
+        else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && game.canMeditate(s) && game.meditateYears(s) < game.yearsLeft(s)) nextText = '再静坐一年';
       }
       return {
         kind: 'result',
@@ -1638,7 +1726,8 @@ Page({
         { label: '这一世的根骨', value: run.phase === 'root' ? '-' : game.rootInfo(run.root).name + '（' + game.ROOT_RARITIES[game.rootInfo(run.root).rarity].name + '骨）' },
         { label: '这一世的命格', value: run.phase === 'root' ? '-' : (game.FATES.filter((f) => f.id === run.fate)[0] || { name: '无（旧世）' }).name },
         { label: '这一世的道路', value: run.phase === 'root' ? '-' : (run.mode === 'demon' ? '魔修' : '常规修行') },
-        { label: '机缘积攒', value: run.phase === 'root' ? '-' : game.formatDuration(Math.round(game.chanceInterval(s))) + ' / 次' },
+        { label: '机缘积攒', value: run.phase === 'root' ? '-' : '每过 ' + yearsText(game.chanceYears(s)) + ' 年寿元 1 次' },
+        { label: '灯油', value: Math.floor(s.oil) + ' / ' + game.OIL_MAX + ' 滴，每 ' + game.formatDuration(game.OIL_INTERVAL_SEC) + ' 1 滴' },
         { label: '这一世的年岁', value: run.phase === 'root' ? '-' : run.age + ' / ' + game.maxLife(s) + ' 岁' },
         { label: '这一世做过的选择', value: run.choices + ' 个' }
       ];
@@ -1671,9 +1760,18 @@ Page({
       this.refresh();
       return;
     }
+    if (run.trib) {
+      this.onTrib();
+      return;
+    }
     if (!run.event) {
       if (!game.drawEvent(s, Math.random)) {
-        this.showBanner('机缘未至，等一等');
+        const sat = game.meditate(s);
+        if (sat) {
+          this.finishChoice(sat);
+          return;
+        }
+        this.showBanner('眼下翻不了机缘');
         this.play('shake');
         this.refresh();
         return;
@@ -1871,18 +1969,47 @@ Page({
 
   onTribMethod(e) {
     const method = e.currentTarget.dataset.method;
+    if (this.boltFalling) return;
+    const info = game.tribulationInfo(this.state);
+    // 逐道雷：接雷之前先停一拍再揭晓。
+    if (info && info.ready && info.bolts && (method === 'endure' || (method === 'borrow' && info.borrowReady))) {
+      this.boltFalling = true;
+      this.boltLast = '';
+      audio.play('tap');
+      this.refresh();
+      this.boltTimer = setTimeout(() => {
+        this.boltFalling = false;
+        if (this.tribOpen) this.resolveTrib(method);
+        else this.refresh();
+      }, BOLT_FALL_MS);
+      return;
+    }
+    this.resolveTrib(method);
+  },
+
+  resolveTrib(method) {
     const before = this.state.run.realm;
     const result = game.attemptTribulation(this.state, Math.random, method);
     if (!result) {
       this.showBanner(method === 'borrow' ? '机缘不足，借不了这一股势' : '现在还不能渡劫');
       return;
     }
+    if (!result.done) {
+      this.boltLast = result.lines.join('。');
+      wx.vibrateShort({ type: 'heavy' });
+      audio.play('up');
+      this.afterAction();
+      return;
+    }
+    this.boltLast = '';
+    let label = result.broke ? '雷散了，你还站着' : (method === 'scatter' ? '修为散了，命还在' : '你被劈了下来');
+    if (result.broke && result.extra && !result.success) label = '余雷没接住，但境界已经破了';
     this.playTribulation({
       title: result.name,
-      label: result.success ? '雷散了，你还站着' : (method === 'scatter' ? '修为散了，命还在' : '你被劈了下来'),
+      label: label,
       lines: result.lines,
       dead: result.dead
-    }, before, result.success ? 'ascend' : (result.dead ? this.deathAct() : 'hurt'));
+    }, before, result.broke && (!result.extra || result.success) ? 'ascend' : (result.dead ? this.deathAct() : 'hurt'));
   },
 
   onYuanMethod(e) {

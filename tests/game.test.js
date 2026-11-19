@@ -49,6 +49,18 @@ function setEvent(s, id) {
   s.run.event = { kind: 'event', id: id, rerolls: 0 };
 }
 
+// 渡完一整场天劫：逐道雷的必接雷按 method 走，进入余雷后收劫；其余天劫一次结算。返回最后一次结算，lines 为整场合并。
+function crossTrib(s, rng, method) {
+  const lines = [];
+  let r;
+  do {
+    const info = game.tribulationInfo(s);
+    r = game.attemptTribulation(s, rng, info && info.bolts && info.bolts.extra ? 'settle' : method);
+    if (!r) return r;
+    lines.push(...r.lines);
+  } while (!r.done);
+  return Object.assign({}, r, { lines: lines });
+}
 test('新存档先投胎：三选一灵根，选定后开局机缘是满的', () => {
   const s = game.createState(1000, () => 0);
   assert.strictEqual(s.run.phase, 'root');
@@ -198,43 +210,192 @@ test('根骨组合：投胎候选按稀有度抽取且不重复，选定后各�
   assert.deepStrictEqual(pending.run.rootChoices, ['sword+pill', 'r_sage', 'body']);
 });
 
-test('灵气自动增长，小境界满了自动突破，后期停在上限等渡劫', () => {
+test('灵气随年岁增长，小境界满了自动突破，后期停在上限等渡劫', () => {
   const s = born();
   assert.strictEqual(game.qiCap(s), 100);
-  game.advance(s, 40000);
+  game.passTime(s, 40);
   near(s.run.qi, 40);
-  const r = game.advance(s, 110000);
+  const r = game.passTime(s, 70);
   assert.strictEqual(r.ups, 1);
   assert.strictEqual(game.realmText(s.run), '凡胎中期');
   near(s.run.qi, 10);
   assert.strictEqual(game.qiCap(s), 160);
   assert.strictEqual(game.isFull(s), false);
-  const off = game.advance(s, 110000 + 30 * 86400 * 1000);
+  const long = game.passTime(s, 30 * 86400);
   assert.strictEqual(game.realmText(s.run), '凡胎后期');
   assert.strictEqual(s.run.qi, 250);
   assert.strictEqual(game.isFull(s), true);
-  near(off.qi, 150 + 250);
+  near(long.qi, 150 + 250);
 });
 
-test('离线：寿元不流逝，机缘攒到上限为止，时钟回拨不出错', () => {
+test('机缘随年岁攒到上限为止；离线时寿元、灵气、机缘都不变，时钟回拨不出错', () => {
   const s = born();
   s.run.chance = 0;
-  game.advance(s, 60000);
+  game.passTime(s, game.chanceInterval(s));
   near(s.run.chance, 1);
-  game.advance(s, 90000);
+  game.passTime(s, game.chanceInterval(s) / 2);
   near(s.run.chance, 1.5);
-  const r = game.advance(s, 90000 + 12 * 3600 * 1000);
+  const r = game.passTime(s, 12 * 3600);
   assert.strictEqual(s.run.chance, 60);
   assert.strictEqual(r.chance, 59);
   assert.strictEqual(s.run.age, 0);
+
+  s.run.chance = 3;
+  const run = JSON.stringify(s.run);
+  game.advance(s, s.lastTime + 12 * 3600 * 1000);
+  assert.strictEqual(JSON.stringify(s.run), run);
   assert.strictEqual(game.yearsLeft(s), 60);
   assert.strictEqual(s.run.phase, 'alive');
-  const before = s.run.qi;
+  const oil = s.oil;
   assert.strictEqual(game.advance(s, 1000).elapsed, 0);
-  assert.strictEqual(s.run.qi, before);
+  assert.strictEqual(JSON.stringify(s.run), run);
+  assert.strictEqual(s.oil, oil);
   assert.strictEqual(s.lastTime, 1000);
 });
 
+test('过年数结算灵气和机缘：passYears 按 YEAR_SECONDS 折成 passTime，攒一次机缘要 chanceYears 年', () => {
+  const a = born();
+  const b = born();
+  a.run.chance = 0;
+  b.run.chance = 0;
+  const years = 3;
+  const ra = game.passYears(a, years);
+  const rb = game.passTime(b, years * game.YEAR_SECONDS);
+  assert.deepStrictEqual(ra, rb);
+  assert.deepStrictEqual(a.run, b.run);
+  near(a.run.qi, game.qiRate(a) * game.YEAR_SECONDS * years);
+  near(game.chanceYears(a), game.chanceInterval(a) / game.YEAR_SECONDS);
+  near(a.run.chance, years / game.chanceYears(a));
+
+  const c = born();
+  c.run.chance = 0;
+  assert.strictEqual(game.passYears(c, game.chanceYears(c)).chance, 1);
+  near(c.run.chance, 1);
+  const run = JSON.stringify(c.run);
+  assert.deepStrictEqual(game.passTime(c, 0), { qi: 0, ups: 0, chance: 0 });
+  assert.deepStrictEqual(game.passTime(c, -5), { qi: 0, ups: 0, chance: 0 });
+  assert.strictEqual(JSON.stringify(c.run), run);
+  assert.ok(game.retire(c));
+  assert.deepStrictEqual(game.passYears(c, 10), { qi: 0, ups: 0, chance: 0 });
+});
+
+test('耗寿元的主动花费同时过时间，折寿类惩罚不过时间', () => {
+  // 枯海每一步都耗寿元，机缘跟着年岁涨
+  const sea = goldCore();
+  sea.run.chance = 0;
+  assert.ok(game.chooseSea(sea, 'academy', 0));
+  assert.strictEqual(sea.run.age, 1);
+  near(sea.run.chance, 1 / game.chanceYears(sea));
+
+  // 天劫失败折寿不过时间
+  const s = lateStage(born());
+  s.run.chance = 0;
+  const qiBefore = s.run.qi;
+  const r = game.attemptTribulation(s, () => 0.9999);
+  assert.strictEqual(r.success, false);
+  assert.ok(s.run.age > 0);
+  assert.strictEqual(s.run.chance, 0);
+  assert.ok(s.run.qi < qiBefore);
+
+  // 散功折寿也不过时间
+  const t = lateStage(born());
+  t.run.chance = 0;
+  game.attemptTribulation(t, () => 0, 'scatter');
+  assert.strictEqual(t.run.age, 10);
+  assert.strictEqual(t.run.chance, 0);
+
+  // 选项耗的年岁里攒满灵气，突破写进结算行和动作标签
+  const up = born();
+  up.run.qi = game.qiCap(up) - 1;
+  setEvent(up, 'i_dog');
+  const res = game.choose(up, 1, () => 0);
+  assert.ok(res.lines.includes('灵气充盈，突破至凡胎中期'), JSON.stringify(res.lines));
+  assert.ok(res.tags.includes('stageup'));
+  assert.strictEqual(up.run.stage, 1);
+});
+test('现实时间只攒灯油和竞技场次数：灯油不超过上限，跨世保留', () => {
+  const s = born();
+  s.run.chance = 0;
+  s.run.qi = 5;
+  s.arena = 0;
+  assert.strictEqual(s.oil, 0);
+  const run = JSON.stringify(s.run);
+  let r = game.advance(s, s.lastTime + game.OIL_INTERVAL_SEC * 1000 * 1.5);
+  assert.strictEqual(r.oil, 1);
+  near(s.oil, 1.5);
+  assert.ok(s.arena > 0);
+  assert.strictEqual(JSON.stringify(s.run), run);
+  r = game.advance(s, s.lastTime + 100 * game.OIL_INTERVAL_SEC * 1000);
+  assert.strictEqual(r.oil, game.OIL_MAX - 1);
+  assert.strictEqual(s.oil, game.OIL_MAX);
+  assert.strictEqual(JSON.stringify(s.run), run);
+  assert.ok(game.retire(s));
+  assert.ok(game.reincarnate(s, s.lastTime, () => 0));
+  assert.strictEqual(s.oil, game.OIL_MAX);
+});
+
+test('静坐：机缘不足一次、没有未决事务时才能坐，耗 1 年并随年岁涨灵气和机缘', () => {
+  const s = born();
+  assert.strictEqual(game.canMeditate(s), false);
+  assert.strictEqual(game.meditate(s), null);
+  s.run.chance = 0.5;
+  assert.strictEqual(game.canMeditate(s), true);
+  assert.strictEqual(game.canDraw(s), false);
+  assert.strictEqual(game.meditateYears(s), 1);
+  const gain = game.qiRate(s) * game.YEAR_SECONDS;
+  const r = game.meditate(s);
+  assert.deepStrictEqual(r, { title: '静坐', label: '机缘未至，静坐了一阵', lines: ['耗 1 年寿元', '灵气 +' + Math.round(gain)], tags: ['seclude'], dead: false });
+  assert.strictEqual(s.run.age, 1);
+  near(s.run.qi, gain);
+  near(s.run.chance, 0.5 + 1 / game.chanceYears(s));
+  const log = s.run.log[s.run.log.length - 1];
+  assert.strictEqual(log.title, '静坐');
+  assert.ok(log.text.indexOf('机缘未至') === 0);
+
+  const blocked = (fn) => {
+    const t = born();
+    t.run.chance = 0;
+    fn(t);
+    assert.strictEqual(game.canMeditate(t), false);
+    const before = JSON.stringify(t);
+    assert.strictEqual(game.meditate(t), null);
+    assert.strictEqual(JSON.stringify(t), before);
+  };
+  blocked((t) => setEvent(t, 'i_dog'));
+  blocked((t) => { t.run.pending = { id: 'pi1', level: 1 }; });
+  blocked((t) => { lateStage(t); t.run.trib = { bolt: 1, gains: 0 }; });
+  blocked((t) => { assert.ok(game.retire(t)); });
+  const sea = goldCore();
+  sea.run.chance = 0;
+  assert.ok(game.chooseSea(sea, 'academy', 0));
+  sea.run.chance = 0;
+  assert.strictEqual(game.canMeditate(sea), false);
+  assert.strictEqual(game.meditate(sea), null);
+});
+
+test('静坐：劫期逾期照样多折寿，寿尽时坐死', () => {
+  const s = born();
+  s.run.chance = 0;
+  s.run.realmChoices = game.tribTerm(s).term + 10;
+  const over = game.tribTerm(s).years;
+  assert.ok(over > 0);
+  assert.strictEqual(game.meditateYears(s), 1 + over);
+  setEvent(s, 'i_dog');
+  assert.strictEqual(game.eventView(s).fallback.years, game.meditateYears(s));
+  s.run.event = null;
+  const r = game.meditate(s);
+  assert.strictEqual(r.lines[0], '耗 ' + (1 + over) + ' 年寿元');
+  assert.strictEqual(s.run.age, 1 + over);
+
+  const old = born();
+  old.run.chance = 0;
+  old.run.age = game.maxLife(old) - 1;
+  const end = game.meditate(old);
+  assert.strictEqual(end.dead, true);
+  assert.strictEqual(old.run.phase, 'dead');
+  assert.strictEqual(old.run.death.cause, 'age');
+  assert.strictEqual(game.canMeditate(old), false);
+});
 test('翻开机缘消耗一次机缘，没有机缘或已有未决事件时不能再翻', () => {
   const s = born();
   assert.strictEqual(game.drawEvent(s, mulberry(1)), true);
@@ -255,6 +416,8 @@ test('选项：说明与结算一致，每次选择才消耗寿元', () => {
   assert.strictEqual(v.typeName, '闲事');
   assert.deepStrictEqual(v.options.map((o) => o.desc), ['心魔 -5，记下【摸过村口的狗】', '神 +1', '灵气 +10']);
   assert.deepStrictEqual(v.options.map((o) => o.years), [1, 1, 1]);
+  // 选项耗的 1 年同时过 1 年时间，灵气跟着涨，但不写进结算行
+  const gain = game.qiRate(s) * game.YEAR_SECONDS;
   const r = game.choose(s, 1, () => 0);
   assert.deepStrictEqual(r.lines, ['神 +1']);
   assert.strictEqual(r.dead, false);
@@ -262,7 +425,8 @@ test('选项：说明与结算一致，每次选择才消耗寿元', () => {
   assert.strictEqual(s.run.age, 1);
   assert.strictEqual(s.run.choices, 1);
   assert.strictEqual(s.run.event, null);
-  assert.deepStrictEqual(s.run.log, [{ age: 1, title: '村口的狗', text: '问它叹什么：神 +1', detail: '神 2 → 3，寿元余 60 → 59 年' }]);
+  near(s.run.qi, gain);
+  assert.deepStrictEqual(s.run.log, [{ age: 1, title: '村口的狗', text: '问它叹什么：神 +1', detail: '神 2 → 3，寿元余 60 → 59 年，灵气 0 → ' + Math.floor(gain) }]);
   assert.strictEqual(game.choose(s, 0, () => 0), null);
   // 心魔不会减到负数
   setEvent(s, 'i_dog');
@@ -273,13 +437,14 @@ test('选项：说明与结算一致，每次选择才消耗寿元', () => {
   assert.strictEqual(s.run.age, 2);
 });
 
-test('保底选项“闭关不理”：耗 1 年，得一成丹田容量的灵气', () => {
+test('保底选项“闭关不理”：耗 1 年并过 1 年时间，另得一成丹田容量的灵气', () => {
   const s = born();
   setEvent(s, 'a_voice');
   assert.deepStrictEqual(game.eventView(s).fallback, { label: '闭关不理', desc: '灵气 +10', years: 1, fatal: false });
+  const gain = game.qiRate(s) * game.YEAR_SECONDS;
   const r = game.choose(s, -1, () => 0);
   assert.strictEqual(r.label, '闭关不理');
-  assert.strictEqual(s.run.qi, 10);
+  near(s.run.qi, 10 + gain);
   assert.strictEqual(s.run.age, 1);
   assert.strictEqual(s.run.demon, 0);
 });
@@ -296,9 +461,11 @@ test('需要灵气的选项：不够时不可选且不产生任何变化，够�
   s.run.qi = 30;
   v = game.eventView(s);
   assert.strictEqual(v.options[1].disabled, false);
+  const gain = game.qiRate(s) * game.YEAR_SECONDS * v.options[1].years;
   const r = game.choose(s, 1, () => 0);
   assert.deepStrictEqual(r.lines, ['灵气 -30', '寿元上限 +12 年']);
-  assert.strictEqual(s.run.qi, 0);
+  // 30 点灵气全部扣掉，剩下的只有这一年攒的
+  near(s.run.qi, gain);
   assert.strictEqual(game.maxLife(s), 72);
 });
 
@@ -424,6 +591,49 @@ test('符系羁绊：2 门可重抽一次，4 门传承多一个选项', () => {
   assert.strictEqual(s.run.forceLegacy, false);
 });
 
+test('灯油重抽：事件自带和本世免费次数用完后才扣灯油，存档往返保留并校验越界值', () => {
+  const s = born();
+  give(s, ['ta1', 'ta2']);
+  s.run.freeRerolls = 1;
+  s.oil = 2.5;
+  const rng = mulberry(7);
+  game.drawEvent(s, rng);
+  let v = game.eventView(s);
+  assert.strictEqual(v.rerolls, 1 + 1 + 2);
+  assert.strictEqual(v.oil, 2);
+  assert.ok(game.rerollEvent(s, rng));
+  assert.strictEqual(s.run.freeRerolls, 1);
+  near(s.oil, 2.5);
+  assert.ok(game.rerollEvent(s, rng));
+  assert.strictEqual(s.run.freeRerolls, 0);
+  near(s.oil, 2.5);
+  assert.ok(game.rerollEvent(s, rng));
+  near(s.oil, 1.5);
+  v = game.eventView(s);
+  assert.strictEqual(v.rerolls, 1);
+  assert.strictEqual(v.oil, 1);
+  assert.ok(game.rerollEvent(s, rng));
+  near(s.oil, 0.5);
+  v = game.eventView(s);
+  assert.strictEqual(v.rerolls, 0);
+  assert.strictEqual(v.oil, 0);
+  assert.strictEqual(game.rerollEvent(s, rng), false);
+  near(s.oil, 0.5);
+  assert.strictEqual(s.run.chance, 59);
+
+  s.oil = 3.25;
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0).oil, 3.25);
+  const load = (oil) => {
+    const raw = JSON.parse(JSON.stringify(s));
+    if (oil === undefined) delete raw.oil;
+    else raw.oil = oil;
+    return game.normalizeState(raw, s.lastTime, () => 0).oil;
+  };
+  assert.strictEqual(load(99), game.OIL_MAX);
+  assert.strictEqual(load(-3), 0);
+  assert.strictEqual(load('x'), 0);
+  assert.strictEqual(load(undefined), 0);
+});
 test('因果：种下后过几次选择必然结果，结果事件不能重抽', () => {
   const s = born();
   give(s, ['ta1', 'ta2']);
@@ -477,9 +687,10 @@ test('渡劫成功：进入下一境界，加寿元，灵气归零', () => {
   s.run.qi = 250;
   const info = game.tribulationInfo(s);
   assert.strictEqual(info.ready, true);
-  const r = game.attemptTribulation(s, () => info.chance - 0.001);
+  const r = crossTrib(s, () => info.chance - 0.001);
   assert.strictEqual(r.success, true);
-  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +30 年']);
+  assert.strictEqual(r.broke, true);
+  assert.deepStrictEqual(r.lines, ['接住了第 1 道雷', '接住了第 2 道雷', '接住了第 3 道雷', '必接的雷已过，劫云未散：可以收劫破境，也可以再引余雷淬体', '突破至引气前期', '寿元上限 +30 年']);
   assert.strictEqual(s.run.realm, 1);
   assert.strictEqual(s.run.stage, 0);
   assert.strictEqual(s.run.qi, 0);
@@ -534,7 +745,7 @@ test('丹系 4 门多加寿元，剑系 4 门破境后必得传承', () => {
   s.run.stage = 2;
   s.run.qi = 250;
   const before = game.maxLife(s);
-  game.attemptTribulation(s, () => 0);
+  crossTrib(s, () => 0);
   assert.strictEqual(game.maxLife(s), before + 45);
   assert.strictEqual(s.run.forceLegacy, true);
   game.drawEvent(s, () => 0.99);
@@ -558,8 +769,10 @@ test('寿元耗尽身死：结算灯芯、记墓志铭，之后不能再行动',
   assert.strictEqual(game.drawEvent(s, () => 0), false);
   assert.strictEqual(game.retire(s), false);
   assert.strictEqual(game.qiRate(s), 0);
+  const qi = s.run.qi;
   game.advance(s, 1e9);
-  assert.strictEqual(s.run.qi, 0);
+  assert.deepStrictEqual(game.passTime(s, 1e6), { qi: 0, ups: 0, chance: 0 });
+  assert.strictEqual(s.run.qi, qi);
 });
 
 test('延寿的选项能在寿元将尽时救命', () => {
@@ -989,10 +1202,13 @@ test('结算结果带有动作标签，供界面决定角色做什么', () => {
   s.run.qi = 99;
   assert.deepStrictEqual(game.choose(s, 0, () => 0).tags, ['chance']);
   setEvent(s, 'k_kid');
+  // 前面几次选择攒下的灵气清掉，免得这次耗的年岁顺带突破
+  s.run.qi = 0;
   assert.deepStrictEqual(game.choose(s, 0, () => 0).tags, ['karma']);
 
   s = born();
-  s.run.qi = 95;
+  // 闭关这一年攒的灵气不够突破，闭关所得的灵气才让它突破
+  s.run.qi = game.qiCap(s) - game.qiRate(s) * game.YEAR_SECONDS - 5;
   setEvent(s, 'i_dog');
   assert.deepStrictEqual(game.choose(s, -1, () => 0).tags, ['seclude', 'qi', 'stageup']);
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'pi1', level: 1 }], rerolls: 0 };
@@ -1282,8 +1498,7 @@ test('特殊功法：突破、折寿、每次选择和概率型选项上的效�
   let s = born();
   give(s, ['sw5', 'bo5'], 2);
   const life = game.maxLife(s);
-  s.lastTime = 0;
-  game.advance(s, 100000);
+  game.passTime(s, 100);
   assert.strictEqual(s.run.stage, 1);
   assert.strictEqual(s.run.stats.edge, 2);
   assert.strictEqual(game.maxLife(s), life + 4);
@@ -1348,7 +1563,7 @@ test('特殊功法：传承耗寿、闭关、产出、机缘、渡劫和灯芯�
   assert.strictEqual(info.failYears, 13);
   assert.strictEqual(info.keepText, '灵气只保住 60%');
   const r = game.attemptTribulation(s, () => 0.999);
-  assert.deepStrictEqual(r.lines, ['折寿 13 年', '心魔 +10', '灵气只保住 60%']);
+  assert.deepStrictEqual(r.lines, ['第 1 道雷没接住', '折寿 13 年', '心魔 +10', '灵气只保住 60%']);
   near(s.run.qi, 150);
 
   s = born();
@@ -1640,7 +1855,7 @@ test('自动机缘：功法已满时换掉最不值的一门，新功法不如�
   assert.strictEqual(t.run.skills.length, 8);
 });
 
-test('自动机缘：大机缘优先，没有机缘时无事可做，身死后不动', () => {
+test('自动机缘：大机缘优先，没有机缘时代为静坐，身死后不动', () => {
   const s = withAuto(born());
   s.big = 1;
   const step = game.autoStep(s, () => 0);
@@ -1650,11 +1865,39 @@ test('自动机缘：大机缘优先，没有机缘时无事可做，身死后�
   assert.strictEqual(s.run.chance, 60);
   assert.strictEqual(s.run.skills.length, 1);
   s.run.chance = 0.5;
-  assert.strictEqual(game.autoStep(s, mulberry(7)), null);
+  const age = s.run.age;
+  assert.strictEqual(game.autoStep(s, mulberry(7)).result.title, '静坐');
+  assert.strictEqual(s.run.age, age + 1);
+  assert.strictEqual(s.run.event, null);
   game.retire(s);
   assert.strictEqual(game.autoStep(s, mulberry(7)), null);
 });
 
+test('自动机缘：翻不了机缘时代为静坐，静坐会寿尽时不坐，渡劫途中不动', () => {
+  const s = withAuto(born());
+  s.run.chance = 0;
+  const step = game.autoStep(s, mulberry(7));
+  assert.strictEqual(step.result.title, '静坐');
+  assert.strictEqual(step.stuck, false);
+  assert.strictEqual(s.run.age, 1);
+  s.run.chance = 0;
+  s.run.age = game.maxLife(s) - game.meditateYears(s);
+  const before = JSON.stringify(s);
+  assert.strictEqual(game.autoStep(s, mulberry(7)), null);
+  assert.strictEqual(JSON.stringify(s), before);
+  s.run.age--;
+  assert.ok(game.autoStep(s, mulberry(7)));
+  assert.strictEqual(game.yearsLeft(s), 1);
+  assert.strictEqual(s.run.phase, 'alive');
+
+  const t = withAuto(lateStage(born()));
+  assert.ok(game.attemptTribulation(t, () => 0, 'endure'));
+  t.run.chance = 0;
+  assert.strictEqual(game.autoStep(t, mulberry(7)), null);
+  t.run.chance = 60;
+  assert.strictEqual(game.autoStep(t, mulberry(7)), null);
+  assert.strictEqual(t.run.event, null);
+});
 test('自动机缘：一直开着走完一世也不会自己把人走死', () => {
   let stuck = 0;
   let realms = 0;
@@ -1669,7 +1912,7 @@ test('自动机缘：一直开着走完一世也不会自己把人走死', () =>
       s.run.chance = game.maxChance(s);
       const info = game.tribulationInfo(s);
       if (info && info.ready && info.chance >= 0.9) {
-        game.attemptTribulation(s, () => 0);
+        crossTrib(s, () => 0);
         realms++;
       }
       const step = game.autoStep(s, rng);
@@ -1690,13 +1933,15 @@ test('自动机缘：一直开着走完一世也不会自己把人走死', () =>
 test('见闻：每条记录带上结算前后的数值变化，渡劫和取舍功法也记', () => {
   const s = born();
   setEvent(s, 'a_feast');
+  const feastQi = game.qiRate(s) * game.YEAR_SECONDS * game.eventView(s).options[0].years;
   game.choose(s, 0, () => 0);
-  assert.strictEqual(s.run.log[0].detail, '躯 0 → 5，寿元余 60 → 58 年，心魔 0 → 15');
+  assert.strictEqual(s.run.log[0].detail, '躯 0 → 5，寿元余 60 → 58 年，心魔 0 → 15，灵气 0 → ' + Math.floor(feastQi));
   // 闭关：灵气和寿元都变，突破时写出境界
-  s.run.qi = 95;
+  const start = game.qiCap(s) - game.qiRate(s) * game.YEAR_SECONDS - 5;
+  s.run.qi = start;
   setEvent(s, 'i_dog');
   game.choose(s, -1, () => 0);
-  assert.strictEqual(s.run.log[1].detail, '境界 凡胎前期 → 凡胎中期，寿元余 58 → 57 年，灵气 95 → 5');
+  assert.strictEqual(s.run.log[1].detail, '境界 凡胎前期 → 凡胎中期，寿元余 58 → 57 年，灵气 ' + Math.floor(start) + ' → 5');
   s.run.stage = 2;
   s.run.qi = game.qiCap(s);
   game.attemptTribulation(s, () => 0.99);
@@ -1774,7 +2019,7 @@ test('战力由当前角色派生，兼顾境界、均衡属性和功法，旧�
   assert.ok(points('attributes') > specialized);
 
   const initial = game.combatPowerDetails(s).total;
-  game.advance(s, 100 * 1000);
+  game.passTime(s, 100);
   assert.strictEqual(s.run.stage, 1);
   assert.ok(game.combatPowerDetails(s).total > initial);
   give(s, ['pi1', 'pi3', 'pi5', 'pi6']);
@@ -2043,7 +2288,7 @@ test('元婴劫：盐骨关独立判定，问名关失败后退回首关，过�
   assert.strictEqual(game.yuanTrialView(mid).step, 1);
   assert.strictEqual(game.yuanTrialView(mid).ready, false);
   assert.ok(mid.run.sea.anchor && mid.run.sea.clue);
-  game.advance(mid, 86400000);
+  game.passTime(mid, 86400);
   assert.ok(game.attemptYuanTrial(mid, () => 0, 'anchor', 1).success);
   assert.ok(game.attemptYuanTrial(mid, noRoll, 'clue', 2).advanced);
   assert.strictEqual(game.realmText(mid.run), '元婴前期');
@@ -2106,11 +2351,15 @@ test('机缘事件：直接获得次数，本世速度加成生效并读档保�
   s.run.chance = 0;
   setEvent(s, 'a_chance_tide');
   assert.ok(game.eventView(s).options[2].desc.indexOf('机缘积攒速度 +5%') >= 0);
+  // 选项耗的年数先按原来的速度回机缘，再结算选项本身
+  const passed = (i) => game.eventView(s).options[i].years / game.chanceYears(s);
+  let expected = 3 + passed(0);
   game.choose(s, 0, () => 0);
-  assert.strictEqual(s.run.chance, 3);
+  near(s.run.chance, expected);
   setEvent(s, 'a_chance_tide');
+  expected += 1 + passed(2);
   game.choose(s, 2, () => 0);
-  assert.strictEqual(s.run.chance, 4);
+  near(s.run.chance, expected);
   near(s.run.speed, 0.05);
   near(game.chanceInterval(s), 60 / 1.05);
   const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
@@ -2118,9 +2367,11 @@ test('机缘事件：直接获得次数，本世速度加成生效并读档保�
   near(game.chanceInterval(loaded), 60 / 1.05);
 });
 
-test('渡劫三法：借势扣三十次机缘并加成功率，散功必败但不死', () => {
+test('渡劫三法：整场渡的天劫借势扣三十次机缘并加成功率，散功必败但不死', () => {
+  // 引气劫改为逐道雷，整场借势从筑基劫起验证
   const s = born();
-  s.run.stats = { edge: 20, body: 20, mind: 20 };
+  s.run.realm = 1;
+  s.run.stats = { edge: 30, body: 30, mind: 30 };
   s.run.stage = 2;
   s.run.qi = game.qiCap(s);
   s.run.chance = 0;
@@ -2129,12 +2380,17 @@ test('渡劫三法：借势扣三十次机缘并加成功率，散功必败但�
   assert.strictEqual(JSON.stringify(s), before);
   s.run.chance = 30;
   const info = game.tribulationInfo(s);
+  assert.strictEqual(info.bolts, undefined);
+  assert.strictEqual(info.borrowCost, 30);
+  assert.ok(info.chance + 0.15 < 0.98);
   near(info.borrowChance, Math.min(0.98, info.chance + 0.15));
-  const borrowed = game.attemptTribulation(s, () => 0, 'borrow');
+  const borrowed = game.attemptTribulation(s, () => (info.chance + info.borrowChance) / 2, 'borrow');
   assert.strictEqual(borrowed.method, 'borrow');
   assert.strictEqual(borrowed.success, true);
+  assert.strictEqual(borrowed.done, true);
+  assert.strictEqual(borrowed.broke, true);
   assert.strictEqual(s.run.chance, 0);
-  assert.strictEqual(s.run.realm, 1);
+  assert.strictEqual(s.run.realm, 2);
   assert.strictEqual(s.run.lastTrib.method, 'borrow');
 
   const scattered = born();
@@ -2153,6 +2409,247 @@ test('渡劫三法：借势扣三十次机缘并加成功率，散功必败但�
   assert.strictEqual(scattered.run.lastTrib.method, 'scatter');
 });
 
+// 引气劫必接的雷全用随机数 0 接住，停在余雷阶段。
+function toExtra(s) {
+  for (let i = 0; i < game.TRIBS[0].bolts.length; i++) {
+    const r = game.attemptTribulation(s, () => 0, 'endure');
+    assert.ok(r.success && !r.done);
+  }
+  assert.ok(game.tribulationInfo(s).bolts.extra);
+  return s;
+}
+
+test('引气劫逐道雷：三道必接雷的成功率相乘等于整场成功率，只在整场结束写见闻', () => {
+  const trib = game.TRIBS[0];
+  const s = lateStage(born());
+  s.run.stats = { edge: 0, body: 8, mind: 8 };
+  const info = game.tribulationInfo(s);
+  const P = Math.min(0.98, Math.max(0.05, info.parts.reduce((sum, part) => sum + part.value, 0)));
+  near(info.chance, P);
+  assert.strictEqual(info.bolts.total, trib.bolts.length);
+  assert.strictEqual(info.bolts.extraTotal, trib.extra.length);
+  assert.strictEqual(info.bolts.active, false);
+  assert.strictEqual(info.bolts.extra, false);
+  assert.strictEqual(info.bolts.index, 1);
+  const logs = s.run.log.length;
+  let product = 1;
+  trib.bolts.forEach((weight, i) => {
+    const cur = game.tribulationInfo(s);
+    near(cur.bolts.chance, Math.pow(P, weight));
+    near(cur.chance, trib.bolts.slice(i).reduce((t, w) => t * Math.pow(P, w), 1));
+    assert.strictEqual(cur.bolts.passed, i);
+    product *= cur.bolts.chance;
+    const r = game.attemptTribulation(s, () => cur.bolts.chance - 1e-9, 'endure');
+    assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, extra: r.extra }, { success: true, done: false, broke: false, bolt: i + 1, extra: false });
+    near(r.chance, cur.bolts.chance);
+    assert.deepStrictEqual(s.run.trib, { bolt: i + 1, gains: 0 });
+    assert.strictEqual(s.run.realm, 0);
+    assert.strictEqual(s.run.log.length, logs);
+  });
+  near(product, P);
+  const after = game.tribulationInfo(s).bolts;
+  assert.strictEqual(after.extra, true);
+  assert.strictEqual(after.active, true);
+  assert.strictEqual(after.passed, trib.bolts.length);
+  assert.strictEqual(after.index, 1);
+  near(after.chance, Math.min(trib.extra[0].cap, Math.pow(P, trib.extra[0].pow)));
+});
+
+test('引气劫逐道雷：中途一道没接住，整场按失败结算，折寿不过时间', () => {
+  const s = lateStage(born());
+  const info = game.tribulationInfo(s);
+  const chance = s.run.chance;
+  game.attemptTribulation(s, () => 0, 'endure');
+  const r = game.attemptTribulation(s, () => 0.9999, 'endure');
+  assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, dead: r.dead }, { success: false, done: true, broke: false, bolt: 2, dead: false });
+  assert.deepStrictEqual(r.lines, ['第 2 道雷没接住', '折寿 ' + info.failYears + ' 年', '心魔 +' + info.failDemon, info.keepText]);
+  assert.strictEqual(s.run.trib, null);
+  assert.strictEqual(s.run.realm, 0);
+  assert.strictEqual(s.run.age, info.failYears);
+  assert.strictEqual(s.run.demon, info.failDemon);
+  near(s.run.qi, game.qiCap(s) * info.keep);
+  assert.strictEqual(s.run.chance, chance);
+  const log = s.run.log[s.run.log.length - 1];
+  assert.strictEqual(log.title, info.name);
+  assert.ok(log.text.indexOf('渡劫失败：') === 0);
+  assert.strictEqual(game.tribulationInfo(s).ready, false);
+  assert.strictEqual(game.tribulationInfo(s).bolts.passed, 0);
+});
+
+test('引气劫逐道雷：每道单独借势，扣 10 次机缘、这一道 +10%，借势把握按机缘够借几道算', () => {
+  const trib = game.TRIBS[0];
+  const fresh = () => {
+    const t = lateStage(born());
+    t.run.stats = { edge: 0, body: 8, mind: 8 };
+    return t;
+  };
+  const s = fresh();
+  s.run.chance = 9;
+  let info = game.tribulationInfo(s);
+  const P = info.chance;
+  assert.strictEqual(info.borrowCost, 10);
+  assert.strictEqual(info.borrowReady, false);
+  near(info.borrowChance, info.chance);
+  const before = JSON.stringify(s);
+  assert.strictEqual(game.attemptTribulation(s, () => 0, 'borrow'), null);
+  assert.strictEqual(JSON.stringify(s), before);
+
+  s.run.chance = 20;
+  info = game.tribulationInfo(s);
+  assert.strictEqual(info.borrowReady, true);
+  const main = trib.bolts.map((w) => Math.pow(P, w));
+  const boost = (p) => Math.min(0.99, p + 0.1);
+  // 只够借两道，先借给最难的后两道
+  near(info.borrowChance, main[0] * boost(main[1]) * boost(main[2]));
+  const cur = info.bolts;
+  near(cur.borrowChance, boost(cur.chance));
+  const rng = () => (cur.chance + cur.borrowChance) / 2;
+  const r = game.attemptTribulation(s, rng, 'borrow');
+  assert.strictEqual(r.success, true);
+  assert.strictEqual(r.done, false);
+  near(r.chance, cur.borrowChance);
+  assert.deepStrictEqual(r.lines, ['借势：机缘 -10，这一道成功率 +10%', '接住了第 1 道雷']);
+  assert.strictEqual(s.run.chance, 10);
+  assert.strictEqual(s.run.lastTrib.method, 'borrow');
+  // 同样的随机数硬接就接不住
+  assert.strictEqual(game.attemptTribulation(fresh(), rng, 'endure').success, false);
+});
+
+test('引气劫逐道雷：渡到一半可以散功，必接阶段不能收劫、余雷阶段不能散功', () => {
+  const s = lateStage(born());
+  s.run.tribBoon = 0.2;
+  assert.strictEqual(game.attemptTribulation(s, () => 0, 'settle'), null);
+  assert.strictEqual(game.attemptTribulation(s, () => 0, 'foo'), null);
+  game.attemptTribulation(s, () => 0, 'endure');
+  const cap = game.qiCap(s);
+  const r = game.attemptTribulation(s, () => 0, 'scatter');
+  assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, dead: r.dead }, { success: false, done: true, broke: false, dead: false });
+  assert.deepStrictEqual(r.lines, ['散功：折寿 10 年，不会身死', '灵气散去一半']);
+  assert.strictEqual(s.run.trib, null);
+  assert.strictEqual(s.run.tribBoon, 0);
+  assert.strictEqual(s.run.age, 10);
+  near(s.run.qi, cap / 2);
+  assert.strictEqual(s.run.realm, 0);
+  assert.ok(s.run.log[s.run.log.length - 1].text.indexOf('散功，渡劫失败：') === 0);
+
+  const e = toExtra(lateStage(born()));
+  assert.strictEqual(game.attemptTribulation(e, () => 0, 'scatter'), null);
+  assert.deepStrictEqual(e.run.trib, { bolt: 3, gains: 0 });
+});
+
+test('引气劫余雷：直接收劫破境，接住余雷收劫时拿奖励，接满两道自动收劫', () => {
+  const trib = game.TRIBS[0];
+  // 直接收劫
+  let s = toExtra(lateStage(born()));
+  let info = game.tribulationInfo(s);
+  assert.deepStrictEqual(info.bolts.held, []);
+  assert.strictEqual(info.bolts.reward, '躯、神各 +2，寿元上限 +5 年');
+  let life = s.run.lifeFlat;
+  let r = game.attemptTribulation(s, () => 0.9999, 'settle');
+  assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, extra: r.extra }, { success: true, done: true, broke: true, extra: true });
+  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年']);
+  assert.strictEqual(s.run.realm, 1);
+  assert.strictEqual(s.run.trib, null);
+  assert.strictEqual(s.run.lifeFlat, life + info.lifeBonus);
+  assert.ok(s.run.log[s.run.log.length - 1].text.indexOf('渡劫成功：') === 0);
+
+  // 接一道余雷再收劫
+  s = toExtra(lateStage(born()));
+  info = game.tribulationInfo(s);
+  const stats = Object.assign({}, s.run.stats);
+  life = s.run.lifeFlat;
+  const reward = info.bolts.reward;
+  r = game.attemptTribulation(s, () => 0, 'endure');
+  assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, extra: r.extra }, { success: true, done: false, broke: false, bolt: 1, extra: true });
+  assert.deepStrictEqual(r.lines, ['接住了第 1 道余雷', reward + '（收劫时到手）']);
+  assert.deepStrictEqual(s.run.trib, { bolt: 3, gains: 1 });
+  assert.deepStrictEqual(s.run.stats, stats);
+  assert.deepStrictEqual(game.tribulationInfo(s).bolts.held, [reward]);
+  assert.strictEqual(game.tribulationInfo(s).bolts.index, 2);
+  r = game.attemptTribulation(s, () => 0.9999, 'settle');
+  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '余雷淬体：' + reward]);
+  info.tests.forEach((k) => assert.strictEqual(s.run.stats[k], stats[k] + trib.extra[0].attr));
+  assert.strictEqual(s.run.lifeFlat, life + info.lifeBonus + trib.extra[0].life);
+
+  // 接满两道自动收劫
+  s = toExtra(lateStage(born()));
+  life = s.run.lifeFlat;
+  const wick = s.wick;
+  game.attemptTribulation(s, () => 0, 'endure');
+  r = game.attemptTribulation(s, () => 0, 'endure');
+  assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt }, { success: true, done: true, broke: true, bolt: 2 });
+  assert.strictEqual(s.run.realm, 1);
+  assert.strictEqual(s.run.trib, null);
+  info.tests.forEach((k) => assert.strictEqual(s.run.stats[k], stats[k] + trib.extra[0].attr + trib.extra[1].attr));
+  assert.strictEqual(s.run.lifeFlat, life + info.lifeBonus + trib.extra[0].life);
+  assert.strictEqual(s.wick, wick + trib.extra[1].wick);
+});
+
+test('引气劫余雷：没接住照样破境，但已接余雷的奖励全失，并折寿、涨心魔', () => {
+  const s = toExtra(lateStage(born()));
+  const info = game.tribulationInfo(s);
+  const stats = Object.assign({}, s.run.stats);
+  const life = s.run.lifeFlat;
+  const age = s.run.age;
+  const demon = s.run.demon;
+  game.attemptTribulation(s, () => 0, 'endure');
+  const r = game.attemptTribulation(s, () => 0.9999, 'endure');
+  assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, extra: r.extra, dead: r.dead }, { success: false, done: true, broke: true, bolt: 2, extra: true, dead: false });
+  assert.deepStrictEqual(r.lines, ['第 2 道余雷没接住，淬体所得尽失', '突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '折寿 ' + info.failYears + ' 年', '心魔 +' + info.failDemon]);
+  assert.strictEqual(s.run.realm, 1);
+  assert.strictEqual(s.run.trib, null);
+  assert.deepStrictEqual(s.run.stats, stats);
+  assert.strictEqual(s.run.lifeFlat, life + info.lifeBonus);
+  assert.strictEqual(s.run.age, age + info.failYears);
+  assert.strictEqual(s.run.demon, demon + info.failDemon);
+  assert.ok(s.run.log[s.run.log.length - 1].text.indexOf('渡劫成功：') === 0);
+});
+
+test('引气劫渡到一半：不能翻机缘、用大机缘或静坐，读档后接着渡，非法的 trib 存档字段被丢弃', () => {
+  const s = lateStage(born());
+  s.big = 1;
+  game.attemptTribulation(s, () => 0, 'endure');
+  const chance = s.run.chance;
+  assert.strictEqual(game.canDraw(s), false);
+  assert.strictEqual(game.drawEvent(s, () => 0), false);
+  assert.strictEqual(s.run.chance, chance);
+  assert.strictEqual(game.canDrawBig(s), false);
+  assert.strictEqual(game.drawBig(s, () => 0), null);
+  assert.strictEqual(s.big, 1);
+  s.run.chance = 0;
+  assert.strictEqual(game.canMeditate(s), false);
+  s.run.chance = chance;
+
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0);
+  assert.deepStrictEqual(loaded.run.trib, { bolt: 1, gains: 0 });
+  assert.deepStrictEqual(game.tribulationInfo(loaded).bolts, game.tribulationInfo(s).bolts);
+  game.attemptTribulation(loaded, () => 0, 'endure');
+  game.attemptTribulation(loaded, () => 0, 'endure');
+  game.attemptTribulation(loaded, () => 0, 'endure');
+  const again = game.normalizeState(JSON.parse(JSON.stringify(loaded)), loaded.lastTime, () => 0);
+  assert.deepStrictEqual(again.run.trib, { bolt: 3, gains: 1 });
+  const stats = Object.assign({}, again.run.stats);
+  const r = game.attemptTribulation(again, () => 0, 'settle');
+  assert.strictEqual(r.broke, true);
+  assert.strictEqual(again.run.realm, 1);
+  assert.strictEqual(again.run.stats.body, stats.body + game.TRIBS[0].extra[0].attr);
+
+  const load = (trib, realm) => {
+    const t = lateStage(born());
+    if (realm !== undefined) t.run.realm = realm;
+    const raw = JSON.parse(JSON.stringify(t));
+    raw.run.trib = trib;
+    return game.normalizeState(raw, 0, () => 0).run.trib;
+  };
+  assert.strictEqual(load({ bolt: 0, gains: 1 }), null);
+  assert.strictEqual(load({ bolt: -2 }), null);
+  assert.strictEqual(load({ bolt: 'abc' }), null);
+  assert.strictEqual(load('x'), null);
+  assert.strictEqual(load([1]), null);
+  assert.strictEqual(load({ bolt: 1, gains: 0 }, 1), null);
+  assert.deepStrictEqual(load({ bolt: 1, gains: 1 }), { bolt: 1, gains: 0 });
+  assert.deepStrictEqual(load({ bolt: 99, gains: 99 }), { bolt: 3, gains: 1 });
+});
 test('秘法：同系两门天品归一，效果总和乘 1.2，读档后仍合法', () => {
   const s = born();
   give(s, ['sw1', 'sw2', 'pi1'], 4);
@@ -2225,8 +2722,9 @@ test('负面与中性机缘：新事件可展示，负面代价和中性小收�
   const s = born();
   setEvent(s, 'a_blood_rain');
   assert.strictEqual(game.eventView(s).options[1].desc, '灵气 +45，心魔 +9');
+  const gain = game.qiRate(s) * game.YEAR_SECONDS * game.eventView(s).options[1].years;
   game.choose(s, 1, () => 0);
-  assert.strictEqual(s.run.qi, 45);
+  near(s.run.qi, 45 + gain);
   assert.strictEqual(s.run.demon, 9);
   setEvent(s, 'a_bone_debt');
   game.choose(s, 0, () => 0);
@@ -2237,8 +2735,9 @@ test('负面与中性机缘：新事件可展示，负面代价和中性小收�
   calm.run.chance = 0;
   setEvent(calm, 'i_paper_boat');
   assert.strictEqual(game.eventView(calm).options[1].desc, '机缘 +1');
+  const passed = game.eventView(calm).options[1].years / game.chanceYears(calm);
   game.choose(calm, 1, () => 0);
-  assert.strictEqual(calm.run.chance, 1);
+  near(calm.run.chance, 1 + passed);
   setEvent(calm, 'i_roof_tiles');
   game.choose(calm, 2, () => 0);
   assert.strictEqual(calm.run.stats.mind, 4);
@@ -2248,7 +2747,8 @@ test('负面与中性机缘：新事件可展示，负面代价和中性小收�
 test('突发事件链：主动突破引出征兆与突发，余波和冷却按普通机缘倒计时', () => {
   const s = born();
   s.run.realm = 2;
-  s.run.qi = game.qiCap(s) - 1;
+  // 选项这一年攒的灵气不够突破，选项给的灵气才让它突破
+  s.run.qi = game.qiCap(s) - game.qiRate(s) * game.YEAR_SECONDS - 1;
   setEvent(s, 'i_dog');
   const result = game.choose(s, 2, () => 0);
   assert.ok(result.tags.includes('stageup'));
@@ -2282,8 +2782,9 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
   setEvent(s, 'i_dog');
   const expectedQi = Math.round(game.qiCap(s) * 0.1 * 0.7);
   assert.strictEqual(game.eventView(s).options[2].desc, '灵气 +' + expectedQi);
+  const yearQi = game.qiRate(s) * game.YEAR_SECONDS * game.eventView(s).options[2].years;
   game.choose(s, 2, () => 0.99);
-  assert.strictEqual(s.run.qi, expectedQi);
+  near(s.run.qi, expectedQi + yearQi);
   assert.strictEqual(s.run.aftermath.remaining, 2);
   assert.strictEqual(s.run.suddenCooldown, 3);
   const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
@@ -2311,14 +2812,15 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
   const exactQi = Math.round(game.qiCap(exact) * 0.75 * 0.7);
   assert.strictEqual(game.eventView(exact).options[0].desc, '灵气 +' + exactQi + '，折寿 8 年');
   exact.run.chance = 0;
+  const exactYearQi = game.qiRate(exact) * game.YEAR_SECONDS * game.eventView(exact).options[0].years;
   game.choose(exact, 0, () => 0.99);
-  assert.strictEqual(exact.run.qi, exactQi);
+  near(exact.run.qi, exactQi + exactYearQi);
 
-  // 离线突破照常发生，但不会新增突发。
+  // 随年岁的被动突破照常发生，但不会新增突发。
   const offline = born();
   offline.run.realm = 2;
   offline.run.qi = game.qiCap(offline) - 1;
-  game.advance(offline, 1000);
+  game.passTime(offline, 1);
   assert.strictEqual(offline.run.stage, 1);
   assert.strictEqual(offline.run.sudden, null);
   assert.strictEqual(offline.run.aftermath, null);
@@ -2389,8 +2891,9 @@ test('突发余波：概率、秘法、机缘速度、属性和负机缘都按�
   fortune.run.chance = 20;
   setEvent(fortune, 's_fortune');
   assert.strictEqual(game.eventView(fortune).options[0].desc, '神 +2，机缘 -6');
+  const passed = game.eventView(fortune).options[0].years / game.chanceYears(fortune);
   game.choose(fortune, 0, () => 0);
-  assert.strictEqual(fortune.run.chance, 14);
+  near(fortune.run.chance, 14 + passed);
 
   const backlash = born();
   backlash.run.realm = 2;
@@ -2853,7 +3356,7 @@ test('藏经阁·体：躯顶替考核、单次耗寿封顶、魔修也能渡劫
   const info = game.tribulationInfo(s);
   assert.ok(info.ready && info.demonOk);
   const life = game.maxLife(s);
-  const r = game.attemptTribulation(s, () => 0, 'endure');
+  const r = crossTrib(s, () => 0, 'endure');
   assert.ok(r.success);
   assert.strictEqual(s.run.realm, 1);
   assert.strictEqual(game.maxLife(s), life);
@@ -2867,7 +3370,7 @@ test('藏经阁·运：活着攒灯芯、成功奖励再结算、前几次必成
   assert.strictEqual(s.run.stage, 1);
   assert.strictEqual(s.wick, 2);
   lateStage(s);
-  assert.ok(game.attemptTribulation(s, () => 0, 'endure').success);
+  assert.ok(crossTrib(s, () => 0, 'endure').success);
   assert.strictEqual(s.wick, 12);
   assert.strictEqual(s.totalWick, 12);
 
@@ -2936,4 +3439,24 @@ test('藏经阁与劫期、劫相、重天、大机缘、战力的衔接', () =>
   const base = game.combatPowerDetails(s).total;
   hold(s, 'tm_sw1', 7);
   assert.strictEqual(game.combatPowerDetails(s).total, base + 29);
+});
+
+test('逐道雷渡到一半时不能服散，灵气不满也能把这场劫渡完', () => {
+  const s = game.createState(0, () => 0);
+  s.run.fate = '';
+  game.chooseRoot(s, 'talisman', 0, () => 0);
+  s.run.mode = 'demon';
+  s.tomes.tm_bo3 = 7;
+  s.run.skills.push({ id: 'tm_bo3', level: 7 });
+  s.run.stage = 2;
+  s.run.qi = game.qiCap(s);
+  assert.ok(game.attemptTribulation(s, () => 0, 'endure'));
+  assert.strictEqual(s.run.trib.bolt, 1);
+  assert.strictEqual(game.takePowder(s), null);
+
+  s.run.qi = 0;
+  assert.ok(game.tribulationInfo(s).ready);
+  const r = game.attemptTribulation(s, () => 0, 'scatter');
+  assert.ok(r && r.done);
+  assert.strictEqual(s.run.trib, null);
 });
