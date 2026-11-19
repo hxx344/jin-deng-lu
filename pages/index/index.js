@@ -229,6 +229,7 @@ Page({
     stats: [],
     epitaphs: [],
     sheet: HIDDEN_SHEET,
+    mountainName: '',
     banner: '',
     modal: HIDDEN_MODAL,
     chronicleCanvas: { show: false, width: 750, height: 1000 },
@@ -276,6 +277,7 @@ Page({
     this.nextFidget = now + FIDGET_MIN_MS;
     this.eventOpen = false;
     this.seaOpen = false;
+    this.mountainPanel = '';
     this.tribOpen = false;
     this.mergeOpen = false;
     this.mergeSource = '';
@@ -541,6 +543,7 @@ Page({
     this.result = null;
     this.eventOpen = false;
     this.seaOpen = false;
+    this.mountainPanel = '';
     this.tribOpen = false;
     this.mergeOpen = false;
     this.chronicleOpen = false;
@@ -548,7 +551,7 @@ Page({
     this.chronicleError = '';
     this.shareImage = '';
     this.chronicleToken++;
-    this.setData({ chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.setData({ mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
     this.deadOpen = state.run.phase === 'dead';
     this.replaceHidden = false;
     this.stopAct();
@@ -782,7 +785,7 @@ Page({
       this.autoStuck = false;
       return;
     }
-    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.seaOpen || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
+    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
     // 没有稳妥选项的机缘留给玩家，等他处理完再接着走。
     if (this.autoStuck && run.event) return;
     this.autoStuck = false;
@@ -958,6 +961,10 @@ Page({
       off = true;
     }
     const powder = game.powderInfo(s);
+    const mountain = game.mountainReady(s);
+    const quest = run.sect && run.sect.quest;
+    const mountainNotice = s.mountainLegacy ? '旧山门来信 · 可回山' :
+      (quest && quest.outcome && !quest.after && quest.due <= run.mountainChoices ? '寒潮退去 · 弟子来报' : '');
     return {
       line: line,
       title: title,
@@ -968,6 +975,8 @@ Page({
       tribSub: yuan && yuan.ready ? yuan.name + ' ' + yuan.step + ' / 2' : (info && info.ready ? '成功率 ' + percent(info.chance) + '%' : ''),
       big: !boarding && s.big > 0 ? '大机缘' : '',
       bigSub: '可用 ' + s.big + ' 次',
+      mountainTitle: mountain ? (run.sect ? run.sect.name : (run.cave ? '洞府与山门' : '洞府')) : '',
+      mountainSub: mountain ? (mountainNotice || '灵材 ' + run.materials + (run.sect ? ' · 管理宗门' : (run.cave ? ' · 修建设施' : ' · 开辟洞府'))) : '',
       powder: powder.visible ? '服散续命' : '',
       powderSub: powder.visible ? '耗 ' + game.formatNumber(powder.cost) + ' 灵气，燃寿 +' + powder.years + ' 年' : '',
       powderOff: !powder.ready
@@ -1070,6 +1079,11 @@ Page({
           '金丹圆满后可登上枯海沉舟。守骸宗、食仙教和缄默书院各有一条航线，此前相应的经历能打开新选项。',
           '每次选择涨一格潮。第三格结算后返航，途中也可携带已有收获返航。稍后再探会保留所在章节。',
           '返航后渡元婴劫。盐骨关考锋或躯，问名关考神；枯海所得、逃字和丹修各有用处。失败后休养至灵气圆满即可重试。'
+        ]),
+        sec('洞府与宗门', [
+          '金丹起，每次普通机缘产出灵材。花灵材与灵气开辟洞府，修建或扩建聚灵阵、灵田和藏经室。',
+          '元婴后可在洞府立宗，招收弟子、提升修为、传授本世功法，并派人巡山或应对寒潮。弟子修为、特长和所学功法会影响结果。',
+          '二级藏经室可传授秘法。可以选一位弟子托付传承，下一世到金丹后回山取回他保管的功法或秘法。'
         ]),
         sec('心魔', [
           '贪心的选项会涨心魔。每 10 点心魔降低 3% 渡劫成功率。',
@@ -1426,8 +1440,9 @@ Page({
       let nextText = '';
       if (!r.dead) {
         if (r.nextTrib) nextText = r.nextTrib;
+        else if (r.nextMountain && !run.pending && game.mountainReady(s)) nextText = '返回山门';
         else if (r.voyage && game.atSea(run)) nextText = '继续探索';
-        else if (!r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
+        else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
       }
       return {
         kind: 'result',
@@ -1443,10 +1458,14 @@ Page({
       const sea = game.seaView(s);
       if (sea) return Object.assign({ kind: 'sea' }, sea);
     }
+    if (this.mountainPanel) {
+      const mountain = game.mountainView(s, this.mountainPanel, this.mountainMember);
+      if (mountain) return Object.assign({ kind: 'mountain' }, mountain);
+    }
     if (this.tribOpen && run.phase === 'alive') return this.tribulationView();
     if (this.mergeOpen && run.phase === 'alive') return this.mergeView();
     if (run.pending && !this.replaceHidden) {
-      const skill = game.SKILLS.filter((k) => k.id === run.pending.id)[0];
+      const skill = game.skillInfo(run.pending.id);
       return {
         kind: 'replace',
         title: game.skillTitle(skill, run.pending.level),
@@ -1644,6 +1663,35 @@ Page({
     this.refresh();
   },
 
+  onMountain(e) {
+    if (this.act === 'thunder' || this.result || !game.mountainReady(this.state)) return;
+    this.mountainPanel = e && e.currentTarget.dataset.page || (this.state.mountainLegacy ? 'return' : (this.state.run.sect ? 'sect' : 'cave'));
+    this.mountainMember = '';
+    audio.play('tap');
+    this.refresh();
+  },
+
+  onMountainMember(e) {
+    this.mountainMember = e.currentTarget.dataset.id || '';
+    audio.play('tap');
+    this.refresh();
+  },
+
+  onMountainName(e) {
+    this.setData({ mountainName: e.detail.value });
+  },
+
+  onMountainAction(e) {
+    if (!this.mountainPanel || this.result) return;
+    const data = e.currentTarget.dataset;
+    const result = game.chooseMountain(this.state, data.page, data.member || '', data.stamp, data.id, this.data.mountainName);
+    if (!result) return;
+    this.mountainPanel = '';
+    this.mountainMember = '';
+    if (this.state.run.sect && this.data.mountainName) this.setData({ mountainName: '' });
+    this.finishChoice(result, { nextMountain: data.page === 'return' ? 'cave' : data.page, nextMember: data.member || '' });
+  },
+
   onSeaOption(e) {
     const data = e.currentTarget.dataset;
     const result = game.chooseSea(this.state, data.id, Number(data.tide));
@@ -1694,6 +1742,7 @@ Page({
     audio.play('tap');
     this.eventOpen = false;
     this.seaOpen = false;
+    this.mountainPanel = '';
     this.tribOpen = false;
     this.mergeOpen = false;
     this.bracing = false;
@@ -1710,9 +1759,14 @@ Page({
   },
 
   onResultNext() {
-    const nextTrib = this.result && this.result.nextTrib;
+    const result = this.result;
     this.result = null;
-    if (nextTrib) this.onTrib();
+    if (result && result.nextMountain && game.mountainReady(this.state)) {
+      this.mountainPanel = result.nextMountain;
+      this.mountainMember = result.nextMember;
+      audio.play('tap');
+      this.refresh();
+    } else if (result && result.nextTrib) this.onTrib();
     else this.onMain();
   },
 
@@ -1793,11 +1847,12 @@ Page({
     this.stopAct();
     this.deadOpen = false;
     this.seaOpen = false;
+    this.mountainPanel = '';
     this.chronicleOpen = false;
     this.chronicleBusy = false;
     this.shareImage = '';
     this.chronicleToken++;
-    this.setData({ tab: 'skill', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.setData({ tab: 'skill', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
     this.afterAction();
   },
 
@@ -1824,7 +1879,7 @@ Page({
     if (this.state.run.phase !== 'alive' || this.act === 'thunder') return;
     this.openModal({
       title: '坐化',
-      content: '主动结束这一世，按当前境界结算灯芯。这一世的功法、灵气和因果都会留在身后。',
+      content: '主动结束这一世，按当前境界结算灯芯。' + (this.state.run.sect ? '下一世可回山探望弟子，取回托付的卷册。' : '这一世的功法、灵气和因果都会留在身后。'),
       highlight: '灯芯 +' + game.wickGain(this.state, 'retire'),
       confirmText: '坐化',
       cancelText: '再活一阵',
@@ -1835,6 +1890,7 @@ Page({
       this.result = null;
       this.eventOpen = false;
       this.seaOpen = false;
+      this.mountainPanel = '';
       this.deadOpen = true;
       this.afterAction();
     });
@@ -1861,6 +1917,7 @@ Page({
       this.result = null;
       this.eventOpen = false;
       this.seaOpen = false;
+      this.mountainPanel = '';
       this.tribOpen = false;
       this.mergeOpen = false;
       this.chronicleOpen = false;
@@ -1868,7 +1925,7 @@ Page({
       this.shareImage = '';
       this.chronicleToken++;
       this.deadOpen = false;
-      this.setData({ tab: 'skill', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+      this.setData({ tab: 'skill', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
       this.afterAction();
     });
   }

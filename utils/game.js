@@ -1,5 +1,6 @@
 // 《烬灯录》的游戏规则，不依赖微信接口。所有随机数由调用方传入 rng（返回 [0, 1) 的函数），便于测试。
 const content = require('./content');
+const mountain = require('./mountain');
 
 const SCHOOL_IDS = content.SCHOOL_IDS;
 const SCHOOLS = content.SCHOOLS;
@@ -233,6 +234,11 @@ function newRun(state, rng) {
     lastTitle: '',
     lastTrib: null,
     sea: null,
+    materials: 0,
+    mountainChoices: 0,
+    mountainRevision: 0,
+    cave: null,
+    sect: null,
     sudden: null,
     suddenCount: 0,
     suddenCooldown: 0,
@@ -257,6 +263,7 @@ function createState(now, rng) {
     bigCount: 0,
     arena: ARENA_MAX,
     arenaPoints: 0,
+    mountainLegacy: null,
     run: null
   };
   state.run = newRun(state, rng || Math.random);
@@ -392,7 +399,7 @@ function mergeOptions(state, id) {
       const right = skillInfo(other.id);
       if (!right || right.arcane || right.school !== left.school) return;
       const arcane = arcaneFor(left.id, right.id);
-      if (arcane) out.push({ first: left.id, second: right.id, arcane: arcane });
+      if (arcane && !skillEntry(run, arcane.id)) out.push({ first: left.id, second: right.id, arcane: arcane });
     });
   });
   return out;
@@ -408,7 +415,7 @@ function mergeSkills(state, first, second, rng) {
   if (!leftEntry || !rightEntry || leftEntry.level < MAX_GRADE || rightEntry.level < MAX_GRADE ||
     !left || !right || left.arcane || right.arcane || left.school !== right.school) return null;
   const arcane = arcaneFor(first, second);
-  if (!arcane) return null;
+  if (!arcane || skillEntry(run, arcane.id)) return null;
   const before = snapshot(state);
   run.skills = run.skills.filter((entry) => entry.id !== first && entry.id !== second);
   run.skills.push({ id: arcane.id, level: 1 });
@@ -501,7 +508,8 @@ function qiRate(state) {
     (hasSet(run, 'pill', 2) ? 0.3 : 0) + 0.2 * lampLevel(state, 'r4');
   const fate = fateInfo(run);
   const demon = run.mode === 'demon' ? 1 + MAX_DEMON * DEMON_QI_RATE : 1;
-  return REALMS[run.realm].rate * (1 + bonus) * (1 + (fate.qi || 0)) * demon;
+  const cave = [1, 1.12, 1.25][run.cave ? run.cave.array : 0];
+  return REALMS[run.realm].rate * (1 + bonus) * (1 + (fate.qi || 0)) * demon * cave;
 }
 
 function maxLife(state) {
@@ -792,13 +800,14 @@ function legacyOffers(state, rng, big) {
   const run = state.run;
   const counts = setCounts(run);
   const rootSchools = rootOf(run).schools || [];
+  const library = run.cave ? run.cave.library : 0;
   const pool = [];
   const weights = [];
   SKILLS.forEach((skill) => {
     const owned = skillEntry(run, skill.id);
     if (owned && owned.level >= MAX_GRADE) return;
     pool.push(skill);
-    weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 : 1));
+    weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 + library * 2 : 1));
   });
   dampNewSkills(state, pool, weights);
   const count = 3 + (hasSet(run, 'talisman', 4) ? 1 : 0) + (big ? 1 : 0);
@@ -1095,6 +1104,7 @@ function die(state, cause) {
   state.wick += wick;
   state.totalWick += wick;
   state.lives++;
+  if (run.sect) state.mountainLegacy = mountain.archive(run, state.lives);
   state.best = Math.max(state.best, run.realm * STAGES.length + run.stage);
   state.carry = '';
   state.epitaphs.unshift(text + '（灯芯 +' + wick + '）');
@@ -1262,6 +1272,10 @@ function choose(state, index, rng) {
     lines.push('心魔 -' + soothe);
   }
   if (def.type !== 'big') {
+    if (run.realm >= SEA_REALM) {
+      run.mountainChoices++;
+      mountain.progressChoices(run, lines);
+    }
     state.bigCount++;
     if (state.bigCount >= BIG_EVERY) {
       state.bigCount = 0;
@@ -1663,6 +1677,35 @@ function seaResult(state, title, label, lines, tags, before, cause) {
   return { title: title, label: label, lines: lines, tags: tags, dead: checkDeath(state, cause) };
 }
 
+function mountainReady(state) {
+  const run = state.run;
+  return run.phase === 'alive' && run.realm >= SEA_REALM && !atSea(run) && !run.event && !run.pending;
+}
+
+function mountainContext(state) {
+  return {
+    ready: mountainReady(state), yuan: state.run.realm > SEA_REALM,
+    cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber
+  };
+}
+
+function mountainView(state, page, disciple) {
+  return mountain.mountainView(state, page, disciple, mountainContext(state));
+}
+
+function chooseMountain(state, page, disciple, stamp, id, name) {
+  const before = snapshot(state);
+  const result = mountain.chooseMountain(state, page, disciple, stamp, id, name, mountainContext(state));
+  if (!result) return null;
+  const tags = [];
+  if (result.book) gainSkill(state, result.book.id, result.book.level, result.lines, tags);
+  if (result.demon || result.chance) {
+    const demon = result.demon ? Math.max(-state.run.demon, result.demon) : 0;
+    applyFx(state, { demon: demon, chance: result.chance }, Math.random, result.lines, tags);
+  }
+  return seaResult(state, result.title, result.label, result.lines, tags, before);
+}
+
 function landingText(sea) {
   sea.landed = true;
   return sea.clue ? '枯海留名：你带着船上的名字回到了岸边。' : '沉舟归岸：你趁水还没漫过船舷，回到了岸边。';
@@ -1777,7 +1820,7 @@ function yuanTrialView(state) {
     attribute('mind', '凭道心守住本名');
     if (sea.clue) prepared('clue', '凭「' + route.clue + '」唤回本名', 0, 8);
     if (run.marks.includes('petword')) prepared('word', '请逃字替你记名', 6, 0);
-    if (hasSet(run, 'pill', 2)) prepared('pill', '炼一炉定神丹', 0, 10);
+    if (hasSet(run, 'pill', 2)) prepared('pill', '炼一炉定神丹', 0, 10 - (run.cave ? run.cave.field * 3 : 0));
   } else {
     attribute('edge', '斩断盐索');
     attribute('body', '负骨过潮');
@@ -2081,6 +2124,7 @@ function normalizeRun(state, raw, rng) {
     });
   }
   run.choices = toCount(raw.choices);
+  if (run.realm >= SEA_REALM) mountain.normalizeRunMountain(run, raw, run.realm > SEA_REALM, toCount);
   if (Array.isArray(raw.karma)) {
     raw.karma.forEach((k) => {
       if (k && KARMA[k.id] && !findById(run.karma, k.id)) run.karma.push({ id: k.id, due: toCount(k.due) });
@@ -2148,8 +2192,9 @@ function normalizeRun(state, raw, rng) {
     else run.chance += 1;
   }
   const pending = raw.pending;
-  if (pending && findById(SKILLS, pending.id) && !skillEntry(run, pending.id) && run.skills.length >= maxSkills(state)) {
-    run.pending = { id: pending.id, level: clamp(toCount(pending.level), 1, MAX_GRADE) };
+  const pendingSkill = pending && skillInfo(pending.id);
+  if (pendingSkill && !skillEntry(run, pending.id) && run.skills.length >= maxSkills(state)) {
+    run.pending = { id: pending.id, level: pendingSkill.arcane ? 1 : clamp(toCount(pending.level), 1, MAX_GRADE) };
   }
   run.sea = normalizeSea(run, raw.sea);
   return run;
@@ -2163,6 +2208,7 @@ function normalizeState(raw, now, rng) {
   state.wick = toCount(raw.wick);
   state.totalWick = Math.max(toCount(raw.totalWick), state.wick);
   state.lives = toCount(raw.lives);
+  state.mountainLegacy = mountain.normalizeArchive(raw.mountainLegacy, state.lives, toCount);
   const best = Math.floor(Number(raw.best));
   state.best = Number.isFinite(best) ? clamp(best, -1, WICK_SCORE.length - 1) : -1;
   const lamps = raw.lamps || {};
@@ -2327,6 +2373,9 @@ module.exports = {
   seaView,
   chooseSea,
   retreatSea,
+  mountainReady,
+  mountainView,
+  chooseMountain,
   yuanTrialView,
   attemptYuanTrial,
   tribulationInfo,

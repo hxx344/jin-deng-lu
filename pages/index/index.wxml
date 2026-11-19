@@ -148,6 +148,10 @@
       <text class="main-sub">{{hero.powderSub}}</text>
     </view>
   </view>
+  <view wx:if="{{hero.mountainTitle}}" class="mountain-entry" hover-class="opt-hover" bindtap="onMountain">
+    <text class="mountain-entry-title">{{hero.mountainTitle}}</text>
+    <text class="mountain-entry-sub">{{hero.mountainSub}}</text>
+  </view>
   <view class="tabs">
     <view wx:if="{{tip.at === 'tabs'}}" class="tip tip-above" catchtap="noop">
       <view class="tip-text">{{tip.text}}</view>
@@ -337,6 +341,39 @@
           </view>
         </scroll-view>
         <view wx:if="{{sheet.rerolls}}" class="sheet-link" bindtap="onReroll">换一个机缘（还可重抽 {{sheet.rerolls}} 次）</view>
+      </block>
+
+      <block wx:elif="{{sheet.kind === 'mountain'}}">
+        <view class="sheet-top">
+          <view class="mountain-tabs">
+            <view wx:for="{{sheet.tabs}}" wx:key="id" class="mountain-tab {{item.id === sheet.page ? 'mountain-tab-on' : ''}}" data-page="{{item.id}}" bindtap="onMountain">{{item.label}}</view>
+          </view>
+          <view class="sheet-close" bindtap="onSheetClose">收起</view>
+        </view>
+        <view class="sheet-title">{{sheet.title}}</view>
+        <view class="mountain-stats">
+          <view wx:for="{{sheet.stats}}" wx:key="label" class="mountain-stat"><text>{{item.label}}</text><text class="mountain-number">{{item.value}}</text></view>
+        </view>
+        <scroll-view scroll-y class="sheet-body mountain-body">
+          <view class="sheet-text mountain-lead">{{sheet.text}}</view>
+          <input wx:if="{{sheet.canName}}" class="mountain-name" maxlength="12" placeholder="山门名（可留空）" value="{{mountainName}}" bindinput="onMountainName" />
+          <view wx:if="{{sheet.selected}}" class="mountain-back" bindtap="onMountainMember">返回弟子名册</view>
+          <view wx:for="{{sheet.people}}" wx:key="id" class="mountain-person" data-id="{{item.id}}" bindtap="onMountainMember">
+            <text class="mountain-person-name">{{item.name}}</text>
+            <text class="mountain-person-detail">{{item.detail}}</text>
+          </view>
+          <view wx:if="{{sheet.story}}" class="mountain-story">
+            <view class="mountain-story-top"><text>{{sheet.story.title}}</text><text class="mountain-story-progress">{{sheet.story.detail}}</text></view>
+            <view class="mountain-story-text">{{sheet.story.text}}</view>
+          </view>
+          <view wx:if="{{sheet.teaching}}" class="mountain-teaching">{{sheet.teaching}}</view>
+          <view wx:for="{{sheet.options}}" wx:key="id" class="opt {{item.disabled ? 'opt-off' : ''}} {{item.story ? 'mountain-story-option' : ''}}" hover-class="opt-hover" data-id="{{item.id}}" data-page="{{sheet.page}}" data-member="{{sheet.selected || ''}}" data-stamp="{{sheet.stamp}}" bindtap="onMountainAction">
+            <view class="opt-label">{{item.label}}</view>
+            <view class="opt-desc">{{item.desc}}</view>
+            <view wx:if="{{item.cost}}" class="mountain-cost">{{item.cost}}</view>
+            <view wx:if="{{item.note}}" class="opt-note">{{item.note}}</view>
+          </view>
+        </scroll-view>
       </block>
 
       <block wx:elif="{{sheet.kind === 'sea'}}">
