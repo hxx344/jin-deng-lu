@@ -2281,6 +2281,81 @@
   border-radius: 10rpx;
 }
 
+.mountain-block {
+  margin-top: 22rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx solid #685b4a;
+}
+
+.mountain-block-title {
+  margin-bottom: 10rpx;
+  color: #e5bc87;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.mountain-goals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx 12rpx;
+}
+
+.mountain-goal {
+  padding: 4rpx 14rpx;
+  border: 1rpx solid #685b4a;
+  border-radius: 8rpx;
+  color: #c3b7a7;
+  font-size: 22rpx;
+}
+
+.mountain-goal-on {
+  border-color: #8eb4a1;
+  color: #cde4d7;
+}
+
+.mountain-site {
+  margin-bottom: 8rpx;
+  padding: 10rpx 16rpx;
+  border-left: 3rpx solid #685b4a;
+  background: #26201b;
+}
+
+.mountain-site-own {
+  border-left-color: #8eb4a1;
+  background: #28342c;
+}
+
+.mountain-site-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12rpx;
+  color: #f6e7c8;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.mountain-site-owner {
+  flex-shrink: 0;
+  color: #c3b7a7;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.mountain-site-own .mountain-site-owner {
+  color: #cde4d7;
+}
+
+.mountain-site-perk,
+.mountain-chronicle {
+  color: #c3b7a7;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.mountain-chronicle {
+  margin-bottom: 6rpx;
+}
+
 .opt {
   margin-bottom: 12rpx;
   padding: 14rpx 22rpx;

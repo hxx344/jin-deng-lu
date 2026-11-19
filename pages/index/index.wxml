@@ -400,6 +400,23 @@
             <view wx:if="{{item.cost}}" class="mountain-cost">{{item.cost}}</view>
             <view wx:if="{{item.note}}" class="opt-note">{{item.note}}</view>
           </view>
+          <view wx:if="{{sheet.goals}}" class="mountain-block">
+            <view class="mountain-block-title">{{sheet.goals.title}}</view>
+            <view class="mountain-goals">
+              <text wx:for="{{sheet.goals.items}}" wx:key="label" class="mountain-goal {{item.done ? 'mountain-goal-on' : ''}}">{{item.done ? '✓ ' : ''}}{{item.label}}</text>
+            </view>
+          </view>
+          <view wx:if="{{sheet.sites}}" class="mountain-block">
+            <view class="mountain-block-title">骸山地界</view>
+            <view wx:for="{{sheet.sites}}" wx:key="id" class="mountain-site {{item.own ? 'mountain-site-own' : ''}}">
+              <view class="mountain-site-top"><text>{{item.name}}</text><text class="mountain-site-owner">{{item.owner}}</text></view>
+              <view class="mountain-site-perk">{{item.perk}}</view>
+            </view>
+          </view>
+          <view wx:if="{{sheet.chronicle.length}}" class="mountain-block">
+            <view class="mountain-block-title">山外纪事</view>
+            <view wx:for="{{sheet.chronicle}}" wx:key="id" class="mountain-chronicle">{{item.text}}</view>
+          </view>
         </scroll-view>
       </block>
 

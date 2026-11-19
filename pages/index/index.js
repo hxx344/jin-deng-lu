@@ -966,7 +966,8 @@ Page({
     const mountain = game.mountainReady(s);
     const quest = run.sect && run.sect.quest;
     const mountainNotice = s.mountainLegacy ? '旧山门来信 · 可回山' :
-      (quest && quest.outcome && !quest.after && quest.due <= run.mountainChoices ? '寒潮退去 · 弟子来报' : '');
+      (quest && quest.outcome && !quest.after && quest.due <= run.mountainChoices ? '寒潮退去 · 弟子来报' :
+        (run.sect && run.sect.world.event ? '山外有事 · 待决断' : ''));
     const term = game.tribTerm(s);
     const path = !boarding && game.pathReady(s);
     return {
@@ -1093,6 +1094,8 @@ Page({
         sec('洞府与宗门', [
           '金丹起，每次普通机缘产出灵材。花灵材与灵气开辟洞府，修建或扩建聚灵阵、灵田和藏经室。',
           '元婴后可在洞府立宗，招收弟子、提升修为、传授本世功法，并派人巡山或应对寒潮。弟子修为、特长和所学功法会影响结果。',
+          '立宗后多出「山外」一页。门人、库藏和山外的小事随每次普通机缘自行增减：声望高、占着盐滩村，门人来得快；门人多、领地多，库藏涨得快；库藏见底门人就不再来。每 4 次机缘门中送一份月例灵材。',
+          '扩张、战役和升阶是送上山的大事，每件给两三个选项：占下无主之地，守住或攻打食仙教的据点，声望、领地和门人够了就立碑升阶。战役比的是宗门战力（品阶、弟子修为与所学、领地、门人），亲自出阵按你的战力再加一截。山门分草庐、山门、宗门、大宗四阶，每升一阶多收一名弟子，弟子修为上限 +1。',
           '二级藏经室可传授秘法。可以选一位弟子托付传承，下一世到金丹后回山取回他保管的功法或秘法。'
         ]),
         sec('心魔', [
@@ -1715,7 +1718,7 @@ Page({
 
   onMountain(e) {
     if (this.act === 'thunder' || this.result || !game.mountainReady(this.state)) return;
-    this.mountainPanel = e && e.currentTarget.dataset.page || (this.state.mountainLegacy ? 'return' : (this.state.run.sect ? 'sect' : 'cave'));
+    this.mountainPanel = e && e.currentTarget.dataset.page || (this.state.mountainLegacy ? 'return' : (this.state.run.sect ? (this.state.run.sect.world.event ? 'world' : 'sect') : 'cave'));
     this.mountainMember = '';
     audio.play('tap');
     this.refresh();

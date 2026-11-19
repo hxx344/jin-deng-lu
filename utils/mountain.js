@@ -1,6 +1,7 @@
-const { SKILLS, ARCANES, GRADES } = require('./content');
+const { GRADES } = require('./content');
+const world = require('./sect-world');
 
-const MATERIAL_MAX = 99;
+const { MATERIAL_MAX, RANKS, MAX_RANK, RULES, DISCIPLES, find, skillInfo, addMaterials } = world;
 const PATROL_LENGTH = 2;
 const COLD_ROUNDS = 3;
 const COLD_GOAL = 5;
@@ -12,18 +13,8 @@ const FACILITIES = [
   { id: 'library', name: '藏经室', effects: ['更常遇到已修流派的功法；弟子可学至天品', '进一步偏向已修流派；弟子可学秘法'] }
 ];
 
-const RULES = [
-  { id: 'guard', name: '守骨', defaultName: '守骨山门', disciple: 'li', perk: '弟子修阵多得 1 进度' },
-  { id: 'aid', name: '济人', defaultName: '长明山门', disciple: 'ya', perk: '弟子护民多得 1 进度' },
-  { id: 'salvage', name: '取骸', defaultName: '拾骨山门', disciple: 'suo', perk: '每趟巡山多得 1 灵材' }
-];
-
-const DISCIPLES = [
-  { id: 'li', name: '阿砺', aptitude: 'ward', desc: '识得仙骨上的阵纹，擅长修阵' },
-  { id: 'ya', name: '芦芽', aptitude: 'shelter', desc: '在盐滩上采药长大，擅长护民' },
-  { id: 'suo', name: '小索', aptitude: 'patrol', desc: '从小在骸山捡废器，擅长巡山' },
-  { id: 'clerk', name: '丹盟二掌柜', aptitude: 'shelter', desc: '你昔日收下的徒弟，擅长护民', mark: 'manager' }
-];
+const PATROL_HAUL_MAX = 16;
+const RANK_AFTER = ['', ' 匾后来换过一回大的。', ' 山下的人如今提起这里，都要先整一整衣襟。', ' 骸山这一带的地图上，现在印着这个名字。'];
 
 const OUTCOMES = {
   pending: '你走时寒潮还没有到，弟子仍记得你嘱咐过的话。',
@@ -37,9 +28,6 @@ const QUEST_TASKS = [
   { id: 'ward', name: '修阵', schools: ['sword', 'talisman'] },
   { id: 'shelter', name: '护民', schools: ['pill', 'body'] }
 ];
-
-const find = (items, id) => items.find((item) => item.id === id);
-const skillInfo = (id) => find(SKILLS, id) || find(ARCANES, id);
 
 function skillName(book) {
   const skill = skillInfo(book.id);
@@ -58,13 +46,7 @@ function newDisciple(id) {
   return { id: id, level: 1, book: null };
 }
 
-function addMaterials(run, amount) {
-  const gained = Math.min(amount, MATERIAL_MAX - run.materials);
-  run.materials += gained;
-  return gained;
-}
-
-function progressChoices(run, lines) {
+function progressChoices(run, lines, rng) {
   const field = run.cave ? run.cave.field : 0;
   const extra = field === 2 || (field === 1 && run.mountainChoices % 2 === 0);
   const gained = addMaterials(run, 1 + Number(extra));
@@ -80,6 +62,7 @@ function progressChoices(run, lines) {
   if (sect && sect.quest.turn === COLD_ROUNDS && sect.quest.due === run.mountainChoices && !sect.quest.after) {
     lines.push('山门有新回报：寒潮退去');
   }
+  if (sect) world.tick(run, lines, rng);
 }
 
 function archive(run, life) {
@@ -90,6 +73,7 @@ function archive(run, life) {
     life: life,
     name: sect.name,
     rule: sect.rule,
+    rank: sect.rank,
     outcome: sect.quest.outcome || 'pending',
     after: sect.quest.after,
     disciple: (heir || sect.disciples[0]).id,
@@ -109,7 +93,7 @@ function questPower(sect, disciple, task) {
 function patrolHaul(sect, disciple) {
   const skill = disciple.book && skillInfo(disciple.book.id);
   return 2 + disciple.level + Number(find(DISCIPLES, disciple.id).aptitude === 'patrol') +
-    Number(sect.rule === 'salvage') + (skill && skill.school === 'luck' ? (skill.arcane ? 2 : 1) : 0);
+    Number(sect.rule === 'salvage') + (world.owns(sect, 'ferry') ? 2 : 0) + (skill && skill.school === 'luck' ? (skill.arcane ? 2 : 1) : 0);
 }
 
 function actionStamp(run) {
@@ -123,6 +107,7 @@ function mountainView(state, page, selected, context) {
   const sect = run.sect;
   const tabs = [{ id: 'cave', label: '洞府' }];
   if (context.yuan) tabs.push({ id: 'sect', label: '宗门' });
+  if (sect) tabs.push({ id: 'world', label: '山外' });
   if (state.mountainLegacy) tabs.push({ id: 'return', label: '故地' });
   if (!find(tabs, page)) page = 'cave';
   const view = { page: page, tabs: tabs, title: '', text: '', stats: [], options: [], stamp: actionStamp(run) };
@@ -131,13 +116,15 @@ function mountainView(state, page, selected, context) {
     const qi = Math.round((cost.qi || 0) * context.cap);
     const material = cost.material || 0;
     const years = cost.years || 0;
+    const stock = cost.stock || 0;
     const parts = [];
+    if (stock) parts.push(stock + ' 库藏');
     if (qi) parts.push(context.format(qi) + ' 灵气');
     if (material) parts.push(material + ' 灵材');
     if (years) parts.push(years + ' 年寿元');
-    const note = run.materials < material ? '灵材不足' : (run.qi < qi ? '灵气不足' : (context.years <= years ? '寿元不足' : ''));
+    const note = stock && sect.world.stock < stock ? '库藏不足' : run.materials < material ? '灵材不足' : (run.qi < qi ? '灵气不足' : (context.years <= years ? '寿元不足' : ''));
     view.options.push(Object.assign({
-      id: id, label: label, desc: desc, cost: parts.join(' · '), qi: qi, material: material, years: years,
+      id: id, label: label, desc: desc, cost: parts.join(' · '), qi: qi, material: material, years: years, stock: stock,
       note: note, disabled: !!note
     }, data));
   };
@@ -149,7 +136,8 @@ function mountainView(state, page, selected, context) {
     const disciple = find(DISCIPLES, old.disciple);
     view.title = '重回' + old.name;
     view.text = OUTCOMES[old.outcome] + (old.after === 'open' ? ' 寒潮后开放的石室至今还亮着灯。' :
-      (old.after === 'seal' ? ' 碑下那封没有送出的信还在。' : ''));
+      (old.after === 'seal' ? ' 碑下那封没有送出的信还在。' : '')) + RANK_AFTER[old.rank - 1];
+    const gift = 4 + (old.rank - 1) * 2;
     if (old.book) {
       const owned = find(run.skills, old.book.id);
       const learned = owned && owned.level >= old.book.level;
@@ -158,10 +146,12 @@ function mountainView(state, page, selected, context) {
         { book: old.book, disabled: !!learned, note: learned ? '已经习得同品或更高品功法' : '' });
     }
     const greeting = '你照旧喊了一声「把狗拴好」。' + disciple.name + '一愣，转身去拿钥匙。';
-    add('visit', '认下故人', greeting + '灵材 +4。', {}, { greeting: greeting });
+    add('visit', '认下故人', greeting + '灵材 +' + gift + '。', {}, { greeting: greeting, gift: gift });
     add('farewell', '以过客身份辞别', '坐在旧石阶上，把当年没说完的话说完。心魔 -8。');
     return view;
   }
+
+  if (page === 'world') return world.fillView(run, view, add, context);
 
   if (page === 'cave') {
     view.title = cave ? '修整洞府' : '开辟洞府';
@@ -183,12 +173,12 @@ function mountainView(state, page, selected, context) {
 
   if (!sect) {
     view.title = '建立宗门';
-    view.text = cave ? '给山门起名，定下门规。首位弟子随门规入门。' : '先修好自己的洞府，才有地方安置弟子。';
+    view.text = cave ? '给山门起名，定下门规。首位弟子随门规入门。立宗后门人与库藏会自行增减，山外的大事送到「山外」页等你决断。' : '先修好自己的洞府，才有地方安置弟子。';
     if (!cave) return view;
     view.canName = true;
     RULES.forEach((rule) => {
       const first = rule.id === 'aid' && run.marks.includes('manager') ? 'clerk' : rule.disciple;
-      add(rule.id, rule.name + '立宗', rule.perk + '；首徒 ' + find(DISCIPLES, first).name + '。',
+      add(rule.id, rule.name + '立宗', rule.perk + '；' + rule.world + '；首徒 ' + find(DISCIPLES, first).name + '。',
         { qi: 0.2, material: 5, years: 3 }, { disciple: first, placeholder: rule.defaultName });
     });
     return view;
@@ -197,7 +187,8 @@ function mountainView(state, page, selected, context) {
   const rule = find(RULES, sect.rule);
   const quest = sect.quest;
   view.title = sect.name;
-  view.text = rule.name + '门规：' + rule.perk + '。巡山在两次普通机缘后返山。';
+  view.text = rule.name + '门规：' + rule.perk + '。巡山在两次普通机缘后返山。' +
+    (sect.rank < MAX_RANK ? '山门的品阶在「山外」页凭声望、领地和门人提升。' : '');
   const disciple = find(sect.disciples, selected);
   if (disciple) {
     view.selected = selected;
@@ -224,7 +215,7 @@ function mountainView(state, page, selected, context) {
     return view;
   }
 
-  view.stats.push({ label: '山门', value: '第 ' + sect.rank + ' 级' }, { label: '弟子', value: sect.disciples.length + ' / ' + (sect.rank + 1) });
+  view.stats.push({ label: '山门', value: '第 ' + sect.rank + ' 阶 · ' + RANKS[sect.rank - 1] }, { label: '弟子', value: sect.disciples.length + ' / ' + (sect.rank + 1) });
   if (sect.patrol) {
     view.stats.push({ label: '巡山中', value: find(DISCIPLES, sect.patrol.id).name + ' · 还差 ' + (sect.patrol.due - run.mountainChoices) + ' 次机缘' });
   }
@@ -260,16 +251,16 @@ function mountainView(state, page, selected, context) {
     view.story = { title: '寒潮事了', detail: '修阵 ' + quest.ward + ' / ' + COLD_GOAL + ' · 护民 ' + quest.shelter + ' / ' + COLD_GOAL,
       text: quest.after === 'open' ? '修好的石室入夜仍有人送柴来。' : '弟子把信藏在封门的石碑下面。' };
   }
-  if (sect.rank < 2) add('rank', '扩建山门', '弟子上限 +1；弟子修为上限 +1。', { qi: 0.25, material: 7, years: 3 });
   if (sect.disciples.length < sect.rank + 1) DISCIPLES.forEach((candidate) => {
     if (find(sect.disciples, candidate.id) || (candidate.mark && !run.marks.includes(candidate.mark))) return;
+    if (candidate.site && !world.owns(sect, candidate.site)) return;
     add('recruit-' + candidate.id, '收徒 · ' + candidate.name, candidate.desc + '。',
       { qi: 0.12, material: 3, years: 2 }, { disciple: candidate.id });
   });
   return view;
 }
 
-function chooseMountain(state, page, selected, stamp, id, name, context) {
+function chooseMountain(state, page, selected, stamp, id, name, context, rng) {
   const run = state.run;
   if (stamp !== actionStamp(run)) return null;
   const view = mountainView(state, page, selected, context);
@@ -279,6 +270,7 @@ function chooseMountain(state, page, selected, stamp, id, name, context) {
 
   run.mountainRevision++;
   run.materials -= option.material;
+  if (option.stock) run.sect.world.stock -= option.stock;
   run.qi -= option.qi;
   run.age += option.years;
   const lines = [];
@@ -287,7 +279,7 @@ function chooseMountain(state, page, selected, stamp, id, name, context) {
   if (page === 'return') {
     state.mountainLegacy = null;
     if (id === 'inherit') result.book = option.book;
-    else if (id === 'visit') lines.push(option.greeting, '灵材 +' + addMaterials(run, 4));
+    else if (id === 'visit') lines.push(option.greeting, '灵材 +' + addMaterials(run, option.gift));
     else result.demon = -8;
     return result;
   }
@@ -305,9 +297,14 @@ function chooseMountain(state, page, selected, stamp, id, name, context) {
     run.sect = {
       name: cleanName(name) || option.placeholder, rule: id, rank: 1,
       disciples: [newDisciple(option.disciple)], patrol: null, heir: '',
-      quest: { turn: 0, ward: 0, shelter: 0, posted: [], due: 0, outcome: '', after: '' }
+      quest: { turn: 0, ward: 0, shelter: 0, posted: [], due: 0, outcome: '', after: '' },
+      world: world.createWorld()
     };
-    lines.push(run.sect.name + '立下门规，' + find(DISCIPLES, option.disciple).name + '拜入门下。');
+    lines.push(run.sect.name + '立下门规，' + find(DISCIPLES, option.disciple).name + '拜入门下。', '山外有事：盐滩村求庇护');
+    return result;
+  }
+  if (page === 'world') {
+    world.resolve(run, option, result, rng, context);
     return result;
   }
 
@@ -354,9 +351,6 @@ function chooseMountain(state, page, selected, stamp, id, name, context) {
       quest.after = 'seal';
       lines.push('你在碑下留了一封信。', '灵材 +' + addMaterials(run, 3));
     }
-  } else if (id === 'rank') {
-    sect.rank++;
-    lines.push(option.desc);
   } else {
     sect.disciples.push(newDisciple(option.disciple));
     lines.push(find(DISCIPLES, option.disciple).name + '拜入门下。');
@@ -379,7 +373,7 @@ function normalizeRunMountain(run, raw, yuan, toCount) {
   const sect = raw.sect;
   const rule = yuan && sect && find(RULES, sect.rule);
   if (!rule || !Array.isArray(sect.disciples)) return;
-  const rank = Math.max(1, toCount(sect.rank, 2));
+  const rank = Math.max(1, toCount(sect.rank, MAX_RANK));
   const disciples = [];
   sect.disciples.forEach((member) => {
     const info = member && find(DISCIPLES, member.id);
@@ -400,12 +394,13 @@ function normalizeRunMountain(run, raw, yuan, toCount) {
   };
   const postedPatrol = sect.patrol && find(disciples, sect.patrol.id);
   const due = postedPatrol ? toCount(sect.patrol.due, run.mountainChoices + PATROL_LENGTH) : 0;
-  const patrol = due > run.mountainChoices ? { id: postedPatrol.id, due: due, haul: Math.max(1, toCount(sect.patrol.haul, 9)) } : null;
+  const patrol = due > run.mountainChoices ? { id: postedPatrol.id, due: due, haul: Math.max(1, toCount(sect.patrol.haul, PATROL_HAUL_MAX)) } : null;
   const heir = find(disciples, sect.heir);
   run.sect = {
     name: cleanName(sect.name) || rule.defaultName, rule: rule.id, rank: rank, disciples: disciples, patrol: patrol,
     heir: heir && heir.book ? heir.id : '', quest: quest
   };
+  world.normalizeWorld(sect.world, run.sect, toCount);
 }
 
 function normalizeArchive(raw, lives, toCount) {
@@ -414,7 +409,7 @@ function normalizeArchive(raw, lives, toCount) {
   const rule = find(RULES, raw.rule);
   if (!life || life > lives || !rule) return null;
   return {
-    life: life, name: cleanName(raw.name) || rule.defaultName, rule: rule.id,
+    life: life, name: cleanName(raw.name) || rule.defaultName, rule: rule.id, rank: Math.max(1, toCount(raw.rank, MAX_RANK)),
     outcome: Object.prototype.hasOwnProperty.call(OUTCOMES, raw.outcome) ? raw.outcome : 'pending',
     after: ['open', 'seal'].includes(raw.after) ? raw.after : '',
     disciple: raw.disciple, book: normalizeBook(raw.book, toCount)

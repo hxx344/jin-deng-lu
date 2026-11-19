@@ -1715,7 +1715,7 @@ function choose(state, index, rng) {
   }
   if (run.realm >= SEA_REALM) {
     run.mountainChoices++;
-    mountain.progressChoices(run, lines);
+    mountain.progressChoices(run, lines, rng);
   }
   state.bigCount++;
   if (state.bigCount >= BIG_EVERY) {
@@ -2120,7 +2120,8 @@ function mountainReady(state) {
 function mountainContext(state) {
   return {
     ready: mountainReady(state), yuan: state.run.realm > SEA_REALM,
-    cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber
+    cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber,
+    power: combatPowerDetails(state).total
   };
 }
 
@@ -2128,9 +2129,9 @@ function mountainView(state, page, disciple) {
   return mountain.mountainView(state, page, disciple, mountainContext(state));
 }
 
-function chooseMountain(state, page, disciple, stamp, id, name) {
+function chooseMountain(state, page, disciple, stamp, id, name, rng = Math.random) {
   const before = snapshot(state);
-  const result = mountain.chooseMountain(state, page, disciple, stamp, id, name, mountainContext(state));
+  const result = mountain.chooseMountain(state, page, disciple, stamp, id, name, mountainContext(state), rng);
   if (!result) return null;
   const tags = [];
   if (result.book) gainSkill(state, result.book.id, result.book.level, result.lines, tags);
