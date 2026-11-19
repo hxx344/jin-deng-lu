@@ -1067,7 +1067,22 @@ const EVENTS = [
   }
 ];
 
+// 劫相：前三场天劫每一世各抽一种，决定考哪几项。只考一项的要求更高。req 是对该场天劫基础要求的倍率。
+const TRIB_ASPECTS = [
+  { id: 'bm', name: '阴火', tests: ['body', 'mind'], req: 1 },
+  { id: 'eb', name: '刀兵', tests: ['edge', 'body'], req: 1 },
+  { id: 'em', name: '诛心', tests: ['edge', 'mind'], req: 1 },
+  { id: 'e', name: '斩业', tests: ['edge'], req: 1.35 },
+  { id: 'b', name: '碎骨', tests: ['body'], req: 1.35 },
+  { id: 'm', name: '失名', tests: ['mind'], req: 1.35 }
+];
+
+// 道途的克制：主修左边一系时，右边一系的功法效果减半。
+const PATH_COUNTER = { sword: 'talisman', talisman: 'body', body: 'luck', luck: 'pill', pill: 'sword' };
+
 module.exports = {
+  TRIB_ASPECTS,
+  PATH_COUNTER,
   SCHOOL_IDS,
   SCHOOLS,
   GRADES,

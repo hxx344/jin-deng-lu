@@ -21,9 +21,15 @@ function mulberry(a) {
   };
 }
 
-// 随机数恒为 0 时，灵根候选是剑骨、药体、文心。
+// 见闻全开：每个事件的每个选项都选过，说明照常显示，自动机缘也肯选。
+function knowAll(s) {
+  game.EVENTS.forEach((ev) => { s.known[ev.id] = (1 << ev.options.length) - 1; });
+  return s;
+}
+
+// 随机数恒为 0 时，灵根候选是剑骨、药体、文心。旧规则用例默认见闻全开，见闻本身由独立用例覆盖。
 function born(root) {
-  const s = game.createState(0, () => 0);
+  const s = knowAll(game.createState(0, () => 0));
   // 旧规则用例隔离命格，命格本身由独立用例覆盖。
   s.run.fate = '';
   assert.ok(game.chooseRoot(s, root || 'talisman', 0, () => 0));
@@ -36,7 +42,7 @@ function give(s, ids, level) {
 
 function withAuto(state) {
   state.lamps[game.AUTO_LAMP.id] = 1;
-  return state;
+  return knowAll(state);
 }
 
 function setEvent(s, id) {
@@ -595,6 +601,16 @@ test('心魔满 100 转魔修：十年燃寿、服散续命，最后身死灯芯
   assert.strictEqual(powder.dead, false);
   assert.strictEqual(game.yearsLeft(s), before + 3);
   assert.strictEqual(s.run.qi, game.qiCap(s) / 2);
+  // 一世最多服三次，免得魔修永远不死。
+  for (let i = 0; i < 2; i++) {
+    s.run.qi = game.qiCap(s);
+    assert.ok(game.takePowder(s));
+  }
+  s.run.qi = game.qiCap(s);
+  assert.strictEqual(game.powderInfo(s).left, 0);
+  assert.strictEqual(game.takePowder(s), null);
+  assert.strictEqual(game.yearsLeft(s), before + 9);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0).run.powders, 3);
 
   s.run.age = game.maxLife(s) - 1;
   setEvent(s, 'i_dog');
@@ -2432,4 +2448,161 @@ test('数字与时长的显示', () => {
   assert.strictEqual(game.formatNumber(-3), '0');
   assert.strictEqual(game.formatDuration(59), '59 秒');
   assert.strictEqual(game.formatDuration(3 * 3600 + 120), '3 小时 2 分钟');
+});
+
+test('劫期：每个境界的机缘次数有期限，逾期后每次选择多折寿元，魔修不受约束', () => {
+  const s = born();
+  setEvent(s, 'a_chance_tide');
+  assert.deepStrictEqual(game.tribTerm(s), { term: 30, used: 0, left: 30, overdue: false, years: 0 });
+  const base = game.eventView(s);
+  s.run.realmChoices = 30;
+  assert.strictEqual(game.tribTerm(s).overdue, true);
+  assert.strictEqual(game.tribTerm(s).years, 1);
+  const late = game.eventView(s);
+  assert.strictEqual(late.options[0].years, base.options[0].years + 1);
+  assert.strictEqual(late.fallback.years, base.fallback.years + 1);
+  s.run.realmChoices = 35;
+  assert.strictEqual(game.tribTerm(s).years, 2);
+  const age = s.run.age;
+  const result = game.choose(s, 0, () => 0);
+  assert.strictEqual(s.run.age - age, base.options[0].years + 2);
+  assert.ok(result.lines.some((line) => line.indexOf('劫期') >= 0));
+  assert.strictEqual(s.run.realmChoices, 36);
+  s.run.mode = 'demon';
+  assert.strictEqual(game.tribTerm(s).overdue, false);
+  s.run.mode = 'human';
+  s.run.realmChoices = 0;
+  s.run.heaven = 2;
+  assert.strictEqual(game.tribTerm(s).term, 27);
+});
+
+test('劫相：前三场天劫按这一世抽到的劫相考核，单项劫要求更高，坏存档回落到合法劫相', () => {
+  const s = born();
+  assert.deepStrictEqual(s.run.tribs, ['bm', 'eb', 'em']);
+  const plain = game.tribPlan(s)[0];
+  assert.deepStrictEqual(plain.tests, ['body', 'mind']);
+  assert.strictEqual(plain.req, game.TRIBS[0].req);
+  s.run.tribs = ['e', 'bm', 'eb'];
+  const single = game.tribPlan(s)[0];
+  assert.deepStrictEqual(single.tests, ['edge']);
+  assert.strictEqual(single.req, Math.round(game.TRIBS[0].req * 1.35));
+  const info = game.tribulationInfo(s);
+  assert.strictEqual(info.aspect, single.aspect);
+  assert.deepStrictEqual(info.tests, ['edge']);
+  assert.strictEqual(info.req, single.req);
+  s.run.heaven = 2;
+  assert.strictEqual(game.tribPlan(s)[1].req, Math.round(game.TRIBS[1].req * 1.5));
+  s.run.heaven = 0;
+  const saved = JSON.parse(JSON.stringify(s));
+  assert.deepStrictEqual(game.normalizeState(saved, 0).run.tribs, ['e', 'bm', 'eb']);
+  saved.run.tribs = ['e', 'nope'];
+  const fixed = game.normalizeState(saved, 0).run.tribs;
+  assert.strictEqual(fixed.length, 3);
+  assert.ok(fixed.every((id) => game.TRIB_ASPECTS.some((aspect) => aspect.id === id)));
+});
+
+test('道途：引气后择一系主修，主修功法 ×1.5、被克一系 ×0.5，定了不能改', () => {
+  const s = born();
+  give(s, ['sw6', 'ta6']);
+  assert.strictEqual(game.pathView(s), null);
+  assert.strictEqual(game.choosePath(s, 'sword'), null);
+  s.run.realm = 1;
+  const before = game.attrs(s);
+  const view = game.pathView(s);
+  assert.deepStrictEqual(view.options.map((option) => option.id), game.SCHOOL_IDS);
+  assert.strictEqual(game.choosePath(s, 'nope'), null);
+  const result = game.choosePath(s, 'sword');
+  assert.ok(result && !result.dead);
+  assert.strictEqual(s.run.path, 'sword');
+  const after = game.attrs(s);
+  assert.strictEqual(after.edge - before.edge, 2);
+  assert.strictEqual(after.mind - before.mind, -3);
+  assert.strictEqual(game.pathView(s), null);
+  assert.strictEqual(game.choosePath(s, 'body'), null);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0).run.path, 'sword');
+});
+
+test('道途：换算后寿元撑不住的一系选不了', () => {
+  const s = born();
+  give(s, ['sw8']);
+  s.run.realm = 1;
+  s.run.age = game.maxLife(s) - 2;
+  const option = game.pathView(s).options.filter((item) => item.id === 'sword')[0];
+  assert.strictEqual(option.disabled, true);
+  assert.strictEqual(game.choosePath(s, 'sword'), null);
+  assert.strictEqual(s.run.path, '');
+});
+
+test('重天：在最高一重天元婴圆满后身死开出下一重，灯芯更多、天劫更难、深层灯纹上限 +1', () => {
+  const s = born();
+  s.run.realm = game.REALMS.length - 1;
+  s.run.stage = game.STAGES.length - 1;
+  assert.ok(game.retire(s));
+  assert.strictEqual(s.heavenMax, 0, '没到圆满不开新天');
+  assert.ok(game.reincarnate(s, 0, () => 0));
+  assert.strictEqual(game.setHeaven(s, 1), false);
+  s.run.fate = '';
+  assert.ok(game.chooseRoot(s, 'talisman', 0, () => 0));
+  s.run.realm = game.REALMS.length - 1;
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  assert.ok(game.isFull(s));
+  const plainWick = game.wickGain(s, 'retire');
+  const plainChance = game.tribulationChance(s, 1);
+  const lampBefore = game.lampMax(s, 'r1');
+  assert.ok(game.retire(s));
+  assert.strictEqual(s.heavenMax, 1);
+  assert.strictEqual(s.run.death.heaven, 1);
+  assert.strictEqual(game.lampMax(s, 'r1'), lampBefore + 1);
+  assert.strictEqual(game.lampMax(s, 'r2'), game.LAMPS.filter((lamp) => lamp.id === 'r2')[0].max);
+  assert.ok(game.reincarnate(s, 0, () => 0));
+  assert.strictEqual(s.run.heaven, 1, '默认去新开的一重');
+  assert.ok(game.setHeaven(s, 0));
+  assert.strictEqual(s.run.heaven, 0);
+  assert.ok(game.setHeaven(s, 1));
+  assert.strictEqual(game.setHeaven(s, 2), false);
+  s.run.fate = '';
+  assert.ok(game.chooseRoot(s, 'talisman', 0, () => 0));
+  assert.strictEqual(game.setHeaven(s, 0), false, '投胎后不能再换');
+  assert.strictEqual(game.tribPlan(s)[0].req, Math.round(game.TRIBS[0].req * 1.25));
+  near(plainChance - game.tribulationChance(s, 1), 0.04);
+  s.run.realm = game.REALMS.length - 1;
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  assert.strictEqual(game.wickGain(s, 'retire'), Math.ceil(plainWick * 1.5 - 1e-9));
+  const saved = game.normalizeState(JSON.parse(JSON.stringify(s)), 0);
+  assert.strictEqual(saved.heavenMax, 1);
+  assert.strictEqual(saved.run.heaven, 1);
+  saved.heavenMax = 0;
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(saved)), 0).run.heaven, 0, '重天不能超过已解锁的');
+});
+
+test('见闻：没选过的选项只写牵涉哪几样，自动机缘不碰，选过一次跨世记得', () => {
+  const s = game.createState(0, () => 0);
+  s.run.fate = '';
+  assert.ok(game.chooseRoot(s, 'talisman', 0, () => 0));
+  s.lamps[game.AUTO_LAMP.id] = 1;
+  setEvent(s, 'a_chance_tide');
+  const view = game.eventView(s);
+  assert.ok(view.options.every((option) => option.unknown));
+  assert.strictEqual(view.options[0].desc, '后果未明，牵涉机缘。选过一次就记得');
+  assert.ok(view.options[1].desc.indexOf('成败未卜') === 0);
+  assert.strictEqual(game.autoPick(s), -1);
+  assert.deepStrictEqual(game.knownProgress(s).known, 0);
+  assert.ok(game.choose(s, 0, () => 0));
+  assert.strictEqual(game.knownProgress(s).known, 1);
+  setEvent(s, 'a_chance_tide');
+  const again = game.eventView(s);
+  assert.deepStrictEqual(again.options.map((option) => option.unknown), [false, true, true]);
+  assert.ok(again.options[0].desc.indexOf('机缘 +3') >= 0);
+  assert.strictEqual(game.autoPick(s), 0);
+  assert.ok(game.retire(s));
+  assert.ok(game.reincarnate(s, 0, () => 0));
+  const saved = game.normalizeState(JSON.parse(JSON.stringify(s)), 0);
+  assert.strictEqual(game.knownProgress(saved).known, 1);
+  saved.known = { nope: 7, a_chance_tide: 15 };
+  const fixed = game.normalizeState(JSON.parse(JSON.stringify(saved)), 0);
+  assert.strictEqual(fixed.known.nope, undefined);
+  assert.strictEqual(fixed.known.a_chance_tide, 7);
+  assert.strictEqual(game.knownProgress(fixed).known, 3);
 });

@@ -1,4 +1,4 @@
-// 平衡模拟：用两种固定打法的机器人把整套规则跑很多世，输出一组可对比的数值。
+// 平衡模拟：用三种固定打法的机器人把整套规则跑很多世，输出一组可对比的数值。
 // 用法：node tools/balance/sim.js          对比当前规则与基线
 //       node tools/balance/sim.js --write  用当前规则重写基线和 docs/平衡基线.md
 const fs = require('node:fs');
@@ -15,22 +15,28 @@ const CONFIG = {
   lives: 12,
   // 每做一次选择或操作花掉的现实时间。
   choiceSeconds: 5,
-  // 认真玩：渡劫成功率到这个数才渡；寿元只剩这么多年时不再等。
+  // 认真玩：渡劫成功率到这个数才渡；劫期过了降到 overdueThreshold；寿元只剩 lastDitchYears 年时不再等。
   tribThreshold: 0.7,
+  overdueThreshold: 0.45,
   lastDitchYears: 8,
+  // 挂机玩：成功率过了这个数就渡。
+  idleThreshold: 0.5,
   reportLives: [1, 2, 4, 8, 12]
 };
 // 单元测试每次都跑的小样本：只用来发现“数值变了”，读数以全量结果为准。
-const CHECK = { saves: 40, lives: 6, reportLives: [1, 3, 6] };
+const CHECK = { saves: 30, lives: 6, reportLives: [1, 3, 6] };
 
-const POLICY_NAMES = { casual: '随手玩', careful: '认真玩' };
+const POLICY_NAMES = { casual: '随手玩', idle: '挂机玩', careful: '认真玩' };
 // 一世最多走这么多步；走不完说明寿元越活越多，记为“活不死”并强制坐化。
 const MAX_STEPS = 5000;
 const LAST_REALM = game.REALMS.length - 1;
 const STAGE_COUNT = game.STAGES.length;
 const REALM_NAMES = game.REALMS.map((realm) => realm.name);
-const CAUSES = ['age', 'retire', 'trib', 'demon'];
-const CAUSE_NAMES = { age: '寿终', retire: '坐化', trib: '死于天劫', demon: '入魔燃尽' };
+const GOALS = REALM_NAMES.slice(1).concat('圆满');
+// 圆满后的坐化单列；走投无路时的坐化和寿终算一类。
+const CAUSES = ['clear', 'age', 'trib', 'demon'];
+const CAUSE_NAMES = { clear: '圆满坐化', age: '寿尽或无路可走', trib: '死于天劫', demon: '入魔燃尽' };
+const SCHOOL_ATTR = { sword: 'edge', body: 'body', talisman: 'mind' };
 
 function mulberry(a) {
   return function () {
@@ -51,28 +57,65 @@ function seaOption(run, id) {
   return route.scenes[run.sea.tide - 1].options.find((item) => item.id === id);
 }
 
-// 两种打法共用的骨架：act 返回 true 表示这一步做了一件要花时间的事。
+// 随机走枯海和元婴劫。
+function randomVoyage(state, rng, sim) {
+  const sea = game.seaView(state);
+  if (sea) {
+    const open = sea.options.filter((option) => !option.disabled);
+    if (open.length) return !!game.chooseSea(state, pick(open, rng).id, sea.tide);
+    if (state.run.sea) return !!game.retreatSea(state);
+  }
+  const trial = game.yuanTrialView(state);
+  if (trial && trial.ready) {
+    const open = trial.options.filter((option) => !option.disabled);
+    if (open.length) return sim.yuanTrial(pick(open, rng).id, trial.step);
+  }
+  return false;
+}
+
+// 没选过的选项里挑一个去试：只在寿元和心魔都宽裕时试，返回下标；没有可试的返回 null。
+function explore(state) {
+  if (state.run.demon >= 60) return null;
+  const view = game.eventView(state);
+  const left = game.yearsLeft(state);
+  const index = view.options.findIndex((option) => option.unknown && !option.disabled && !option.fatal && option.years + 12 < left);
+  return index < 0 ? null : index;
+}
+
+function pathScore(state, id) {
+  const counts = {};
+  game.SCHOOL_IDS.forEach((school) => { counts[school] = 0; });
+  state.run.skills.forEach((entry) => { counts[game.skillInfo(entry.id).school] += entry.level; });
+  let score = counts[id] - 0.5 * counts[game.PATH_COUNTER[id]];
+  game.tribPlan(state).slice(state.run.realm).forEach((trib) => {
+    if (trib.tests.indexOf(SCHOOL_ATTR[id]) >= 0) score += 3;
+  });
+  return score;
+}
+
+function bestPath(state, score) {
+  const view = game.pathView(state);
+  if (!view) return null;
+  const open = view.options.filter((option) => !option.disabled).sort((a, b) => score(b.id) - score(a.id));
+  return open.length ? open[0].id : null;
+}
+
+// 三种打法共用的骨架：act 返回 true 表示这一步做了一件要花时间的事。
 const POLICIES = {
-  // 随手玩：不看收益，只是不点明摆着送命的选项；灵气满了立刻硬抗天劫。
+  // 随手玩：不看收益，只是不点明摆着送命的选项；灵气满了立刻硬抗天劫，道途随便选。
   casual: {
     root(state) {
       return state.run.rootChoices[0];
     },
     act(state, rng, sim) {
+      const view = game.pathView(state);
+      if (view) {
+        const open = view.options.filter((option) => !option.disabled);
+        if (open.length) return !!game.choosePath(state, pick(open, rng).id);
+      }
       const trib = game.tribulationInfo(state);
       if (trib && trib.ready) return sim.tribulation('endure');
-      const sea = game.seaView(state);
-      if (sea) {
-        const open = sea.options.filter((option) => !option.disabled);
-        if (open.length) return !!game.chooseSea(state, pick(open, rng).id, sea.tide);
-        if (state.run.sea) return !!game.retreatSea(state);
-      }
-      const trial = game.yuanTrialView(state);
-      if (trial && trial.ready) {
-        const open = trial.options.filter((option) => !option.disabled);
-        if (open.length) return sim.yuanTrial(pick(open, rng).id, trial.step);
-      }
-      return false;
+      return randomVoyage(state, rng, sim);
     },
     wait() {
       return false;
@@ -96,8 +139,36 @@ const POLICIES = {
     afterDeath() {}
   },
 
-  // 认真玩：选项和功法取舍用游戏自带的“自动机缘”估分；属性够了才渡劫，够了就停手等灵气；
-  // 会合秘法、修洞府、走枯海拿凭据、带前世功法，投胎时把根骨重抽用完。
+  // 挂机玩：没见过的选项会去试，见过的全交给“自动机缘”；道途选手里功法最多的一系；
+  // 成功率过半就硬抗天劫，劫期过了或寿元将尽也渡；枯海随便走，不合秘法、不修洞府、不重抽根骨。
+  idle: {
+    root(state) {
+      return state.run.rootChoices[0];
+    },
+    act(state, rng, sim) {
+      const school = bestPath(state, (id) => game.setCounts(state.run)[id]);
+      if (school) return !!game.choosePath(state, school);
+      const trib = game.tribulationInfo(state);
+      if (trib && trib.ready && (trib.chance >= sim.config.idleThreshold || game.tribTerm(state).overdue ||
+        game.yearsLeft(state) <= sim.config.lastDitchYears)) return sim.tribulation('endure');
+      return randomVoyage(state, rng, sim);
+    },
+    wait() {
+      return false;
+    },
+    choose(state) {
+      const index = explore(state);
+      return index === null ? game.autoPick(state) : index;
+    },
+    replace(state) {
+      return game.autoReplace(state);
+    },
+    afterDeath() {}
+  },
+
+  // 认真玩：选项和功法取舍同样靠试和“自动机缘”估分，但会经营：道途按功法和劫相选；
+  // 成功率够了才渡劫（能借势就借势），属性够了就停手等灵气；会合秘法、修洞府、在枯海拿凭据、
+  // 带前世功法，投胎时把根骨重抽用完。
   careful: {
     root(state, rng) {
       const best = () => state.run.rootChoices.slice().sort((a, b) => game.rootInfo(b).rarity - game.rootInfo(a).rarity)[0];
@@ -111,18 +182,22 @@ const POLICIES = {
       if (!trial) return null;
       return trial.options.filter((option) => !option.disabled).reduce((max, option) => Math.max(max, option.chance), 0);
     },
+    threshold(state, sim) {
+      if (game.yearsLeft(state) <= sim.config.lastDitchYears) return 0;
+      return game.tribTerm(state).overdue ? sim.config.overdueThreshold : sim.config.tribThreshold;
+    },
     act(state, rng, sim) {
       const run = state.run;
-      const cfg = sim.config;
-      const hurry = game.yearsLeft(state) <= cfg.lastDitchYears;
+      const school = bestPath(state, (id) => pathScore(state, id));
+      if (school) return !!game.choosePath(state, school);
       const merge = game.mergeOptions(state)[0];
       if (merge) return !!game.mergeSkills(state, merge.first, merge.second, rng);
       const powder = game.powderInfo(state);
       if (powder.ready && game.yearsLeft(state) <= 3) return !!game.takePowder(state);
+      const need = this.threshold(state, sim);
       const trib = game.tribulationInfo(state);
-      if (trib && trib.ready) {
-        const chance = trib.borrowReady ? trib.borrowChance : trib.chance;
-        if (chance >= cfg.tribThreshold || hurry) return sim.tribulation(trib.borrowReady ? 'borrow' : 'endure');
+      if (trib && trib.ready && (trib.borrowReady ? trib.borrowChance : trib.chance) >= need) {
+        return sim.tribulation(trib.borrowReady ? 'borrow' : 'endure');
       }
       const sea = game.seaView(state);
       if (sea) {
@@ -142,7 +217,7 @@ const POLICIES = {
       const trial = game.yuanTrialView(state);
       if (trial && trial.ready) {
         const open = trial.options.filter((option) => !option.disabled).sort((a, b) => b.chance - a.chance);
-        if (open.length && (open[0].chance >= cfg.tribThreshold || hurry)) return sim.yuanTrial(open[0].id, trial.step);
+        if (open.length && open[0].chance >= need) return sim.yuanTrial(open[0].id, trial.step);
       }
       if (game.mountainReady(state) && !game.isFull(state)) {
         const view = game.mountainView(state, 'cave', '');
@@ -159,7 +234,8 @@ const POLICIES = {
       return chance !== null && chance >= sim.config.tribThreshold;
     },
     choose(state) {
-      return game.autoPick(state);
+      const index = explore(state);
+      return index === null ? game.autoPick(state) : index;
     },
     replace(state) {
       return game.autoReplace(state);
@@ -216,7 +292,7 @@ function playLife(state, policy, rng, config, clock) {
       game.retire(state);
       break;
     }
-    // 到了版本终点（最高境界圆满）灯芯不会再涨，两种打法都直接坐化。
+    // 最高境界圆满后灯芯不会再涨，三种打法都直接坐化。
     if (run.realm === LAST_REALM && game.isFull(state)) {
       game.retire(state);
       break;
@@ -255,7 +331,9 @@ function playLife(state, policy, rng, config, clock) {
   }
   life.realm = run.realm;
   life.stage = run.realm * STAGE_COUNT + run.stage;
-  life.cause = run.death.cause;
+  life.full = run.realm === LAST_REALM && run.qi >= game.qiCap(state);
+  life.heaven = run.heaven;
+  life.cause = life.full ? 'clear' : (run.death.cause === 'retire' ? 'age' : run.death.cause);
   life.wick = run.death.wick;
   life.choices = run.choices;
   life.age = run.age;
@@ -265,6 +343,7 @@ function playLife(state, policy, rng, config, clock) {
   life.arcanes = run.skills.filter((entry) => game.skillInfo(entry.id).arcane).length;
   life.suddens = run.suddenCount;
   life.demon = run.mode === 'demon';
+  life.path = !!run.path;
   return life;
 }
 
@@ -278,6 +357,9 @@ function playSave(policyId, seed, config) {
     const life = playLife(state, policy, rng, config, clock);
     life.totalWick = state.totalWick;
     life.totalMinutes = clock.now / 60000;
+    life.heavenMax = state.heavenMax;
+    const progress = game.knownProgress(state);
+    life.known = 100 * progress.known / progress.total;
     lives.push(life);
     policy.afterDeath(state, rng);
     buyLamps(state);
@@ -290,6 +372,7 @@ function playSave(policyId, seed, config) {
 const round = (value, digits) => Number(value.toFixed(digits === undefined ? 1 : digits));
 const mean = (list, fn) => (list.length ? list.reduce((sum, item) => sum + fn(item), 0) / list.length : 0);
 const share = (list, fn) => round(100 * mean(list, (item) => Number(!!fn(item))));
+const reached = (life, goal) => (goal === LAST_REALM + 1 ? life.full : life.realm >= goal);
 
 function median(list) {
   if (!list.length) return null;
@@ -303,12 +386,13 @@ function summarize(saves, config) {
   config.reportLives.forEach((n) => {
     const lives = saves.map((save) => save[n - 1]);
     const reach = {};
-    REALM_NAMES.slice(1).forEach((name, i) => { reach[name] = share(lives, (life) => life.realm >= i + 1); });
+    GOALS.forEach((name, i) => { reach[name] = share(lives, (life) => reached(life, i + 1)); });
     const causes = {};
     CAUSES.forEach((cause) => { causes[cause] = share(lives, (life) => life.cause === cause); });
     out.lives[n] = {
       reach: reach,
       causes: causes,
+      heaven: round(mean(lives, (life) => life.heaven), 2),
       wick: round(mean(lives, (life) => life.wick)),
       choices: round(mean(lives, (life) => life.choices)),
       minutes: round(mean(lives, (life) => life.minutes)),
@@ -320,18 +404,18 @@ function summarize(saves, config) {
       demon: share(lives, (life) => life.demon),
       totalWick: round(mean(lives, (life) => life.totalWick)),
       totalMinutes: round(mean(lives, (life) => life.totalMinutes)),
+      heavenMax: round(mean(lives, (life) => life.heavenMax), 2),
+      known: round(mean(lives, (life) => life.known)),
       lampsMaxed: share(lives, (life) => life.lampsMaxed)
     };
   });
-  REALM_NAMES.slice(1).forEach((name, i) => {
-    const first = saves.map((save) => save.findIndex((life) => life.realm >= i + 1)).filter((n) => n >= 0);
-    const minutes = saves.map((save) => {
-      const n = save.findIndex((life) => life.realm >= i + 1);
-      return n < 0 ? -1 : save[n].totalMinutes;
-    }).filter((n) => n >= 0);
+  GOALS.forEach((name, i) => {
+    const first = saves.map((save) => save.findIndex((life) => reached(life, i + 1)));
+    const done = first.filter((n) => n >= 0);
+    const minutes = saves.map((save, k) => (first[k] < 0 ? -1 : save[first[k]].totalMinutes)).filter((n) => n >= 0);
     out.firstReach[name] = {
-      share: round(100 * first.length / saves.length),
-      medianLife: first.length ? median(first) + 1 : null,
+      share: round(100 * done.length / saves.length),
+      medianLife: done.length ? median(done) + 1 : null,
       medianMinutes: minutes.length ? round(median(minutes)) : null
     };
   });
@@ -381,18 +465,21 @@ function render(data) {
     '',
     '> 本文件由 `node tools/balance/sim.js --write` 生成，不要手改。数值来自 `tools/balance/baseline.json`。',
     '> 改了规则或内容后运行 `node --test`：`tests/balance.test.js` 用一组小样本（' + data.check.config.saves + ' 个存档 × ' + data.check.config.lives + ' 世）重跑模拟，结果与基线不一致就失败。',
-    '> 这时运行 `node tools/balance/sim.js` 看全量差异（约半分钟）。',
+    '> 这时运行 `node tools/balance/sim.js` 看全量差异（约一分钟）。',
     '> 确认变化符合预期后重新生成基线，并把本文件的差异一起提交。',
     '',
     '## 口径',
     '',
     '- 每种打法 ' + config.saves + ' 个存档，每个存档连续玩 ' + config.lives + ' 世，随机种子 ' + config.seed + ' 起逐档加一，结果可完全复现。',
     '- 时间：一直在线，有机缘就翻，每次选择或操作算 ' + config.choiceSeconds + ' 秒；机缘用完就等下一次。没有模拟离线。',
-    '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。',
-    '- 终点：到达' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，两种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
-    '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
-    '- **认真玩**：选项和功法取舍用游戏自带的“自动机缘”估分；渡劫成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡（能借势就借势），属性够了就停手等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
-    '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽、散功保命、离线收益。',
+    '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。“灯纹全满”把随重天加深的等级也算在内。',
+    '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '圆满，在最高一重做到就解锁下一重。',
+    '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
+    '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',
+    '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍和道途随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
+    '- **挂机玩**：见过的选项全交给游戏自带的“自动机缘”估分；道途选手里功法最多的一系；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨。',
+    '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就停手等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
+    '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽、散功保命、主动降重天、离线收益。',
     ''
   ];
   Object.keys(data.results).forEach((id) => {
@@ -400,10 +487,10 @@ function render(data) {
     const lives = Object.keys(result.lives);
     out.push('## ' + POLICY_NAMES[id], '');
     out.push('**每一世的结局**（到达 = 身死时所在的大境界不低于该境界）', '');
-    out.push(table(['第几世'].concat(REALM_NAMES.slice(1).map((name) => '到达' + name), ['灯芯', '选择次数', '时长（分）', '享年', '余寿']),
+    out.push(table(['第几世', '所在重天'].concat(GOALS.map((name) => (name === '圆满' ? name : '到达' + name)), ['灯芯', '选择次数', '时长（分）', '享年', '余寿']),
       lives.map((n) => {
         const life = result.lives[n];
-        return [n].concat(REALM_NAMES.slice(1).map((name) => pct(life.reach[name])), [life.wick, life.choices, life.minutes, life.age, life.left]);
+        return [n, life.heaven].concat(GOALS.map((name) => pct(life.reach[name])), [life.wick, life.choices, life.minutes, life.age, life.left]);
       })), '');
     out.push('**死法与构筑**', '');
     out.push(table(['第几世'].concat(CAUSES.map((cause) => CAUSE_NAMES[cause]), ['堕魔', '功法数', '秘法数', '突发组数']),
@@ -412,9 +499,12 @@ function render(data) {
         return [n].concat(CAUSES.map((cause) => pct(life.causes[cause])), [pct(life.demon), life.skills, life.arcanes, life.suddens]);
       })), '');
     out.push('**跨世进度**', '');
-    out.push(table(['到第几世结束', '累计灯芯', '累计时长（分）', '灯纹全满'],
-      lives.map((n) => [n, result.lives[n].totalWick, result.lives[n].totalMinutes, pct(result.lives[n].lampsMaxed)])), '');
-    out.push(table(['首次到达', config.lives + ' 世内做到的存档', '中位数世数', '那一世结束时的累计时长中位数（分）'],
+    out.push(table(['到第几世结束', '累计灯芯', '累计时长（分）', '已解锁重天', '见闻', '灯纹全满'],
+      lives.map((n) => {
+        const life = result.lives[n];
+        return [n, life.totalWick, life.totalMinutes, life.heavenMax, pct(life.known), pct(life.lampsMaxed)];
+      })), '');
+    out.push(table(['首次做到', config.lives + ' 世内做到的存档', '中位数世数', '那一世结束时的累计时长中位数（分）'],
       Object.keys(result.firstReach).map((name) => {
         const item = result.firstReach[name];
         return [name, pct(item.share), orDash(item.medianLife), orDash(item.medianMinutes)];
@@ -447,6 +537,10 @@ function readBaseline() {
 
 function main(args) {
   const data = build();
+  if (args.indexOf('--print') >= 0) {
+    console.log(render(data));
+    return 0;
+  }
   if (args.indexOf('--write') >= 0) {
     fs.writeFileSync(BASELINE_FILE, JSON.stringify(data, null, 2) + '\n');
     fs.writeFileSync(DOC_FILE, render(data) + '\n');

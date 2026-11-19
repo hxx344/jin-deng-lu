@@ -3470,6 +3470,53 @@
   background: rgba(150, 100, 255, 0.12);
 }
 
+.hero-term {
+  flex-shrink: 0;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #8c8275;
+}
+
+.hero-term-over {
+  color: #ff9b8a;
+}
+
+.path-btn {
+  background: linear-gradient(180deg, #d6f0b8, #6fa64a);
+  box-shadow: 0 6rpx 0 #3d6a25;
+  color: #1c3310;
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+.heaven-card {
+  margin-top: 14rpx;
+}
+
+.heaven-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.heaven-chip {
+  padding: 6rpx 18rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.14);
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  color: #8c8275;
+}
+
+.heaven-chip-on {
+  border-color: #ffcf8a;
+  background: rgba(255, 207, 138, 0.14);
+  color: #ffcf8a;
+}
+
+.opt-unknown .opt-desc {
+  color: #c7b3ff;
+}
+
 .merge-btn {
   flex-shrink: 0;
   margin-left: 10rpx;

@@ -24,6 +24,8 @@ const KARMA = content.KARMA;
 const MARKS = content.MARKS;
 const LEGACY_INTROS = content.LEGACY_INTROS;
 const BIG_EVENTS = content.BIG_EVENTS;
+const TRIB_ASPECTS = content.TRIB_ASPECTS;
+const PATH_COUNTER = content.PATH_COUNTER;
 const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
 
@@ -62,6 +64,8 @@ const DEMON_QI_RATE = 0.04;
 const DEMON_YEARS = 10;
 const POWDER_QI = 0.5;
 const POWDER_YEARS = 3;
+// 一世最多服几次散，免得魔修靠服散永远不死。
+const POWDER_MAX = 3;
 const BORROW_CHANCE = 30;
 const BORROW_TRIB = 0.15;
 const SCATTER_YEARS = 10;
@@ -91,6 +95,27 @@ const SEA_TIDE_LIMIT = 3;
 const SALT_ANCHOR_BONUS = 60;
 const DEATH_MULT = { age: 1, retire: 1, trib: 1.2, demon: 1.5 };
 const UNITS = ['', '万', '亿', '兆', '京'];
+// 劫期：每个境界里可以从容做这么多次普通机缘；过期后每次机缘额外折寿，每再拖 OVERDUE_STEP 次加重一档。
+const TRIB_TERMS = [30, 36, 44, 52, 40];
+const OVERDUE_YEARS = [1, 1, 2, 4, 8];
+const OVERDUE_STEP = 5;
+const MIN_TERM = 10;
+// 道途：主修一系的功法效果放大，被它克制的一系削弱。
+const PATH_MAIN = 1.5;
+const PATH_WEAK = 0.5;
+// 重天：每高一重，天劫要求、劫期和灯芯的变化幅度。
+const HEAVEN_MAX = 9;
+const HEAVEN_REQ = 0.25;
+// 每高一重，渡劫成功率降这么多；枯海备下的“必过”手段也不再必过。
+const HEAVEN_TRIB = 0.04;
+const HEAVEN_PREPARED = 0.08;
+const HEAVEN_TERM = 0.05;
+const HEAVEN_WICK = 0.5;
+// 每解锁一重天，这几种灯纹的上限加一级。
+const DEEP_LAMPS = ['r1', 'r4', 'm3'];
+// 没选过的选项只显示牵涉哪几样东西。
+const FX_KINDS = [['qi', '灵气'], ['edge', '锋'], ['body', '躯'], ['mind', '神'], ['demon', '心魔'], ['life', '寿元上限'], ['chance', '机缘'],
+  ['speed', '机缘速度'], ['skill', '功法'], ['slot', '功法位'], ['karma', '因果'], ['mark', '经历'], ['unmark', '经历']];
 
 function findById(list, id) {
   for (let i = 0; i < list.length; i++) {
@@ -206,6 +231,10 @@ function newRun(state, rng) {
     phase: 'root',
     rootChoices: rollRoots(rootCount(state), rng),
     fate: pick(FATES, rng).id,
+    tribs: rollAspects(rng),
+    heaven: state.heaven || 0,
+    path: '',
+    realmChoices: 0,
     rootRolls: ROOT_REROLLS,
     root: '',
     realm: 0,
@@ -217,6 +246,7 @@ function newRun(state, rng) {
     mode: 'human',
     fallAge: 0,
     demonLife: 0,
+    powders: 0,
     speed: 0,
     stats: { edge: 0, body: 0, mind: 0 },
     skills: [],
@@ -267,6 +297,11 @@ function createState(now, rng) {
     arena: ARENA_MAX,
     arenaPoints: 0,
     mountainLegacy: null,
+    // 重天：heaven 是下一世要去的那一重，heavenMax 是已解锁的最高一重。
+    heaven: 0,
+    heavenMax: 0,
+    // 见闻：每个事件里选过哪些选项，按选项下标记成位。
+    known: {},
     run: null
   };
   state.run = newRun(state, rng || Math.random);
@@ -322,9 +357,177 @@ function sumSkills(run, key) {
   run.skills.forEach((s) => {
     const skill = skillInfo(s.id);
     if (skillSuppressed(run, skill)) return;
-    total += (skill[key] || 0) * s.level;
+    const value = (skill[key] || 0) * s.level * pathMult(run, skill);
+    // 整数类的效果换算后去掉零头，免得属性出现半点。
+    total += Number.isInteger(skill[key]) ? Math.trunc(value) : value;
   });
   return total;
+}
+
+// 这一世前三场天劫各考什么。随机数恒为 0 时依次是躯神、锋躯、锋神。
+function rollAspects(rng) {
+  const out = [];
+  for (let i = 0; i < SEA_REALM; i++) {
+    const n = Math.min(TRIB_ASPECTS.length - 1, Math.floor(rng() * TRIB_ASPECTS.length));
+    out.push(TRIB_ASPECTS[(n + i) % TRIB_ASPECTS.length].id);
+  }
+  return out;
+}
+
+function validAspects(raw) {
+  return Array.isArray(raw) && raw.length === SEA_REALM && raw.every((id) => !!findById(TRIB_ASPECTS, id)) ? raw.slice() : null;
+}
+
+function tribAspect(run, realm) {
+  return findById(TRIB_ASPECTS, run.tribs[realm]) || TRIB_ASPECTS[realm % TRIB_ASPECTS.length];
+}
+
+function tribReq(state, trib, mult) {
+  return Math.round(trib.req * (mult || 1) * (1 + HEAVEN_REQ * state.run.heaven));
+}
+
+// 这一世要过的每一场天劫：名字、劫相、考哪几项、每项要多少。
+function tribPlan(state) {
+  return TRIBS.map((trib, i) => {
+    if (trib.seaTrial) return { name: trib.name, aspect: '', tests: trib.tests, req: tribReq(state, trib) };
+    const aspect = tribAspect(state.run, i);
+    return { name: trib.name, aspect: aspect.name, tests: aspect.tests, req: tribReq(state, trib, aspect.req) };
+  });
+}
+
+// 劫期：term 是这个境界的期限，left 是还剩几次；过期后 years 是每次机缘多折的寿元。魔修不受劫期管。
+function tribTerm(state) {
+  const run = state.run;
+  const term = Math.max(MIN_TERM, Math.round(TRIB_TERMS[run.realm] * (1 - HEAVEN_TERM * run.heaven)));
+  const over = run.realmChoices - term;
+  const overdue = run.phase === 'alive' && run.mode !== 'demon' && over >= 0;
+  return {
+    term: term,
+    used: run.realmChoices,
+    left: Math.max(0, -over),
+    overdue: overdue,
+    years: overdue ? (1 + Math.floor(over / OVERDUE_STEP)) * OVERDUE_YEARS[run.realm] : 0
+  };
+}
+
+function pathMult(run, skill) {
+  if (!run.path) return 1;
+  if (skill.school === run.path) return PATH_MAIN;
+  return skill.school === PATH_COUNTER[run.path] ? PATH_WEAK : 1;
+}
+
+function pathReady(state) {
+  const run = state.run;
+  return run.phase === 'alive' && run.realm >= 1 && !run.path && !run.event && !run.pending;
+}
+
+// 引气之后择一系主修，这一世不能改。换算后寿元上限不够活的选不了。
+function pathView(state) {
+  if (!pathReady(state)) return null;
+  const run = state.run;
+  const counts = setCounts(run);
+  return {
+    title: '择道',
+    text: '引气入体之后，该定下这一世主修哪一系了。主修一系的功法效果 ×' + PATH_MAIN + '，被它克制的一系 ×' + PATH_WEAK + '，传承里主修的功法也更常见。定了就不能改。',
+    options: SCHOOL_IDS.map((id) => {
+      const weak = PATH_COUNTER[id];
+      run.path = id;
+      const fatal = maxLife(state) <= run.age;
+      run.path = '';
+      return {
+        id: id,
+        label: '主修' + SCHOOLS[id].name + '系',
+        desc: SCHOOLS[id].name + '系 ' + counts[id] + ' 门 ×' + PATH_MAIN + '；' + SCHOOLS[weak].name + '系 ' + counts[weak] + ' 门 ×' + PATH_WEAK,
+        note: fatal ? '寿元撑不住' : '',
+        disabled: fatal
+      };
+    })
+  };
+}
+
+function choosePath(state, id) {
+  const view = pathView(state);
+  const option = view && findById(view.options, id);
+  if (!option || option.disabled) return null;
+  const run = state.run;
+  const before = snapshot(state);
+  run.path = id;
+  const lines = [SCHOOLS[id].name + '系功法效果 ×' + PATH_MAIN, SCHOOLS[PATH_COUNTER[id]].name + '系功法效果 ×' + PATH_WEAK];
+  run.log.push({ age: run.age, title: '择道', text: option.label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  return { title: '择道', label: option.label, lines: lines, tags: ['skill:' + id, 'bond'], dead: checkDeath(state) };
+}
+
+function heavenText(level) {
+  return level ? '天劫要求 +' + pctText(HEAVEN_REQ * level) + '，渡劫成功率 -' + pctText(HEAVEN_TRIB * level) + '，劫期 -' + pctText(HEAVEN_TERM * level) + '，灯芯 +' + pctText(HEAVEN_WICK * level)
+    : '最初的天：没有刁难，也没有加成';
+}
+
+// 投胎前选这一世去第几重天，只能选已经解锁的。
+function setHeaven(state, level) {
+  const run = state.run;
+  if (run.phase !== 'root' || !Number.isInteger(level) || level < 0 || level > state.heavenMax) return false;
+  state.heaven = level;
+  run.heaven = level;
+  return true;
+}
+
+// 这个选项以前有没有选过。功法传承一向写明，不算在内。
+function optionKnown(state, opt) {
+  const ev = state.run.event;
+  if (opt.learn || !ev || ev.kind !== 'event') return true;
+  const index = findById(EVENTS, ev.id).options.indexOf(opt);
+  return index < 0 || !!((state.known[ev.id] || 0) & (1 << index));
+}
+
+function learnOption(state, opt) {
+  const ev = state.run.event;
+  if (opt.learn || !ev || ev.kind !== 'event') return;
+  const index = findById(EVENTS, ev.id).options.indexOf(opt);
+  if (index >= 0) state.known[ev.id] = (state.known[ev.id] || 0) | (1 << index);
+}
+
+function hiddenDesc(state, opt) {
+  const segments = [];
+  const because = (opt.need || []).map((m) => '【' + MARKS[m] + '】').join('') +
+    (opt.school ? SCHOOLS[opt.school].name + '系 ' + SCHOOL_NEED + ' 门' : '');
+  if (because) segments.push('因' + because);
+  const cost = optionCost(state, opt);
+  if (cost) segments.push('耗灵气 ' + formatNumber(cost));
+  const kinds = [];
+  [opt.fx, opt.risk && opt.risk.win, opt.risk && opt.risk.lose].forEach((fx) => {
+    if (!fx) return;
+    FX_KINDS.forEach((kind) => {
+      if (fx[kind[0]] && kinds.indexOf(kind[1]) < 0) kinds.push(kind[1]);
+    });
+  });
+  segments.push((opt.risk ? '成败未卜' : '后果未明') + (kinds.length ? '，牵涉' + kinds.join('、') : '') + '。选过一次就记得');
+  return segments.join('；');
+}
+
+// 见闻：全部事件选项里已经选过多少个。
+function knownProgress(state) {
+  let known = 0;
+  let total = 0;
+  EVENTS.forEach((ev) => {
+    total += ev.options.length;
+    for (let i = 0; i < ev.options.length; i++) {
+      if ((state.known[ev.id] || 0) & (1 << i)) known++;
+    }
+  });
+  return { known: known, total: total };
+}
+
+function fallbackYears(state) {
+  return FALLBACK_YEARS + tribTerm(state).years;
+}
+
+function lampMax(state, id) {
+  return findById(LAMPS, id).max + (DEEP_LAMPS.indexOf(id) >= 0 ? state.heavenMax : 0);
+}
+
+function lampMaxed(state, id) {
+  return lampLevel(state, id) >= lampMax(state, id);
 }
 
 function signed(n) {
@@ -720,7 +923,7 @@ function eventDef(state) {
 }
 
 function optionYears(state, opt) {
-  return Math.max(0, opt.years - (state.run.wake === 'rest' ? 1 : 0));
+  return Math.max(0, opt.years - (state.run.wake === 'rest' ? 1 : 0)) + tribTerm(state).years;
 }
 
 function optionCost(state, opt) {
@@ -777,19 +980,21 @@ function eventView(state) {
     options: def.options.map((opt) => {
       const cost = optionCost(state, opt);
       const years = optionYears(state, opt);
+      const known = optionKnown(state, opt);
       return {
         label: opt.label,
-        desc: optionDesc(state, opt),
+        desc: known ? optionDesc(state, opt) : hiddenDesc(state, opt),
         years: years,
         disabled: cost > run.qi,
-        fatal: years >= left
+        fatal: years >= left,
+        unknown: !known
       };
     }),
     fallback: {
       label: '闭关不理',
       desc: '灵气 +' + formatNumber(qiRewardAmount(state, fallbackQi(state))),
-      years: FALLBACK_YEARS,
-      fatal: FALLBACK_YEARS >= left
+      years: fallbackYears(state),
+      fatal: fallbackYears(state) >= left
     },
     rerolls: rerollsLeft(state),
     wake: [
@@ -831,7 +1036,7 @@ function legacyOffers(state, rng) {
     const owned = skillEntry(run, skill.id);
     if (owned && owned.level >= MAX_GRADE) return;
     pool.push(skill);
-    weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 + library * 2 : 1));
+    weights.push((rootSchools.indexOf(skill.school) >= 0 ? 3 : 1) * (counts[skill.school] > 0 ? 2 + library * 2 : 1) * pathMult(run, skill));
   });
   dampNewSkills(state, pool, weights);
   const count = 3 + (hasSet(run, 'talisman', 4) ? 1 : 0);
@@ -1297,7 +1502,8 @@ function wickGain(state, cause) {
   const run = state.run;
   const full = REALMS[run.realm].fullWick;
   const score = full && isFull(state) ? full : WICK_SCORE[run.realm * STAGES.length + run.stage];
-  return Math.max(1, Math.ceil(score * (1 + setBonus(run) + sumSkills(run, 'wick')) * (1 + (fateInfo(run).wick || 0)) * DEATH_MULT[cause] - 1e-9));
+  return Math.max(1, Math.ceil(score * (1 + setBonus(run) + sumSkills(run, 'wick')) * (1 + (fateInfo(run).wick || 0)) *
+    (1 + HEAVEN_WICK * run.heaven) * DEATH_MULT[cause] - 1e-9));
 }
 
 function epitaph(state, cause) {
@@ -1320,10 +1526,17 @@ function die(state, cause) {
   const run = state.run;
   const wick = wickGain(state, cause);
   const text = epitaph(state, cause);
+  // 在已解锁的最高一重天修到最高境界圆满，下一重天就开了。
+  const cleared = run.realm === REALMS.length - 1 && isFull(state) && run.heaven === state.heavenMax && state.heavenMax < HEAVEN_MAX;
   run.phase = 'dead';
   run.event = null;
   run.pending = null;
   run.death = { cause: cause, wick: wick, text: text };
+  if (cleared) {
+    state.heavenMax++;
+    state.heaven = state.heavenMax;
+    run.death.heaven = state.heavenMax;
+  }
   state.wick += wick;
   state.totalWick += wick;
   state.lives++;
@@ -1416,7 +1629,8 @@ function powderInfo(state) {
   return {
     cost: cost,
     years: POWDER_YEARS,
-    ready: run.phase === 'alive' && run.mode === 'demon' && run.qi >= cost,
+    left: Math.max(0, POWDER_MAX - run.powders),
+    ready: run.phase === 'alive' && run.mode === 'demon' && run.qi >= cost && run.powders < POWDER_MAX,
     visible: run.phase === 'alive' && run.mode === 'demon'
   };
 }
@@ -1429,6 +1643,7 @@ function takePowder(state) {
   const before = snapshot(state);
   run.qi -= info.cost;
   run.demonLife += info.years;
+  run.powders++;
   const lines = ['灵气 -' + formatNumber(info.cost), '燃寿 +' + info.years + ' 年'];
   run.log.push({ age: run.age, title: '服散续命', text: lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
@@ -1445,12 +1660,13 @@ function choose(state, index, rng) {
   const beforeMarks = run.marks.length;
   const lines = [];
   const tags = def.type === 'fruit' ? ['fruit'] : [];
+  const overdue = tribTerm(state).years;
   let label;
   let wake = '';
   if (index === -1) {
     label = '闭关不理';
     wake = 'rest';
-    run.age += FALLBACK_YEARS;
+    run.age += fallbackYears(state);
     tags.push('seclude');
     addQiWithLines(state, qiRewardAmount(state, fallbackQi(state)), lines, tags);
   } else {
@@ -1459,6 +1675,7 @@ function choose(state, index, rng) {
     const cost = optionCost(state, opt);
     if (cost > run.qi) return null;
     label = opt.label;
+    learnOption(state, opt);
     // 成功率按做选择时看到的算，不受这次耗掉的寿元影响。
     const p = opt.risk ? riskChance(state, opt.risk) : 0;
     run.age += optionYears(state, opt);
@@ -1487,6 +1704,8 @@ function choose(state, index, rng) {
   // 已达满心魔就先堕魔，不能被这次选择末尾的安抚效果抹掉。
   if (run.demon >= MAX_DEMON && run.mode !== 'demon') becomeDemon(state);
   run.choices++;
+  run.realmChoices++;
+  if (overdue) lines.push('劫期已过，多折 ' + overdue + ' 年');
   const tick = sumSkills(run, 'tick');
   if (tick) addQiWithLines(state, qiRewardAmount(state, tick), lines, tags);
   const soothe = Math.min(run.demon, sumSkills(run, 'soothe'));
@@ -1556,7 +1775,7 @@ const AUTO_BOND_4 = 12;
 const AUTO_SKILL_MARGIN = 8;
 
 function autoAttrWeight(state, key) {
-  const trib = TRIBS[state.run.realm];
+  const trib = tribPlan(state)[state.run.realm];
   if (!trib) return 1;
   return trib.tests.indexOf(key) >= 0 ? 3 : 1.5;
 }
@@ -1576,7 +1795,7 @@ function autoBuildWorth(state, skills) {
     SKILL_STATS.forEach((st) => {
       if (!skill[st.key]) return;
       const weight = ATTRS.indexOf(st.key) >= 0 ? autoAttrWeight(state, st.key) : AUTO_WORTH[st.key];
-      total += skill[st.key] * entry.level * weight;
+      total += skill[st.key] * entry.level * weight * pathMult(run, skill);
     });
   });
   SCHOOL_IDS.forEach((k) => {
@@ -1651,7 +1870,8 @@ function autoOptionScore(state, opt) {
   const years = optionYears(state, opt);
   const left = choiceYearsLeft(state);
   const cost = optionCost(state, opt);
-  if (cost > run.qi) return null;
+  // 没选过的选项不知道后果，自动机缘不替玩家去试。
+  if (cost > run.qi || !optionKnown(state, opt)) return null;
   const fixed = autoFxWorst(state, opt.fx || {});
   const win = autoFxWorst(state, opt.risk ? opt.risk.win : {});
   const lose = autoFxWorst(state, opt.risk ? opt.risk.lose : {});
@@ -1693,8 +1913,8 @@ function autoPick(state) {
       bestScore = score;
     }
   });
-  if (FALLBACK_YEARS < choiceYearsLeft(state)) {
-    const score = (isFull(state) ? 0 : 10 * fallbackQi(state) * (run.aftermath && run.aftermath.id === 'meridian' ? 0.7 : 1)) - FALLBACK_YEARS * autoYearWeight(state);
+  if (fallbackYears(state) < choiceYearsLeft(state)) {
+    const score = (isFull(state) ? 0 : 10 * fallbackQi(state) * (run.aftermath && run.aftermath.id === 'meridian' ? 0.7 : 1)) - fallbackYears(state) * autoYearWeight(state);
     if (score > bestScore) best = -1;
   }
   return best;
@@ -1977,7 +2197,7 @@ function retreatSea(state) {
 function tribulationChance(state, ratio) {
   const run = state.run;
   return clamp(0.15 + 0.7 * ratio - 0.03 * Math.floor(run.demon / 10) +
-    (hasSet(run, 'sword', 2) ? 0.1 : 0) + 0.03 * lampLevel(state, 'm2') + sumSkills(run, 'trib') + run.tribBoon, 0.05, 0.98);
+    (hasSet(run, 'sword', 2) ? 0.1 : 0) + 0.03 * lampLevel(state, 'm2') + sumSkills(run, 'trib') + run.tribBoon - HEAVEN_TRIB * run.heaven, 0.05, 0.98);
 }
 
 function tribulationTerms(state, trib) {
@@ -1998,6 +2218,7 @@ function tribulationTerms(state, trib) {
 function enterNextRealm(state, info, lines) {
   const run = state.run;
   run.realm++;
+  run.realmChoices = 0;
   run.stage = 0;
   run.qi = 0;
   run.lifeFlat += info.lifeBonus;
@@ -2019,17 +2240,18 @@ function yuanTrialView(state) {
   const sea = run.sea;
   if (run.phase !== 'alive' || run.mode === 'demon' || run.realm !== SEA_REALM || !sea || !sea.landed) return null;
   const trib = TRIBS[run.realm];
+  const req = tribReq(state, trib);
   const terms = tribulationTerms(state, trib);
   const route = findById(SEA_ROUTES, sea.route);
   const a = attrs(state);
   const options = [];
-  const chanceFor = (value) => tribulationChance(state, clamp(value / trib.req, 0, 1.2));
+  const chanceFor = (value) => tribulationChance(state, clamp(value / req, 0, 1.2));
   const attribute = (key, label) => {
-    options.push({ id: key, label: label, chance: chanceFor(a[key]), desc: ATTR_NAMES[key] + ' ' + a[key] + ' / ' + trib.req });
+    options.push({ id: key, label: label, chance: chanceFor(a[key]), desc: ATTR_NAMES[key] + ' ' + a[key] + ' / ' + req });
   };
   const prepared = (id, label, years, chances) => {
     const cost = choiceCosts(state, years, chances);
-    options.push({ id: id, label: label, chance: 1, years: years, chances: chances, desc: cost.desc.join(' · '), note: cost.reason, disabled: !!cost.reason });
+    options.push({ id: id, label: label, chance: clamp(1 - HEAVEN_PREPARED * run.heaven, 0.05, 1), years: years, chances: chances, desc: cost.desc.join(' · '), note: cost.reason, disabled: !!cost.reason });
   };
   if (sea.saltPassed) {
     attribute('mind', '凭道心守住本名');
@@ -2045,7 +2267,7 @@ function yuanTrialView(state) {
       options.push({
         id: 'anchor', label: '以「' + route.anchor + '」定潮', chances: 8,
         chance: chanceFor(a[key] + SALT_ANCHOR_BONUS),
-        desc: ATTR_NAMES[key] + ' ' + a[key] + ' + ' + SALT_ANCHOR_BONUS + ' / ' + trib.req + ' · ' + cost.desc.join(' · '),
+        desc: ATTR_NAMES[key] + ' ' + a[key] + ' + ' + SALT_ANCHOR_BONUS + ' / ' + req + ' · ' + cost.desc.join(' · '),
         note: cost.reason, disabled: !!cost.reason
       });
     }
@@ -2099,16 +2321,18 @@ function tribulationInfo(state) {
   const trib = TRIBS[run.realm];
   if (!trib || trib.seaTrial) return null;
   const a = attrs(state);
+  const plan = tribPlan(state)[run.realm];
   let ratio = 0;
-  trib.tests.forEach((k) => {
-    ratio += Math.min(Math.max(a[k], 0) / trib.req, 1.2);
+  plan.tests.forEach((k) => {
+    ratio += Math.min(Math.max(a[k], 0) / plan.req, 1.2);
   });
-  ratio /= trib.tests.length;
+  ratio /= plan.tests.length;
   const baseChance = tribulationChance(state, ratio);
   return Object.assign(tribulationTerms(state, trib), {
     name: trib.name,
-    tests: trib.tests,
-    req: trib.req,
+    aspect: plan.aspect,
+    tests: plan.tests,
+    req: plan.req,
     chance: baseChance,
     borrowChance: clamp(baseChance + BORROW_TRIB, 0.05, 0.98),
     borrowReady: run.chance >= BORROW_CHANCE,
@@ -2219,10 +2443,6 @@ function lampCost(state, id) {
   return lamp.cost * Math.pow(2, lampLevel(state, id));
 }
 
-function lampMaxed(state, id) {
-  return lampLevel(state, id) >= findById(LAMPS, id).max;
-}
-
 function buyLamp(state, id) {
   if (!findById(LAMPS, id) || lampMaxed(state, id)) return false;
   const cost = lampCost(state, id);
@@ -2298,6 +2518,7 @@ function normalizeRun(state, raw, rng) {
   const phase = raw.phase;
   if (phase !== 'alive' && phase !== 'dead') {
     if (findById(FATES, raw.fate)) run.fate = raw.fate;
+    if (validAspects(raw.tribs)) run.tribs = validAspects(raw.tribs);
     if (phase === 'root' && Array.isArray(raw.rootChoices)) {
       const choices = [];
       raw.rootChoices.forEach((id) => {
@@ -2325,6 +2546,7 @@ function normalizeRun(state, raw, rng) {
   run.mode = raw.mode === 'demon' ? 'demon' : 'human';
   run.fallAge = Math.min(run.age, toCount(raw.fallAge));
   run.demonLife = toCount(raw.demonLife);
+  run.powders = toCount(raw.powders, POWDER_MAX);
   run.speed = Math.max(0, toNumber(raw.speed));
   const stats = raw.stats || {};
   ATTRS.forEach((k) => {
@@ -2339,6 +2561,11 @@ function normalizeRun(state, raw, rng) {
     });
   }
   run.choices = toCount(raw.choices);
+  run.realmChoices = toCount(raw.realmChoices, run.choices);
+  // 更新前已经开始的这一世沿用原来的考核，不补抽劫相。
+  run.tribs = validAspects(raw.tribs) || TRIB_ASPECTS.slice(0, SEA_REALM).map((aspect) => aspect.id);
+  run.heaven = toCount(raw.heaven, state.heavenMax);
+  run.path = SCHOOLS[raw.path] && run.realm >= 1 ? raw.path : '';
   if (run.realm >= SEA_REALM) mountain.normalizeRunMountain(run, raw, run.realm > SEA_REALM, toCount);
   if (Array.isArray(raw.karma)) {
     raw.karma.forEach((k) => {
@@ -2397,6 +2624,7 @@ function normalizeRun(state, raw, rng) {
       wick: toCount(death.wick),
       text: toText(death.text, 300)
     };
+    if (toCount(death.heaven, HEAVEN_MAX)) run.death.heaven = toCount(death.heaven, HEAVEN_MAX);
     run.sea = normalizeSea(run, raw.sea);
     return run;
   }
@@ -2424,12 +2652,19 @@ function normalizeState(raw, now, rng) {
   state.wick = toCount(raw.wick);
   state.totalWick = Math.max(toCount(raw.totalWick), state.wick);
   state.lives = toCount(raw.lives);
+  state.heavenMax = toCount(raw.heavenMax, HEAVEN_MAX);
+  state.heaven = toCount(raw.heaven, state.heavenMax);
+  const known = raw.known && typeof raw.known === 'object' ? raw.known : {};
+  EVENTS.forEach((ev) => {
+    const mask = toCount(known[ev.id]) & ((1 << ev.options.length) - 1);
+    if (mask) state.known[ev.id] = mask;
+  });
   state.mountainLegacy = mountain.normalizeArchive(raw.mountainLegacy, state.lives, toCount);
   const best = Math.floor(Number(raw.best));
   state.best = Number.isFinite(best) ? clamp(best, -1, WICK_SCORE.length - 1) : -1;
   const lamps = raw.lamps || {};
   LAMPS.forEach((lamp) => {
-    const level = toCount(lamps[lamp.id], lamp.max);
+    const level = toCount(lamps[lamp.id], lampMax(state, lamp.id));
     if (level) state.lamps[lamp.id] = level;
   });
   if (Array.isArray(raw.epitaphs)) {
@@ -2612,6 +2847,23 @@ module.exports = {
   chooseRoot,
   lampCost,
   lampMaxed,
+  lampMax,
+  TRIB_ASPECTS,
+  PATH_COUNTER,
+  HEAVEN_MAX,
+  tribulationChance,
+  PATH_MAIN,
+  PATH_WEAK,
+  DEEP_LAMPS,
+  tribPlan,
+  tribTerm,
+  pathReady,
+  pathView,
+  choosePath,
+  pathMult,
+  heavenText,
+  setHeaven,
+  knownProgress,
   buyLamp,
   formatNumber,
   formatDuration

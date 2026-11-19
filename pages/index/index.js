@@ -929,7 +929,7 @@ Page({
     if (run.mode === 'demon') {
       line = '魔修：灵气产出 ×' + (1 + game.MAX_DEMON * game.DEMON_QI_RATE) + '，不能渡劫。普通延寿无效，只能服散续命。';
     } else if (info) {
-      line = info.name + '：考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + '，各需 ' + info.req +
+      line = info.name + (info.aspect ? '「' + info.aspect + '」' : '') + '：考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req +
         '。当前成功率 ' + percent(info.chance) + '%';
     } else if (boarding) {
       line = '枯海沉舟 · 潮位 ' + run.sea.tide + ' / ' + game.SEA_TIDE_LIMIT;
@@ -967,7 +967,13 @@ Page({
     const quest = run.sect && run.sect.quest;
     const mountainNotice = s.mountainLegacy ? '旧山门来信 · 可回山' :
       (quest && quest.outcome && !quest.after && quest.due <= run.mountainChoices ? '寒潮退去 · 弟子来报' : '');
+    const term = game.tribTerm(s);
+    const path = !boarding && game.pathReady(s);
     return {
+      term: run.mode === 'demon' ? '' : (term.overdue ? '劫期已过 ' + (term.used - term.term) + ' 次：每次机缘多折 ' + term.years + ' 年寿元' : '劫期：这一境界还能从容做 ' + term.left + ' 次机缘'),
+      termOver: term.overdue,
+      path: path ? '择道' : '',
+      pathSub: '定下这一世主修哪一系',
       line: line,
       title: title,
       sub: sub,
@@ -980,7 +986,7 @@ Page({
       mountainTitle: mountain ? (run.sect ? run.sect.name : (run.cave ? '洞府与山门' : '洞府')) : '',
       mountainSub: mountain ? (mountainNotice || '灵材 ' + run.materials + (run.sect ? ' · 管理宗门' : (run.cave ? ' · 修建设施' : ' · 开辟洞府'))) : '',
       powder: powder.visible ? '服散续命' : '',
-      powderSub: powder.visible ? '耗 ' + game.formatNumber(powder.cost) + ' 灵气，燃寿 +' + powder.years + ' 年' : '',
+      powderSub: powder.visible ? (powder.left ? '耗 ' + game.formatNumber(powder.cost) + ' 灵气，燃寿 +' + powder.years + ' 年，还能服 ' + powder.left + ' 次' : '这一世已经服不动了') : '',
       powderOff: !powder.ready
     };
   },
@@ -1039,14 +1045,14 @@ Page({
     const rows = [].concat(
         sec('怎么玩', [
           '灵气自己涨，离线也涨，不用点。',
-          '你要做的只有一件事：翻开机缘，在几个选项里挑一个。每个选项都写明了代价和收益。',
+          '你要做的只有一件事：翻开机缘，在几个选项里挑一个。选过的选项会写明代价和收益；没选过的只写牵涉哪几样，后果要亲自试一次才知道，试过就永远记得（跨世保留）。',
           '寿元只在做选择时流逝，挂机和离线都不扣。寿元耗尽就身死，然后带着灯芯重来。'
         ]),
         sec('机缘', [
           '每 ' + game.formatDuration(Math.round(game.chanceInterval(s))) + '攒 1 次，最多存 ' + game.maxChance(s) + ' 次，离线也攒。',
           '传承：学功法或升品。奇遇：有风险的交易，成功率写在选项上。因果：现在种因，几次选择之后结果。闲事：小得小失。',
           '拿不准就选“闭关不理”，耗 1 年换一点灵气。也可以点“稍后再选”先收起来。',
-          '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，渡劫、坐化和投胎仍由你决定。',
+          '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，没见过后果的选项他也不碰（只会闭关）；择道、渡劫、坐化和投胎仍由你决定。',
           '有些事件会直接给机缘次数，或提高这一世的机缘积攒速度；当前速度显示在顶部和“轮回”页。',
           '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：没有选项，点了当场随机落下一件事，不耗寿元。可能是好事（一门功法直接练到天品、灯芯自己长一截、年轻十岁、下一场天劫多两成把握），可能说不准（锋躯神换位置、命格被换、一梦十年），也可能是坏事（功法跌一品、机缘少一半、多一张丹盟的欠条），但不会直接寿尽或入魔。进度和次数跨世保留。'
         ]),
@@ -1069,11 +1075,13 @@ Page({
           '同一系凑到 2 门、4 门各触发一条羁绊，效果写在“功法”页。',
           '一世最多持有 ' + game.maxSkills(s) + ' 门，点亮灯纹“博闻”可以再加；偶尔遇到的“奇缘”也能给这一世加，最多 ' + game.MAX_EXTRA_SLOTS + ' 门。满了再学要换掉一门，可以先收起面板看看羁绊再决定。',
           '同系两门天品可以在功法卡上合成一门秘法：只占 1 格，全部数值效果约为两者之和的 1.2 倍，不能拆分。',
-          '建议主修一两系凑羁绊，比每系都学一点强。'
+          '建议主修一两系凑羁绊，比每系都学一点强。',
+          '择道：引气之后可以定一系主修。主修一系的功法效果 ×' + game.PATH_MAIN + '，被它克制的一系 ×' + game.PATH_WEAK + '（剑克符、符克体、体克运、运克丹、丹克剑），传承里主修的功法也更常见。定了这一世不能改，所以要看这一世天劫考什么再定。'
         ]),
         sec('境界与渡劫', [
           '凡胎、引气、筑基、金丹、元婴，各分前、中、后期。小境界灵气满了自动突破。',
-          '前三场天劫各考锋、躯、神中的两项，“功法”页会标出需要多少。',
+          '前三场天劫每一世的“劫相”都不同：有的考两项，有的只考一项但要求高出三成多。主界面和“功法”页会标出这一场考什么、需要多少。',
+          '劫期：每个境界只能从容做一定次数的机缘（主界面写着还剩几次）。过了劫期，每次机缘都多折寿元，越拖越重。所以不能无限攒属性，要估着劫期决定什么时候渡劫。',
           '前三场天劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功保命（折寿 10 年，保住一半灵气）。',
           '成功率低就先别渡，多翻几次机缘把被考的属性堆上去；寿元不够时也可以主动散功保命。'
         ]),
@@ -1089,7 +1097,7 @@ Page({
         ]),
         sec('心魔', [
           '贪心的选项会涨心魔。每 10 点心魔降低 3% 渡劫成功率。',
-          '满 ' + game.MAX_DEMON + ' 不再立即身死，而是转魔修：灵气产出 ×5，不能渡劫，普通延寿无效，只能耗灵气服散续命。十年后魔躯燃尽，身死灯芯仍 ×1.5。',
+          '满 ' + game.MAX_DEMON + ' 不再立即身死，而是转魔修：灵气产出 ×5，不能渡劫，普通延寿无效，只能耗灵气服散续命（每次 +3 年，一世最多 3 次）。十年后魔躯燃尽，身死灯芯仍 ×1.5。',
           '有些闲事和因果能降心魔，别全跳过。'
         ]),
         sec('战力与竞技场', [
@@ -1105,7 +1113,8 @@ Page({
           '根骨分凡、良、珍、绝、仙、神六档，底色各不相同。两到五种根骨可能长在同一个人身上，加成相加，种数越多越稀有；另有几副不靠拼凑的稀有根骨。',
           '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
           '寿元快到头又渡不过劫时，可以在“轮回”页主动坐化，直接结算。',
-          '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。'
+          '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。',
+          '重天：在已开的最高一重天修到元婴圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1。投胎时可以选去哪一重。'
         ]),
         sec('角色在干什么', [
           '中间的小人是你这一世的肉身。衣服颜色跟境界走，腰带颜色是你主修的那一系。',
@@ -1225,7 +1234,7 @@ Page({
     return {
       kind: 'trib',
       title: info.name,
-      text: '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + '，各需 ' + info.req + '。选一种渡法，选定即引下天雷。',
+      text: (info.aspect ? '这一世的劫相是「' + info.aspect + '」：' : '') + '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req + '。选一种渡法，选定即引下天雷。',
       options: [
         {
           id: 'endure',
@@ -1418,6 +1427,8 @@ Page({
       return {
         fate: fate ? { name: fate.name, desc: fate.desc, text: fate.text } : null,
         kind: 'root',
+        heavens: s.heavenMax ? Array.from({ length: s.heavenMax + 1 }, (_, i) => ({ level: i, name: i ? '第 ' + i + ' 重天' : '凡天', on: run.heaven === i })) : [],
+        heavenText: game.heavenText(run.heaven),
         title: s.lives ? '你又在灯旁醒来' : '你在一盏灯旁醒来',
         text: '又是一个刚出生的人。挑一副这一世的根骨，底色越亮越稀有。不满意可以换一批：',
         rolls: run.rootRolls,
@@ -1467,6 +1478,13 @@ Page({
       if (mountain) return Object.assign({ kind: 'mountain' }, mountain);
     }
     if (this.tribOpen && run.phase === 'alive') return this.tribulationView();
+    if (this.pathOpen) {
+      const path = game.pathView(s);
+      if (path) {
+        const plan = game.tribPlan(s).slice(run.realm).map((t) => t.name + (t.aspect ? '「' + t.aspect + '」' : '') + '考' + t.tests.map((k) => game.ATTR_NAMES[k]).join('') + ' ' + t.req).join('；');
+        return Object.assign({ kind: 'path', plan: '这一世剩下的天劫：' + plan }, path);
+      }
+    }
     if (this.mergeOpen && run.phase === 'alive') return this.mergeView();
     if (run.pending && !this.replaceHidden) {
       const skill = game.skillInfo(run.pending.id);
@@ -1544,7 +1562,7 @@ Page({
       patch.attrs = game.ATTRS.map((k) => ({
         name: game.ATTR_NAMES[k],
         value: a[k],
-        need: info && info.tests.indexOf(k) >= 0 ? info.req : (yuan ? yuan.req : 0)
+        need: info ? (info.tests.indexOf(k) >= 0 ? info.req : 0) : (yuan ? game.tribPlan(s)[run.realm].req : 0)
       }));
       patch.sets = game.SCHOOL_IDS.map((id) => {
         const school = game.SCHOOLS[id];
@@ -1574,18 +1592,22 @@ Page({
           branch: lamp.branch,
           name: lamp.name,
           desc: lamp.desc + (lamp.max > 1 ? '（每级）' : ''),
-          levelText: game.lampLevel(s, lamp.id) + ' / ' + lamp.max,
+          levelText: game.lampLevel(s, lamp.id) + ' / ' + game.lampMax(s, lamp.id),
           maxed: maxed,
           costText: game.formatNumber(cost),
           affordable: !maxed && s.wick >= cost
         };
       });
     } else {
+      const seen = game.knownProgress(s);
       const best = s.best < 0 ? '无' : game.REALMS[Math.floor(s.best / game.STAGES.length)].name + game.STAGES[s.best % game.STAGES.length].name;
       patch.stats = [
         { label: '已经历', value: s.lives + ' 世' },
         { label: '身死时的最高境界', value: best },
         { label: '累计灯芯', value: game.formatNumber(s.totalWick) },
+        { label: '重天', value: (run.heaven ? '这一世在第 ' + run.heaven + ' 重天' : '这一世在凡天') + '，已开到第 ' + s.heavenMax + ' / ' + game.HEAVEN_MAX + ' 重' },
+        { label: '见闻', value: '机缘选项已见过 ' + seen.known + ' / ' + seen.total + ' 个' },
+        { label: '这一世的主修', value: run.path ? game.SCHOOLS[run.path].name + '系（克' + game.SCHOOLS[game.PATH_COUNTER[run.path]].name + '系）' : (run.phase === 'alive' && run.realm >= 1 ? '还没择道' : '-') },
         { label: '这一世的根骨', value: run.phase === 'root' ? '-' : game.rootInfo(run.root).name + '（' + game.ROOT_RARITIES[game.rootInfo(run.root).rarity].name + '骨）' },
         { label: '这一世的命格', value: run.phase === 'root' ? '-' : (game.FATES.filter((f) => f.id === run.fate)[0] || { name: '无（旧世）' }).name },
         { label: '这一世的道路', value: run.phase === 'root' ? '-' : (run.mode === 'demon' ? '魔修' : '常规修行') },
@@ -1648,6 +1670,27 @@ Page({
       return;
     }
     this.finishChoice(result);
+  },
+
+  onPath() {
+    if (this.act === 'thunder' || !game.pathReady(this.state)) return;
+    audio.play('tap');
+    this.pathOpen = true;
+    this.eventOpen = false;
+    this.refresh();
+  },
+
+  onPathPick(e) {
+    const result = game.choosePath(this.state, e.currentTarget.dataset.id);
+    if (!result) return;
+    this.pathOpen = false;
+    this.finishChoice(result);
+  },
+
+  onHeaven(e) {
+    if (!game.setHeaven(this.state, Number(e.currentTarget.dataset.level))) return;
+    audio.play('tap');
+    this.afterAction();
   },
 
   onRoot(e) {
@@ -1751,6 +1794,7 @@ Page({
     this.seaOpen = false;
     this.mountainPanel = '';
     this.tribOpen = false;
+    this.pathOpen = false;
     this.mergeOpen = false;
     this.bracing = false;
     if (this.state.run.pending) this.replaceHidden = true;
