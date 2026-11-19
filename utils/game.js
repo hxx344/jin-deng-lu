@@ -77,7 +77,7 @@ const WAKES = {
 };
 const WAKE_WIN = 0.1;
 const TYPE_WEIGHTS = [['legacy', 0.4], ['adventure', 0.3], ['karma', 0.2], ['idle', 0.06], ['rare', 0.04]];
-const TYPE_NAMES = { legacy: '传承', big: '大机缘', adventure: '奇遇', karma: '因果', fruit: '因果', idle: '闲事', rare: '奇缘', story: '故事', omen: '征兆', sudden: '突发' };
+const TYPE_NAMES = { legacy: '传承', adventure: '奇遇', karma: '因果', fruit: '因果', idle: '闲事', rare: '奇缘', story: '故事', omen: '征兆', sudden: '突发' };
 const ATTRS = ['edge', 'body', 'mind'];
 const ATTR_NAMES = { edge: '锋', body: '躯', mind: '神' };
 // 按“境界 × 3 + 小境界”取基础值；圆满奖励由各境界单独定义。
@@ -663,15 +663,15 @@ function eventDef(state) {
   if (ev.kind === 'legacy') {
     const intro = LEGACY_INTROS[ev.intro];
     return {
-      type: ev.big ? 'big' : 'legacy',
+      type: 'legacy',
       title: intro.title,
-      text: ev.big ? '十次机缘攒下的缘分凝成一团，落在你面前。' + intro.text + '这一回的东西比平常好，而且不耗寿元。' : intro.text,
+      text: intro.text,
       options: ev.offers.map((o) => {
         const skill = skillInfo(o.id);
         const owned = skillEntry(run, o.id);
         return {
           label: owned ? '精进《' + skill.name + '》至' + GRADES[o.level - 1] + '品' : '修习《' + skill.name + '》',
-          years: ev.big ? 0 : legacyYears(state),
+          years: legacyYears(state),
           learn: o
         };
       })
@@ -787,7 +787,7 @@ function dampNewSkills(state, pool, weights) {
   });
 }
 
-// big 为真时是大机缘：多一个选项，品阶高一品。
+// big 为真时给大机缘用：多一个候选，品阶高一品。
 function legacyOffers(state, rng, big) {
   const run = state.run;
   const counts = setCounts(run);
@@ -863,22 +863,19 @@ function generateEvent(state, rng, forcedType, excludeId) {
   }
   // 额外功法位加满后没有奇缘可给，当闲事处理。
   if (type === 'rare' && !EVENTS.some((e) => e.type === 'rare' && eligible(e))) type = 'idle';
-  if (type !== 'legacy' && type !== 'big') {
+  if (type !== 'legacy') {
     let pool = EVENTS.filter((e) => e.type === type && eligible(e));
     const fresh = pool.filter((e) => run.recent.indexOf(e.id) < 0);
     if (fresh.length) pool = fresh;
     if (pool.length) return { kind: 'event', id: pick(pool, rng).id };
   }
-  const big = forcedType === 'big';
-  const offers = legacyOffers(state, rng, big);
+  const offers = legacyOffers(state, rng, false);
   if (offers.length) {
     const intros = [];
     LEGACY_INTROS.forEach((intro, i) => {
       if (intro.layer === layer) intros.push(i);
     });
-    const ev = { kind: 'legacy', intro: pick(intros, rng), offers: offers };
-    if (big) ev.big = true;
-    return ev;
+    return { kind: 'legacy', intro: pick(intros, rng), offers: offers };
   }
   // 功法全部满品时没有传承可给，退回闲事。
   return { kind: 'event', id: pick(EVENTS.filter((e) => e.type === 'idle' && !e.trigger && e.id !== excludeId), rng).id };
@@ -898,23 +895,80 @@ function drawEvent(state, rng) {
   return true;
 }
 
+// 大机缘不给选项，按权重随机落下一种结果，好坏都有。坏结果不会直接让人寿尽或入魔。
+const BIG_LIFE_LOSS = 8;
+const BIG_DEMON = 15;
+const BIG_QI_LOSS = 0.3;
+const BIG_OUTCOMES = [
+  { id: 'skill', weight: 30, label: '缘分落成了一门功法' },
+  { id: 'qi', weight: 14, label: '缘分化成灵气，灌进丹田', fx: { qi: 1 } },
+  { id: 'attrs', weight: 12, label: '缘分把筋骨和神魂都洗了一遍', fx: { edge: 3, body: 3, mind: 3 } },
+  { id: 'life', weight: 8, label: '缘分续上了一截寿数', fx: { life: 20 } },
+  { id: 'chance', weight: 8, label: '缘分碎成了一把小机缘', fx: { chance: 12 } },
+  { id: 'wither', weight: 10, bad: true, label: '缘分太重，压折了一截寿数' },
+  { id: 'demon', weight: 10, bad: true, label: '缘分里掺着别人的执念' },
+  { id: 'drain', weight: 8, bad: true, label: '缘分是空的，反倒吸走了一些灵气' }
+];
+
 function canDrawBig(state) {
   const run = state.run;
-  if (run.phase !== 'alive' || atSea(run) || run.event || run.pending || run.sudden || state.big < 1) return false;
-  // 功法全部满品时没有东西可给，大机缘先留着。
-  return SKILLS.some((skill) => {
-    const owned = skillEntry(run, skill.id);
-    return !owned || owned.level < MAX_GRADE;
-  });
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.sudden && state.big >= 1;
 }
 
-function drawBig(state, rng) {
-  if (!canDrawBig(state)) return false;
+// 大机缘给的功法：比普通传承高一品。学了会寿尽的不给；功法全部满品时返回 null。
+function bigSkill(state, rng) {
   const run = state.run;
+  const offers = legacyOffers(state, rng, true);
+  for (let i = 0; i < offers.length; i++) {
+    const owned = skillEntry(run, offers[i].id);
+    if (!owned && run.skills.length >= maxSkills(state)) return offers[i];
+    const next = run.skills.filter((s) => s !== owned);
+    next.push(offers[i]);
+    if (withSkills(state, next, () => maxLife(state)) > run.age) return offers[i];
+  }
+  return null;
+}
+
+// 用掉一次大机缘并当场结算，返回和 choose 相同形状的结果；用不了时返回 null。
+function drawBig(state, rng) {
+  if (!canDrawBig(state)) return null;
+  const run = state.run;
+  const before = snapshot(state);
+  const beforeStage = run.realm * STAGES.length + run.stage;
+  const learn = bigSkill(state, rng);
+  // 体系羁绊会把寿元上限放大两成，折寿按放大后留出至少一年。
+  const years = Math.min(BIG_LIFE_LOSS, Math.floor((yearsLeft(state) - 1) / 1.2));
+  const demon = run.mode === 'demon' ? 0 : Math.min(BIG_DEMON, MAX_DEMON - 1 - run.demon);
+  const drain = Math.round(run.qi * BIG_QI_LOSS);
+  const usable = {
+    skill: !!learn, qi: !isFull(state), attrs: true, life: run.mode !== 'demon', chance: true,
+    wither: years >= 1, demon: demon >= 1, drain: drain >= 1
+  };
+  const pool = BIG_OUTCOMES.filter((o) => usable[o.id]);
+  const outcome = sample(pool, pool.map((o) => o.weight), 1, rng)[0];
+  const lines = [];
+  const tags = ['big'];
   state.big -= 1;
-  run.event = generateEvent(state, rng, 'big');
-  run.event.rerolls = hasSet(run, 'talisman', 2) ? 1 : 0;
-  return true;
+  if (outcome.id === 'skill') {
+    gainSkill(state, learn.id, learn.level, lines, tags);
+  } else if (outcome.id === 'wither') {
+    applyFx(state, { life: -years }, rng, lines, tags);
+  } else if (outcome.id === 'demon') {
+    applyFx(state, { demon: demon }, rng, lines, tags);
+  } else if (outcome.id === 'drain') {
+    run.qi -= drain;
+    lines.push('灵气 -' + formatNumber(drain));
+  } else {
+    applyFx(state, outcome.fx, rng, lines, tags);
+  }
+  if (outcome.bad) tags.push('lose');
+  if (run.realm * STAGES.length + run.stage > beforeStage) maybeSudden(state, rng, 'meridian');
+  maybeSudden(state, rng, 'fortune');
+  run.lastTitle = '大机缘';
+  run.log.push({ age: run.age, title: '大机缘', text: outcome.label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  const dead = checkDeath(state);
+  return { title: '大机缘', label: outcome.label, lines: lines, tags: tags, dead: dead };
 }
 
 function rerollEvent(state, rng) {
@@ -924,7 +978,7 @@ function rerollEvent(state, rng) {
   let rerolls = old.rerolls || 0;
   if (rerolls > 0) rerolls--;
   else run.freeRerolls--;
-  const type = old.kind === 'legacy' ? (old.big ? 'big' : 'legacy') : findById(EVENTS, old.id).type;
+  const type = old.kind === 'legacy' ? 'legacy' : findById(EVENTS, old.id).type;
   run.event = generateEvent(state, rng, type, old.id);
   run.event.rerolls = rerolls;
   return true;
@@ -1211,7 +1265,7 @@ function choose(state, index, rng) {
   const beforeStage = run.realm * STAGES.length + run.stage;
   const beforeMarks = run.marks.length;
   const lines = [];
-  const tags = def.type === 'fruit' ? ['fruit'] : (def.type === 'big' ? ['big'] : []);
+  const tags = def.type === 'fruit' ? ['fruit'] : [];
   let label;
   let wake = '';
   if (index === -1) {
@@ -1261,14 +1315,12 @@ function choose(state, index, rng) {
     run.demon -= soothe;
     lines.push('心魔 -' + soothe);
   }
-  if (def.type !== 'big') {
-    state.bigCount++;
-    if (state.bigCount >= BIG_EVERY) {
-      state.bigCount = 0;
-      state.big = Math.min(MAX_BIG, state.big + 1);
-      lines.push('做满 ' + BIG_EVERY + ' 次机缘，得大机缘 +1');
-      tags.push('bigup');
-    }
+  state.bigCount++;
+  if (state.bigCount >= BIG_EVERY) {
+    state.bigCount = 0;
+    state.big = Math.min(MAX_BIG, state.big + 1);
+    lines.push('做满 ' + BIG_EVERY + ' 次机缘，得大机缘 +1');
+    tags.push('bigup');
   }
   if (def.stage === 'omen') {
     run.sudden = { id: def.trigger, stage: 'event' };
@@ -1280,9 +1332,9 @@ function choose(state, index, rng) {
     run.suddenCooldown = SUDDEN_COOLDOWN;
     lines.push('余波：' + suddenInfo(def.trigger).text + '，持续三次普通机缘');
   } else {
-    if (def.type !== 'big') advanceAftermath(run);
+    advanceAftermath(run);
     if (run.realm * STAGES.length + run.stage > beforeStage) maybeSudden(state, rng, 'meridian');
-    if (def.type === 'big' || (run.realm >= 1 && run.chance >= maxChance(state) * 0.9)) maybeSudden(state, rng, 'fortune');
+    if (run.realm >= 1 && run.chance >= maxChance(state) * 0.9) maybeSudden(state, rng, 'fortune');
     if (run.marks.length > beforeMarks) maybeSudden(state, rng, 'debt', beforeMarks);
   }
   run.lastTitle = def.title;
@@ -1481,7 +1533,7 @@ function autoResolve(state) {
   return text;
 }
 
-// 自动走一步：先取舍等着的功法，否则翻开机缘（大机缘优先）并做出选择。无事可做时返回 null。
+// 自动走一步：先取舍等着的功法，否则先用大机缘，再翻开机缘并做出选择。无事可做时返回 null。
 // stuck 为真表示这个机缘没有稳妥的选项，留在原处等玩家决定。
 function autoStep(state, rng) {
   const run = state.run;
@@ -1491,7 +1543,14 @@ function autoStep(state, rng) {
     out.replaced = autoResolve(state);
     return out;
   }
-  if (!run.event && !drawBig(state, rng) && !drawEvent(state, rng)) return null;
+  if (!run.event) {
+    out.result = drawBig(state, rng);
+    if (out.result) {
+      if (run.pending) out.replaced = autoResolve(state);
+      return out;
+    }
+    if (!drawEvent(state, rng)) return null;
+  }
   const index = autoPick(state);
   out.result = index === null ? null : choose(state, index, rng);
   if (!out.result) {
@@ -1998,16 +2057,15 @@ function normalizeEvent(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const rerolls = toCount(raw.rerolls, 1);
   if (raw.kind === 'legacy') {
-    if (!LEGACY_INTROS[raw.intro] || !Array.isArray(raw.offers)) return null;
+    // 旧版大机缘是待选的传承，现在当场结算；存档里留着的作废，由调用方退还次数。
+    if (raw.big === true || !LEGACY_INTROS[raw.intro] || !Array.isArray(raw.offers)) return null;
     const offers = [];
     raw.offers.slice(0, 5).forEach((o) => {
       if (!o || !findById(SKILLS, o.id) || findById(offers, o.id)) return;
       offers.push({ id: o.id, level: clamp(toCount(o.level), 1, MAX_GRADE) });
     });
     if (!offers.length) return null;
-    const legacy = { kind: 'legacy', intro: raw.intro, offers: offers, rerolls: rerolls };
-    if (raw.big === true) legacy.big = true;
-    return legacy;
+    return { kind: 'legacy', intro: raw.intro, offers: offers, rerolls: rerolls };
   }
   const def = raw.kind === 'event' ? findById(EVENTS, raw.id) : null;
   if (!def) return null;

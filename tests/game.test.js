@@ -1001,8 +1001,8 @@ test('每做完 10 次普通机缘的选择得一次大机缘，进度跨世保�
   assert.strictEqual(s.bigCount, 0);
   assert.strictEqual(s.big, 1);
   // 大机缘本身不计入进度
-  game.drawBig(s, mulberry(2));
-  game.choose(s, 0, () => 0);
+  assert.ok(game.drawBig(s, mulberry(2)));
+  assert.strictEqual(s.big, 0);
   assert.strictEqual(s.bigCount, 0);
   s.big = 4;
   s.bigCount = 7;
@@ -1014,44 +1014,96 @@ test('每做完 10 次普通机缘的选择得一次大机缘，进度跨世保�
   assert.strictEqual(loaded.big, 99);
   assert.strictEqual(loaded.bigCount, 9);
 });
-test('大机缘：消耗一次大机缘，多一个选项、高一品、不耗寿元，可重抽', () => {
+test('大机缘：消耗一次、当场随机结算，不给选项、不耗寿元和机缘', () => {
   const s = born();
   assert.strictEqual(game.canDrawBig(s), false);
-  assert.strictEqual(game.drawBig(s, () => 0), false);
+  assert.strictEqual(game.drawBig(s, () => 0), null);
   s.big = 2;
-  give(s, ['ta1', 'ta2']);
   const chance = s.run.chance;
-  const rng = mulberry(5);
-  assert.strictEqual(game.drawBig(s, rng), true);
+  const r = game.drawBig(s, () => 0);
+  assert.strictEqual(r.title, '大机缘');
+  assert.strictEqual(r.dead, false);
+  assert.deepStrictEqual(r.tags.slice(0, 1), ['big']);
+  assert.ok(r.tags.indexOf('lose') < 0);
   assert.strictEqual(s.big, 1);
+  assert.strictEqual(s.run.event, null);
   assert.strictEqual(s.run.chance, chance);
-  assert.strictEqual(game.drawBig(s, rng), false);
-  let v = game.eventView(s);
-  assert.strictEqual(v.typeName, '大机缘');
-  assert.strictEqual(v.options.length, 4);
-  v.options.forEach((o) => assert.strictEqual(o.years, 0));
-  s.run.event.offers.forEach((o) => {
-    const owned = s.run.skills.filter((k) => k.id === o.id)[0];
-    assert.strictEqual(o.level, owned ? 3 : 2);
-  });
-  assert.strictEqual(game.rerollEvent(s, rng), true);
-  assert.strictEqual(s.run.event.big, true);
-  assert.strictEqual(game.eventView(s).options.length, 4);
-  const first = s.run.event.offers[0];
-  const r = game.choose(s, 0, rng);
-  assert.strictEqual(r.tags[0], 'big');
   assert.strictEqual(s.run.age, 0);
-  assert.strictEqual(s.run.skills.filter((k) => k.id === first.id)[0].level, first.level);
+  assert.strictEqual(s.run.choices, 0);
+  // 新功法比普通传承高一品
+  assert.strictEqual(s.run.skills.length, 1);
+  assert.strictEqual(s.run.skills[0].level, 2);
+  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '大机缘');
+  // 已有的功法一次升两品
+  s.run.skills[0].level = 1;
+  assert.ok(game.drawBig(s, () => 0).tags.indexOf('upgrade') >= 0);
+  assert.strictEqual(s.run.skills[0].level, 3);
+});
+test('大机缘：结果有好有坏，坏结果不会直接寿尽或入魔', () => {
+  // 随机数恒定时按权重落在固定的一格：功法 30、灵气 14、属性 12、寿元 8、机缘 8、折寿 10、心魔 10、散灵气 8。
+  const roll = (value) => {
+    const s = born();
+    s.big = 1;
+    s.run.qi = 100;
+    return { s: s, r: game.drawBig(s, () => value) };
+  };
+  let o = roll(0.35);
+  assert.strictEqual(o.r.lines[0], '灵气 +' + game.formatNumber(game.qiCap(born())));
+  o = roll(0.5);
+  assert.deepStrictEqual(o.r.lines, ['锋 +3', '躯 +3', '神 +3']);
+  o = roll(0.6);
+  assert.deepStrictEqual(o.r.lines, ['寿元上限 +20 年']);
+  o = roll(0.7);
+  assert.deepStrictEqual(o.r.lines, ['机缘 +12']);
+  assert.ok(o.r.tags.indexOf('lose') < 0);
+  o = roll(0.75);
+  assert.deepStrictEqual(o.r.lines, ['折寿 8 年']);
+  assert.deepStrictEqual(o.r.tags, ['big', 'life-', 'lose']);
+  assert.strictEqual(game.maxLife(o.s), 52);
+  o = roll(0.85);
+  assert.deepStrictEqual(o.r.lines, ['心魔 +15']);
+  assert.deepStrictEqual(o.r.tags, ['big', 'demon+', 'lose']);
+  assert.strictEqual(o.s.run.demon, 15);
+  o = roll(0.95);
+  assert.deepStrictEqual(o.r.lines, ['灵气 -30']);
+  assert.deepStrictEqual(o.r.tags, ['big', 'lose']);
+  assert.strictEqual(o.s.run.qi, 70);
 
-  // 存档里失效的大机缘退还的是大机缘
-  game.drawBig(s, rng);
-  const raw = JSON.parse(JSON.stringify(s));
-  raw.run.event.offers = [];
+  // 只剩一年寿元、心魔 99 时，怎么抽都不会死也不会入魔
+  const seen = {};
+  for (let seed = 1; seed <= 300; seed++) {
+    const s = born();
+    s.big = 1;
+    s.run.qi = 100;
+    s.run.age = game.maxLife(s) - 1;
+    s.run.demon = 99;
+    const r = game.drawBig(s, mulberry(seed));
+    seen[r.label] = true;
+    assert.strictEqual(r.dead, false);
+    assert.strictEqual(s.run.phase, 'alive');
+    assert.strictEqual(s.run.mode, 'human');
+    if (s.run.pending) continue;
+    assert.ok(game.maxLife(s) > s.run.age);
+  }
+  assert.ok(Object.keys(seen).length >= 5);
+
+  // 功法全部满品时照样能用，只是不会再落成功法
+  const full = born();
+  full.big = 1;
+  game.SKILLS.forEach((k) => full.run.skills.push({ id: k.id, level: game.GRADES.length }));
+  assert.strictEqual(game.canDrawBig(full), true);
+  const skills = JSON.stringify(full.run.skills);
+  assert.ok(game.drawBig(full, () => 0));
+  assert.strictEqual(JSON.stringify(full.run.skills), skills);
+
+  // 旧存档里还没选的大机缘作废，次数退还
+  const old = born();
+  const raw = JSON.parse(JSON.stringify(old));
+  raw.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 2 }], rerolls: 0, big: true };
   const loaded = game.normalizeState(raw, 0, () => 0);
   assert.strictEqual(loaded.run.event, null);
   assert.strictEqual(loaded.big, 1);
-  raw.run.event = JSON.parse(JSON.stringify(s.run.event));
-  assert.strictEqual(game.normalizeState(raw, 0, () => 0).run.event.big, true);
+  assert.strictEqual(loaded.run.chance, old.run.chance);
 });
 test('精进功法时，选项说明并排显示原数值和新数值', () => {
   const s = born();
@@ -1455,8 +1507,9 @@ test('自动机缘：功法已满时换掉最不值的一门，新功法不如�
 test('自动机缘：大机缘优先，没有机缘时无事可做，身死后不动', () => {
   const s = withAuto(born());
   s.big = 1;
-  const step = game.autoStep(s, mulberry(7));
+  const step = game.autoStep(s, () => 0);
   assert.ok(step.result.tags.indexOf('big') >= 0);
+  assert.strictEqual(s.run.event, null);
   assert.strictEqual(s.big, 0);
   assert.strictEqual(s.run.chance, 60);
   assert.strictEqual(s.run.skills.length, 1);
@@ -1686,7 +1739,7 @@ test('枯海：旧档金丹圆满即可登船，普通机缘和离线经过不�
   assert.strictEqual(game.layerName(s.run), '枯海');
   s.big = 1;
   assert.strictEqual(game.drawEvent(s, () => 0), false);
-  assert.strictEqual(game.drawBig(s, () => 0), false);
+  assert.strictEqual(game.drawBig(s, () => 0), null);
   withAuto(s);
   assert.strictEqual(game.autoStep(s, () => 0), null);
   const before = { ...s.run.sea };
@@ -1978,7 +2031,7 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
   assert.deepStrictEqual(s.run.sudden, { id: 'meridian', stage: 'event' });
   s.big = 1;
   assert.strictEqual(game.canDrawBig(s), false);
-  assert.strictEqual(game.drawBig(s, () => 0), false);
+  assert.strictEqual(game.drawBig(s, () => 0), null);
   assert.ok(game.drawEvent(s, () => 0));
   assert.strictEqual(s.run.event.id, 's_meridian');
   assert.strictEqual(game.eventView(s).type, 'sudden');
@@ -1988,8 +2041,8 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
   assert.strictEqual(s.run.suddenCooldown, 4);
 
   // 大机缘不能减少普通机缘的余波和冷却。
-  s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 2 }], rerolls: 0, big: true };
-  game.choose(s, 0, () => 0.99);
+  s.big = 1;
+  assert.deepStrictEqual(game.drawBig(s, () => 0.7).lines, ['机缘 +12']);
   assert.strictEqual(s.run.aftermath.remaining, 3);
   assert.strictEqual(s.run.suddenCooldown, 4);
 
@@ -2057,8 +2110,8 @@ test('突发来源：渡劫、秘法、大机缘、资源溢出和经历累积�
 
   const big = born();
   big.run.realm = 1;
-  big.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 2 }], rerolls: 0, big: true };
-  game.choose(big, 0, () => 0);
+  big.big = 1;
+  assert.ok(game.drawBig(big, () => 0));
   assert.deepStrictEqual(big.run.sudden, { id: 'fortune', stage: 'omen' });
 
   const rich = born();

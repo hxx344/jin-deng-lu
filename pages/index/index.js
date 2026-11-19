@@ -1037,7 +1037,7 @@ Page({
           '拿不准就选“闭关不理”，耗 1 年换一点灵气。也可以点“稍后再选”先收起来。',
           '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，渡劫、坐化和投胎仍由你决定。',
           '有些事件会直接给机缘次数，或提高这一世的机缘积攒速度；当前速度显示在顶部和“轮回”页。',
-          '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：必为传承，多一个选项，功法高一品，不耗寿元。进度和次数跨世保留。'
+          '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：点了当场结算，没有选项，不耗寿元。多半是好事（高一品的功法、灵气、锋躯神、寿元或机缘），也可能折寿、涨心魔或散掉灵气，但不会直接寿尽或入魔。进度和次数跨世保留。'
         ]),
         sec('机缘之间的联动', [
           '余势：上一回的结果会影响紧接着的下一回，机缘面板上会写明。上一回成了，这一回成功率 +10%；没成，这一回折寿减半；闭关了，这一回少耗 1 年。',
@@ -1612,16 +1612,13 @@ Page({
     const s = this.state;
     const run = s.run;
     if (run.phase !== 'alive' || this.act === 'thunder') return;
-    if (!run.event) {
-      if (!game.drawBig(s, Math.random)) {
-        audio.play('bad');
-        this.showBanner(run.pending ? '先把功法取舍了' : '功法都已满品，大机缘先留着');
-        return;
-      }
-      this.play('notice');
+    const result = game.drawBig(s, Math.random);
+    if (!result) {
+      audio.play('bad');
+      this.showBanner(run.pending ? '先把功法取舍了' : (run.event ? '先把眼前的机缘了结' : '突发未了，大机缘先留着'));
+      return;
     }
-    this.eventOpen = true;
-    this.afterAction();
+    this.finishChoice(result);
   },
 
   onRoot(e) {
