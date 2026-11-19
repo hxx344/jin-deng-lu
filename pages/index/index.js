@@ -1,0 +1,1875 @@
+const game = require('../../utils/game');
+const audio = require('../../utils/audio').createAudio(wx);
+const cloudSync = require('../../utils/cloud-sync');
+const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, pickSave, friendlyError } = require('../../utils/cloud-score');
+
+const SAVE_KEY = 'jindeng_save_v1';
+const SAVE_META_KEY = 'jindeng_save_meta_v1';
+const DAO_NAME_KEY = 'jindeng_dao_name_v1';
+const CLOUD_PUSH_INTERVAL_MS = 30000;
+const TICK_MS = 250;
+const SAVE_INTERVAL_MS = 10000;
+const OFFLINE_NOTICE_SEC = 60;
+const BANNER_MS = 2400;
+const HIDDEN_MODAL = { show: false, title: '', content: '', highlight: '', confirmText: '确定', cancelText: '', danger: false };
+const HIDDEN_SHEET = { kind: '' };
+const TIP_KEY = 'jindeng_tip_v1';
+const TIP_INFO = [
+  { at: 'hud', text: '寿元只在做选择时流逝，挂机和离线都不扣。寿元耗尽就身死，带着灯芯重来。' },
+  { at: 'tabs', text: '学到的功法、羁绊和属性都在这几页里。灵气攒满后要渡劫，考的属性会在“功法”页标出来。' },
+  { at: 'help', text: '规则记不清的时候，点右上角的“?”看游戏指南。' }
+];
+const DEFAULT_SASH = '#8a6a4a';
+// 每个临时动作的时长要盖住 wxss 里对应动画的时长，播完才回到常态。
+const ACTIONS = {
+  notice: { ms: 500, bubble: '？' },
+  born: { ms: 900, bubble: '哇' },
+  slash: { ms: 1100, bubble: '剑来' },
+  pill: { ms: 1300, bubble: '嗝' },
+  talisman: { ms: 1300, bubble: '敕' },
+  flex: { ms: 1300, bubble: '喝' },
+  lucky: { ms: 1200, bubble: '嘿' },
+  absorb: { ms: 1300, bubble: '' },
+  seclude: { ms: 1500, bubble: '闭关' },
+  calm: { ms: 1400, bubble: '呼' },
+  karma: { ms: 1500, bubble: '因果' },
+  demon: { ms: 1400, bubble: '……' },
+  hurt: { ms: 900, bubble: '疼' },
+  breakthrough: { ms: 1700, bubble: '破', flare: true },
+  thunder: { ms: 4200, bubble: '', flare: true },
+  die: { ms: 1600, bubble: '', flare: true },
+  possess: { ms: 1600, bubble: '', flare: true },
+  fade: { ms: 1600, bubble: '', flare: true },
+  ash: { ms: 1600, bubble: '', flare: true },
+  yawn: { ms: 1500, bubble: '哈——' },
+  look: { ms: 1700, bubble: '' },
+  doze: { ms: 2300, bubble: 'Zzz' },
+  scratch: { ms: 1300, bubble: '' },
+  wave: { ms: 1300, bubble: '机缘到了' },
+  shake: { ms: 800, bubble: '唉' },
+  shrug: { ms: 1100, bubble: '灵气不够' },
+  divine: { ms: 1300, bubble: '再算一卦' },
+  enlighten: { ms: 1300, bubble: '悟了' },
+  resonate: { ms: 1500, bubble: '成势', flare: true },
+  toss: { ms: 1100, bubble: '舍' },
+  sharpen: { ms: 1000, bubble: '锐' },
+  focus: { ms: 1300, bubble: '明' },
+  renew: { ms: 1300, bubble: '回春' },
+  cough: { ms: 1100, bubble: '咳咳' },
+  cheer: { ms: 1100, bubble: '成了' },
+  brace: { ms: 0, bubble: '' },
+  ascend: { ms: 1900, bubble: '', flare: true },
+  stretch: { ms: 1400, bubble: '回来了' },
+  bow: { ms: 1300, bubble: '谢灯', flare: true },
+  reap: { ms: 1400, bubble: '果然' }
+};
+const DEATH_ACTIONS = { demon: 'possess', trib: 'ash', retire: 'fade', age: 'die' };
+const MUTE_KEY = 'jindeng_mute_v1';
+const AUTO_KEY = 'jindeng_auto_v1';
+// 自动机缘两步之间的间隔，要够角色把上一个动作演完。
+const AUTO_STEP_MS = 1800;
+// 角色做某个动作时配的音效；没列出的动作不出声。
+const SOUNDS = {
+  notice: 'pick', wave: 'pick', born: 'born',
+  slash: 'good', pill: 'good', talisman: 'good', flex: 'good', enlighten: 'good', sharpen: 'good', focus: 'good', renew: 'good', cheer: 'good',
+  absorb: 'qi', seclude: 'qi', calm: 'qi',
+  lucky: 'coin', karma: 'coin', divine: 'coin', reap: 'coin',
+  demon: 'bad', hurt: 'bad', shake: 'bad', shrug: 'bad', cough: 'bad',
+  breakthrough: 'up', ascend: 'up', resonate: 'big', bow: 'lamp', toss: 'tap',
+  thunder: 'thunder', die: 'die', possess: 'die', fade: 'die', ash: 'die'
+};
+// 天劫动画里第三道雷落下的时刻，和 wxss 里 storm-* 动画的 67% 对应。
+const STORM_HIT_MS = 2800;
+const FIDGETS = ['yawn', 'look', 'doze', 'scratch'];
+const FIDGET_MIN_MS = 7000;
+const FIDGET_SPAN_MS = 8000;
+const SKILL_ACTIONS = { sword: 'slash', pill: 'pill', talisman: 'talisman', body: 'flex', luck: 'lucky' };
+
+// 一次结算可能同时发生好几件事，只演最要紧的那一件。
+function actionForTags(tags) {
+  const has = (t) => tags.indexOf(t) >= 0;
+  if (has('lose')) return has('life-') ? 'hurt' : (has('demon+') ? 'demon' : 'shake');
+  if (has('life-')) return 'cough';
+  if (has('stageup')) return 'breakthrough';
+  if (has('big')) return 'resonate';
+  if (has('bigup')) return 'cheer';
+  if (has('bond')) return 'resonate';
+  if (has('upgrade')) return 'enlighten';
+  for (let i = 0; i < tags.length; i += 1) {
+    if (tags[i].indexOf('skill:') === 0) return SKILL_ACTIONS[tags[i].slice(6)] || 'absorb';
+  }
+  if (has('demon+')) return 'demon';
+  if (has('fruit')) return 'reap';
+  if (has('win')) return 'cheer';
+  if (has('body')) return 'flex';
+  if (has('edge')) return 'sharpen';
+  if (has('mind')) return 'focus';
+  if (has('life+')) return 'renew';
+  if (has('karma') || has('mark')) return 'karma';
+  if (has('chance')) return 'lucky';
+  if (has('demon-')) return 'calm';
+  if (has('seclude')) return 'seclude';
+  return 'absorb';
+}
+
+function percent(value) {
+  return Math.round(value * 100);
+}
+
+// 同步时间只显示到秒，够用且不占地方。
+function clockText(ts) {
+  const d = new Date(ts);
+  const p = (n) => (n < 10 ? '0' + n : '' + n);
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+function wrapChars(text, width, maxLines) {
+  const chars = Array.from(String(text || ''));
+  const lines = [];
+  for (let i = 0; i < chars.length && lines.length < maxLines; i += width) {
+    lines.push(chars.slice(i, i + width).join(''));
+  }
+  if (chars.length > width * maxLines && lines.length) {
+    lines[lines.length - 1] = lines[lines.length - 1].slice(0, Math.max(1, width - 1)) + '…';
+  }
+  return lines.length ? lines : [''];
+}
+
+function chronicleLayout(data) {
+  const layout = { width: 750, height: 380, intro: wrapChars(data.intro, 27, 2), rows: [] };
+  data.rows.forEach((row) => {
+    const item = {
+      age: row.age === null ? '年岁未记' : row.age + ' 岁',
+      title: row.title,
+      lines: wrapChars(row.text, 25, 2),
+      detail: row.detail ? wrapChars(row.detail, 29, 1) : []
+    };
+    item.height = 72 + item.lines.length * 38 + item.detail.length * 32 + 26;
+    layout.rows.push(item);
+    layout.height += item.height;
+  });
+  layout.height += layout.intro.length * 36 + 100;
+  return layout;
+}
+
+function drawChronicle(ctx, data, layout) {
+  ctx.fillStyle = '#141116';
+  ctx.fillRect(0, 0, layout.width, layout.height);
+  ctx.fillStyle = '#f5e7ce';
+  ctx.font = 'bold 48px sans-serif';
+  ctx.fillText(data.title, 48, 78);
+  ctx.fillStyle = '#d7a760';
+  ctx.font = '28px sans-serif';
+  ctx.fillText(data.subtitle, 48, 128);
+  ctx.fillStyle = '#b9ae9f';
+  ctx.font = '25px sans-serif';
+  let y = 180;
+  layout.intro.forEach((line) => {
+    ctx.fillText(line, 48, y);
+    y += 36;
+  });
+  y += 30;
+  ctx.strokeStyle = '#5b4430';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(48, y);
+  ctx.lineTo(702, y);
+  ctx.stroke();
+  y += 44;
+  layout.rows.forEach((row) => {
+    ctx.fillStyle = '#2a211e';
+    ctx.fillRect(48, y - 30, 112, 42);
+    ctx.fillStyle = '#e9bd7d';
+    ctx.font = '22px sans-serif';
+    ctx.fillText(row.age, 58, y);
+    ctx.fillStyle = '#f0dfc5';
+    ctx.font = 'bold 29px sans-serif';
+    ctx.fillText(row.title, 180, y);
+    y += 42;
+    ctx.fillStyle = '#c8bcac';
+    ctx.font = '26px sans-serif';
+    row.lines.forEach((line) => {
+      ctx.fillText(line, 60, y);
+      y += 38;
+    });
+    ctx.fillStyle = '#85bda9';
+    ctx.font = '22px sans-serif';
+    row.detail.forEach((line) => {
+      ctx.fillText(line, 60, y);
+      y += 32;
+    });
+    y += 26;
+  });
+  ctx.fillStyle = '#75695d';
+  ctx.font = '22px sans-serif';
+  ctx.fillText('烬灯录 · 一世见闻，尽在此灯', 48, layout.height - 42);
+}
+
+Page({
+  data: {
+    hud: {},
+    hero: {},
+    actor: {},
+    tip: { at: '', text: '', next: '' },
+    tab: 'skill',
+    alive: false,
+    dead: false,
+    attrs: [],
+    sets: [],
+    skills: [],
+    skillCount: '',
+    karma: [],
+    marks: [],
+    muted: false,
+    auto: false,
+    autoUnlocked: false,
+    autoCost: game.AUTO_LAMP.cost,
+    logs: [],
+    lamps: [],
+    stats: [],
+    epitaphs: [],
+    sheet: HIDDEN_SHEET,
+    banner: '',
+    modal: HIDDEN_MODAL,
+    chronicleCanvas: { show: false, width: 750, height: 1000 },
+    cloud: {
+      state: 'checking',
+      text: '正在连接云端…',
+      lastSync: '',
+      signedIn: false,
+      daoName: '未设置',
+      editing: false,
+      nameDraft: '',
+      rows: [],
+      myRank: 0,
+      boardLoading: false,
+      boardError: ''
+    }
+  },
+
+  onLoad() {
+    let raw = null;
+    try {
+      raw = wx.getStorageSync(SAVE_KEY);
+    } catch (e) {
+      raw = null;
+    }
+    const now = Date.now();
+    this.state = game.normalizeState(raw, now);
+    this.lastSave = now;
+    this.result = null;
+    this.act = '';
+    this.replaceHidden = false;
+    this.guideOpen = false;
+    this.tipStep = 0;
+    let tipSeen = false;
+    try {
+      tipSeen = !!wx.getStorageSync(TIP_KEY);
+    } catch (e) {
+      tipSeen = false;
+    }
+    // 已经玩过的存档不再弹指引。
+    this.tipDone = tipSeen || this.state.lives > 0 || this.state.run.choices > 0;
+    this.holdRealm = null;
+    this.bracing = false;
+    this.wasFull = false;
+    this.nextFidget = now + FIDGET_MIN_MS;
+    this.eventOpen = false;
+    this.seaOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.mergeSource = '';
+    this.chronicleOpen = false;
+    this.chronicleBusy = false;
+    this.chronicleError = '';
+    this.chronicleToken = 0;
+    this.shareImage = '';
+    this.deadOpen = this.state.run.phase === 'dead';
+    this.cloudOpen = false;
+    this.arenaOpen = false;
+    this.cloudSyncing = false;
+    this.cloudLoggingIn = false;
+    this.cloudUid = null;
+    this.cloudSaveId = null;
+    this.lastCloudPush = 0;
+    this.lastCloudSync = 0;
+    this.lastCloudAttempt = 0;
+    this.lastScoreKey = '';
+    this.syncQueued = false;
+    let meta = null;
+    try {
+      meta = wx.getStorageSync(SAVE_META_KEY);
+    } catch (e) {
+      meta = null;
+    }
+    // 旧存档没有同步时间戳，用规则层的 lastTime 兜底，避免被旧云存档误覆盖。
+    this.localSavedAt = meta && Number(meta.savedAt) > 0
+      ? Number(meta.savedAt)
+      : (raw && Number(raw.lastTime) > 0 ? Number(raw.lastTime) : 0);
+    let daoName = '';
+    try {
+      daoName = wx.getStorageSync(DAO_NAME_KEY) || '';
+    } catch (e) {
+      daoName = '';
+    }
+    this.daoName = String(daoName).slice(0, 12);
+    let muted = false;
+    try {
+      muted = !!wx.getStorageSync(MUTE_KEY);
+    } catch (e) {
+      muted = false;
+    }
+    audio.setMuted(muted);
+    this.auto = false;
+    try {
+      this.auto = !!wx.getStorageSync(AUTO_KEY);
+    } catch (e) {
+      this.auto = false;
+    }
+    this.autoStuck = false;
+    this.nextAuto = 0;
+    this.setData({ muted: muted, auto: this.auto });
+    this.refresh();
+    this.initCloud();
+  },
+
+  onShow() {
+    const before = game.realmText(this.state.run);
+    const result = game.advance(this.state, Date.now());
+    if (this.state.run.phase === 'alive' && result.elapsed >= OFFLINE_NOTICE_SEC) {
+      const after = game.realmText(this.state.run);
+      this.openModal({
+        title: '你回到灯前',
+        content: '你离开了 ' + game.formatDuration(result.elapsed) + '。' +
+          (after !== before ? '期间突破至' + after + '。' : '') +
+          '攒下机缘 ' + result.chance + ' 次。寿元只在你做出选择时流逝，离开多久都不会少。',
+        highlight: '灵气 +' + game.formatNumber(Math.round(result.qi)),
+        confirmText: '知道了'
+      });
+      this.play('stretch');
+    }
+    this.wasFull = Math.floor(this.state.run.chance) >= game.maxChance(this.state);
+    this.refresh();
+    this.startLoop();
+    audio.startBgm();
+    // 回到前台时拉一次云端最新存档；initCloud 还没拿到会话时由它自己触发。
+    if (this.cloudUid && Date.now() - this.lastCloudSync > 10000) this.syncCloud();
+  },
+
+  onHide() {
+    audio.pauseBgm();
+    this.stopLoop();
+    this.stopAct();
+    this.save();
+  },
+
+  onUnload() {
+    audio.pauseBgm();
+    this.stopLoop();
+    this.stopAct();
+    this.save();
+  },
+
+  startLoop() {
+    this.stopLoop();
+    this.timer = setInterval(() => this.tick(), TICK_MS);
+  },
+
+  stopLoop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  },
+
+  tick() {
+    const now = Date.now();
+    const result = game.advance(this.state, now);
+    if (result.ups) {
+      this.showBanner('灵气充盈，突破至' + game.realmText(this.state.run));
+      if (this.act !== 'thunder') this.play('breakthrough');
+    }
+    this.autoTick(now);
+    this.idleTick(now);
+    this.refresh();
+    if (now - this.lastSave >= SAVE_INTERVAL_MS) this.save();
+  },
+
+  save() {
+    const now = Date.now();
+    this.lastSave = now;
+    try {
+      wx.setStorageSync(SAVE_KEY, this.state);
+      wx.setStorageSync(SAVE_META_KEY, { savedAt: now });
+    } catch (e) {
+      console.error('保存存档失败', e);
+    }
+    this.localSavedAt = now;
+    this.scheduleCloudSync();
+  },
+
+  // 自动同步：本地存档照常每 10 秒落盘，云端写入最快每 30 秒一次，避免频繁请求。
+  // 名次或灯芯变了（身死、投胎）就不再排队，立刻同步一次，免得榜上数据落后一整轮。
+  scheduleCloudSync() {
+    if (!this.cloudUid || !cloudSync.isAvailable()) return;
+    if (this.cloudSyncing) return;
+    if (Date.now() - this.lastCloudAttempt < 10000) return;
+    const urgent = this.scoreKeyNow() !== this.lastScoreKey;
+    if (!urgent && Date.now() - this.lastCloudPush < CLOUD_PUSH_INTERVAL_MS) return;
+    this.syncCloud();
+  },
+
+  patchCloud(patch) {
+    this.setData({ cloud: Object.assign({}, this.data.cloud, patch) });
+  },
+
+  scoreKeyNow() {
+    const name = cleanDaoName(this.daoName) || (this.cloudUid ? autoDaoName(this.cloudUid) : '');
+    return scoreKey(scoreOf(this.state), name);
+  },
+
+  // 启动时确认云端可用性与登录态；拿不到会话就当游客，不阻塞游戏本身。
+  initCloud() {
+    if (!cloudSync.isAvailable()) {
+      this.patchCloud({ state: 'off', text: cloudSync.unavailableReason || '当前环境不支持云服务' });
+      return;
+    }
+    this.patchCloud({ state: 'checking', text: '正在连接云端…' });
+    const app = typeof getApp === 'function' ? getApp() : null;
+    const ready = app && typeof app.ensureSession === 'function'
+      ? app.ensureSession()
+      : Promise.resolve({ data: null, error: null });
+    Promise.resolve(ready).then((res) => {
+      // 会话检查是异步的：期间用户可能已经手动登录，别拿旧结果覆盖。
+      if (this.cloudUid) return;
+      const session = res && res.data;
+      const uid = session && session.user ? session.user.id : '';
+      if (!uid) {
+        this.applySession('');
+        this.patchCloud({ state: 'guest', text: '未登录：进度只存在这台设备' });
+        return;
+      }
+      this.applySession(uid);
+      this.syncCloud();
+    }).catch((e) => {
+      if (this.cloudUid) return;
+      this.applySession('');
+      this.patchCloud({ state: 'error', text: friendlyError(e) });
+    });
+  },
+
+  applySession(uid) {
+    this.cloudUid = uid || '';
+    const saved = cleanDaoName(this.daoName);
+    const name = saved || (uid ? autoDaoName(uid) : '');
+    this.patchCloud({
+      signedIn: !!uid,
+      daoName: name || '未设置',
+      nameDraft: name,
+      editing: false,
+      myRank: 0
+    });
+  },
+
+  // 一次同步 = 先比对云端存档决定谁是新版，再上报成绩。
+  // 云端更新就用云端的；本地更新或两边一样就回写，避免两台设备来回覆盖。
+  async syncCloud(options) {
+    const force = !!(options && options.force);
+    if (!cloudSync.isAvailable() || !this.cloudUid) return false;
+    if (this.cloudSyncing) {
+      this.syncQueued = true;
+      return false;
+    }
+    this.cloudSyncing = true;
+    this.lastCloudAttempt = Date.now();
+    this.patchCloud({ state: 'syncing', text: '正在同步…' });
+    let ok = false;
+    try {
+      const pulled = await cloudSync.pullSave();
+      if (pulled.error) throw pulled.error;
+      const row = pulled.data;
+      // 云端已有这一行就要记住它的 id，否则回写会走成新建，撞 owner_id 唯一约束。
+      if (row && row.id) this.cloudSaveId = row.id;
+      if (row && pickSave(this.localSavedAt, row.savedAt, isBlankSave(this.state)) === 'cloud') {
+        if (!this.adoptCloud(row)) throw { code: 'BAD_SAVE', message: '云端存档已损坏，本地进度未动' };
+        ok = true;
+      } else if (row && !force && Number(row.savedAt) === Number(this.localSavedAt)) {
+        ok = true;
+      } else {
+        ok = await this.pushCloud();
+      }
+      if (ok) {
+        this.lastCloudSync = Date.now();
+        this.patchCloud({ state: 'ok', text: '已同步到云端', lastSync: clockText(this.lastCloudSync) });
+        try {
+          await this.publishScore();
+        } catch (e) {
+          this.patchCloud({ boardError: friendlyError(e) });
+        }
+        if (this.cloudOpen) this.refreshBoard();
+      }
+    } catch (e) {
+      this.patchCloud({ state: 'error', text: friendlyError(e) });
+    } finally {
+      this.cloudSyncing = false;
+      if (this.syncQueued) {
+        this.syncQueued = false;
+        this.syncCloud();
+      }
+    }
+    return ok;
+  },
+
+  async pushCloud() {
+    this.lastCloudPush = Date.now();
+    const res = await cloudSync.pushSave(this.state, this.localSavedAt, this.cloudSaveId);
+    if (res.error) throw res.error;
+    if (res.data && res.data.id) this.cloudSaveId = res.data.id;
+    return true;
+  },
+
+  // 云端存档更新：整份替换并落到本地，不把这份旧档再推回去。
+  // 云端内容坏掉时宁可报错也不能拿一份空状态覆盖本地进度。
+  adoptCloud(row) {
+    if (!row || !row.state || typeof row.state !== 'object') return false;
+    const state = game.normalizeState(row.state, Date.now());
+    const savedAt = Number(row.savedAt) || 0;
+    this.state = state;
+    this.localSavedAt = savedAt;
+    this.lastCloudPush = Date.now();
+    this.cloudSaveId = row.id || this.cloudSaveId;
+    this.result = null;
+    this.eventOpen = false;
+    this.seaOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.chronicleOpen = false;
+    this.chronicleBusy = false;
+    this.chronicleError = '';
+    this.shareImage = '';
+    this.chronicleToken++;
+    this.setData({ chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.deadOpen = state.run.phase === 'dead';
+    this.replaceHidden = false;
+    this.stopAct();
+    try {
+      wx.setStorageSync(SAVE_KEY, state);
+      wx.setStorageSync(SAVE_META_KEY, { savedAt: savedAt });
+    } catch (e) {
+      console.error('写入云端存档失败', e);
+    }
+    this.refresh();
+    this.showBanner('已载入云端存档');
+    return true;
+  },
+
+  async publishScore() {
+    if (!this.cloudUid) return;
+    const key = this.scoreKeyNow();
+    if (key === this.lastScoreKey) return;
+    const name = cleanDaoName(this.daoName) || autoDaoName(this.cloudUid);
+    const payload = Object.assign({ dao_name: name }, scoreOf(this.state));
+    const res = await cloudSync.submitScore(this.cloudUid, payload);
+    if (res.error) throw res.error;
+    this.lastScoreKey = key;
+  },
+
+  onCloud() {
+    if (this.act === 'thunder') return;
+    audio.play('tap');
+    this.guideOpen = false;
+    this.arenaOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.chronicleOpen = false;
+    this.cloudOpen = true;
+    this.refresh();
+    this.refreshBoard();
+  },
+
+  onCloudClose() {
+    audio.play('tap');
+    this.cloudOpen = false;
+    this.refresh();
+  },
+
+  onCloudSync() {
+    if (this.cloudSyncing) return;
+    audio.play('tap');
+    this.syncCloud({ force: true });
+  },
+
+  onCloudRefresh() {
+    if (this.data.cloud.boardLoading) return;
+    audio.play('tap');
+    this.refreshBoard();
+  },
+
+  async onCloudLogin() {
+    if (this.cloudLoggingIn) return;
+    if (!cloudSync.isAvailable()) {
+      this.showBanner(friendlyError({ code: 'CLOUD_UNAVAILABLE', message: cloudSync.unavailableReason }));
+      return;
+    }
+    this.cloudLoggingIn = true;
+    audio.play('tap');
+    this.patchCloud({ state: 'checking', text: '正在登录…' });
+    const res = await cloudSync.signInWithWechat();
+    this.cloudLoggingIn = false;
+    const session = res && res.data;
+    const uid = session && session.user ? session.user.id : '';
+    if (!uid) {
+      this.patchCloud({ state: 'guest', text: friendlyError(res && res.error) });
+      return;
+    }
+    const app = typeof getApp === 'function' ? getApp() : null;
+    if (app && typeof app.resetSession === 'function') app.resetSession();
+    this.applySession(uid);
+    this.showBanner('已登录，正在同步');
+    await this.syncCloud({ force: true });
+    this.refreshBoard();
+  },
+
+  onCloudLogout() {
+    audio.play('tap');
+    this.cloudLoggingIn = false;
+    cloudSync.signOut();
+    const app = typeof getApp === 'function' ? getApp() : null;
+    if (app && typeof app.resetSession === 'function') app.resetSession();
+    // 换账号后旧的行 id 与成绩都不能复用，否则会被 RLS 拦下。
+    this.cloudSaveId = null;
+    this.lastScoreKey = '';
+    this.applySession('');
+    this.patchCloud({ state: 'guest', text: '已退出登录：进度只存在这台设备', lastSync: '', myRank: 0, boardError: '' });
+  },
+
+  onCloudNameEdit() {
+    audio.play('tap');
+    const current = this.data.cloud.daoName === '未设置' ? '' : this.data.cloud.daoName;
+    this.patchCloud({ editing: true, nameDraft: current });
+  },
+
+  onCloudNameInput(e) {
+    // 用整对象 patch 而不是 'cloud.nameDraft' 路径写法：浏览器预览的 setData 是浅合并。
+    this.patchCloud({ nameDraft: e.detail.value });
+  },
+
+  onCloudNameSave() {
+    const name = cleanDaoName(this.data.cloud.nameDraft);
+    if (!name) {
+      this.showBanner('道号不能为空');
+      return;
+    }
+    audio.play('tap');
+    this.daoName = name;
+    try {
+      wx.setStorageSync(DAO_NAME_KEY, name);
+    } catch (e) {
+      console.error('保存道号失败', e);
+    }
+    // 名字变了要让成绩重新上报一次。
+    this.lastScoreKey = '';
+    this.patchCloud({ daoName: name, nameDraft: name, editing: false });
+    this.publishScore().catch((err) => this.patchCloud({ boardError: friendlyError(err) }));
+  },
+
+  // 排行榜：公开可读，未登录也能看；名次只在登录后算。
+  async refreshBoard() {
+    if (!cloudSync.isAvailable()) {
+      this.patchCloud({ boardLoading: false, boardError: cloudSync.unavailableReason || '当前环境不支持云服务' });
+      return;
+    }
+    this.patchCloud({ boardLoading: true, boardError: '' });
+    let board;
+    try {
+      board = await cloudSync.fetchBoard();
+    } catch (e) {
+      board = { data: [], error: e };
+    }
+    if (board.error) {
+      this.patchCloud({ boardLoading: false, boardError: friendlyError(board.error), rows: [] });
+      return;
+    }
+    const rows = board.data.map((row, i) => ({
+      id: String(row.owner_id),
+      rank: i + 1,
+      name: row.dao_name || '无名',
+      realm: row.realm_name || '尚未投胎',
+      wick: game.formatNumber(Number(row.total_wick) || 0),
+      realmIndex: Number(row.realm_index),
+      totalWick: Number(row.total_wick) || 0,
+      mine: !!this.cloudUid && row.owner_id === this.cloudUid
+    }));
+    this.patchCloud({ rows: rows, boardLoading: false });
+    if (!this.cloudUid) return;
+    let rank;
+    try {
+      rank = await cloudSync.fetchMyRank(scoreOf(this.state));
+    } catch (e) {
+      return;
+    }
+    if (!rank.error) this.patchCloud({ myRank: rank.data || 0 });
+  },
+
+  showBanner(text) {
+    clearTimeout(this.bannerTimer);
+    this.setData({ banner: text });
+    this.bannerTimer = setTimeout(() => this.setData({ banner: '' }), BANNER_MS);
+  },
+
+  openModal(options, action) {
+    this.modalAction = action || null;
+    this.setData({ modal: Object.assign({}, HIDDEN_MODAL, options, { show: true }) });
+  },
+
+  closeModal() {
+    this.modalAction = null;
+    this.bracing = false;
+    this.setData({ modal: HIDDEN_MODAL });
+  },
+
+  onModalConfirm() {
+    audio.play('tap');
+    const action = this.modalAction;
+    this.closeModal();
+    if (action) action.call(this);
+  },
+
+  onModalCancel() {
+    audio.play('tap');
+    this.closeModal();
+    this.refresh();
+  },
+
+  onMute() {
+    const muted = !audio.isMuted();
+    audio.setMuted(muted);
+    try {
+      wx.setStorageSync(MUTE_KEY, muted ? 1 : 0);
+    } catch (e) {
+      console.error('保存静音设置失败', e);
+    }
+    this.setData({ muted: muted });
+    audio.play('tap');
+  },
+
+  onAuto() {
+    if (!game.autoUnlocked(this.state)) {
+      audio.play('tap');
+      this.setData({ tab: 'lamp' });
+      this.showBanner('花 ' + game.AUTO_LAMP.cost + ' 灯芯点亮「自动机缘」');
+      this.refresh();
+      return;
+    }
+    this.auto = !this.auto;
+    this.autoStuck = false;
+    this.nextAuto = Date.now() + 600;
+    try {
+      wx.setStorageSync(AUTO_KEY, this.auto ? 1 : 0);
+    } catch (e) {
+      console.error('保存自动机缘设置失败', e);
+    }
+    audio.play('tap');
+    this.setData({ auto: this.auto });
+    this.showBanner(this.auto ? '自动机缘已开启：他会自己翻机缘、做选择、取舍功法' : '自动机缘已关闭');
+  },
+
+  // 自动机缘：每隔一阵替玩家走一步。渡劫、坐化和投胎仍由玩家决定；会致命的选项不选。
+  autoTick(now) {
+    if (!this.auto || !game.autoUnlocked(this.state) || now < this.nextAuto) return;
+    const run = this.state.run;
+    if (run.phase !== 'alive') {
+      this.autoStuck = false;
+      return;
+    }
+    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.seaOpen || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
+    // 没有稳妥选项的机缘留给玩家，等他处理完再接着走。
+    if (this.autoStuck && run.event) return;
+    this.autoStuck = false;
+    const step = game.autoStep(this.state, Math.random);
+    if (!step) return;
+    this.nextAuto = now + AUTO_STEP_MS;
+    if (step.stuck) {
+      this.autoStuck = true;
+      this.showBanner('没有稳妥的选项，这一回留给你决定');
+      this.afterAction();
+      return;
+    }
+    const r = step.result;
+    if (r && r.dead) {
+      this.finishChoice(r);
+      return;
+    }
+    this.eventOpen = false;
+    this.replaceHidden = false;
+    this.showBanner((r ? r.title + '：' + r.label : '') + (r && step.replaced ? '；' : '') + step.replaced);
+    this.play(r ? actionForTags(r.tags) : 'toss');
+    this.afterAction();
+  },
+
+  noop() {},
+
+  // quiet 为真时只做动作不出声，用于闲着时的小动作。
+  play(name, next, quiet) {
+    clearTimeout(this.actTimer);
+    this.act = name;
+    if (!quiet && SOUNDS[name]) audio.play(SOUNDS[name]);
+    this.nextFidget = Date.now() + FIDGET_MIN_MS + Math.random() * FIDGET_SPAN_MS;
+    this.actTimer = setTimeout(() => {
+      this.act = '';
+      this.holdRealm = null;
+      if (next) this.play(next);
+      this.refresh();
+    }, ACTIONS[name].ms);
+  },
+
+  stopAct() {
+    clearTimeout(this.actTimer);
+    clearTimeout(this.stormTimer);
+    audio.stop('thunder');
+    this.act = '';
+    this.holdRealm = null;
+  },
+
+  deathAct() {
+    return DEATH_ACTIONS[this.state.run.death.cause] || 'die';
+  },
+
+  // 闲着的时候隔一阵做个小动作；机缘刚攒满时招手提醒。
+  idleTick(now) {
+    const s = this.state;
+    const run = s.run;
+    if (run.phase !== 'alive') return;
+    const full = Math.floor(run.chance) >= game.maxChance(s);
+    const becameFull = full && !this.wasFull;
+    this.wasFull = full;
+    if (this.act || this.bracing || this.data.sheet.kind || this.data.modal.show) return;
+    if (becameFull) {
+      this.play('wave');
+      return;
+    }
+    if (now < this.nextFidget) return;
+    const pool = game.yearsLeft(s) <= 10 ? FIDGETS.concat('cough') : FIDGETS;
+    this.play(pool[Math.floor(Math.random() * pool.length)], null, true);
+  },
+
+  actorView() {
+    const s = this.state;
+    const run = s.run;
+    const act = this.act;
+    const alive = run.phase === 'alive';
+    // 身死那一刻角色还要把倒下的动作演完，之后才只剩魂火。
+    const show = alive || (run.phase === 'dead' && act === this.deathAct());
+    const view = { show: show, wisp: !show, layer: 0, realm: 0, action: 'idle', old: false, demon: false, devil: false, ready: false, sash: DEFAULT_SASH, bubble: '', flare: !!(act && ACTIONS[act].flare), storm: act === 'thunder' };
+    if (!show) return view;
+    const counts = game.setCounts(run);
+    let top = '';
+    game.SCHOOL_IDS.forEach((id) => {
+      if (counts[id] > (top ? counts[top] : 0)) top = id;
+    });
+    const info = alive ? game.tribulationInfo(s) : null;
+    const yuan = alive ? game.yuanTrialView(s) : null;
+    // 渡劫成功时境界已经变了，但要等雷劈完才换上新衣。
+    const realm = this.holdRealm === null ? run.realm : this.holdRealm;
+    view.layer = (yuan && this.tribOpen) || (act === 'thunder' && this.result && this.result.yuan)
+      ? game.REALMS[game.SEA_REALM + 1].layer
+      : (realm === run.realm ? game.layerIndex(run) : game.REALMS[realm].layer);
+    view.realm = realm;
+    view.action = act || (this.bracing ? 'brace' : (alive && run.event && this.eventOpen ? 'ponder' : 'idle'));
+    view.old = alive && game.yearsLeft(s) <= 10;
+    view.demon = run.demon >= 50;
+    view.devil = run.mode === 'demon';
+    view.ready = !!((info && info.ready) || (yuan && yuan.ready));
+    if (top) view.sash = game.SCHOOLS[top].color;
+    view.bubble = act ? ACTIONS[act].bubble : '';
+    return view;
+  },
+
+  hudView() {
+    const s = this.state;
+    const run = s.run;
+    const cap = game.qiCap(s);
+    const left = game.yearsLeft(s);
+    const born = run.phase !== 'root';
+    return {
+      realm: born ? game.realmText(run) : '尚未投胎',
+      where: (born ? game.layerName(run) + ' · ' : '') + '第 ' + (s.lives + (run.phase === 'dead' ? 0 : 1)) + ' 世',
+      wick: game.formatNumber(s.wick),
+      qi: game.formatNumber(Math.floor(run.qi)),
+      cap: game.formatNumber(cap),
+      qiPct: Math.min(100, Math.floor(run.qi / cap * 100)),
+      rate: game.formatNumber(game.qiRate(s)),
+      years: run.phase === 'alive' ? left : '-',
+      lifeLow: run.phase === 'alive' && left <= 10,
+      demon: run.demon + ' / ' + game.MAX_DEMON,
+      demonHigh: run.demon >= 50,
+      big: s.bigCount + ' / ' + game.BIG_EVERY,
+      mode: run.phase === 'alive' && run.mode === 'demon' ? '魔修' : '',
+      chanceRate: game.formatDuration(Math.round(game.chanceInterval(s))) + ' / 次',
+      aftermath: run.phase === 'alive' ? game.aftermathText(s) : ''
+    };
+  },
+
+  heroView() {
+    const s = this.state;
+    const run = s.run;
+    if (run.phase === 'root') return { line: '灯在等你。', title: '投胎', sub: '挑一副根骨', off: false, trib: '', tribSub: '', big: '' };
+    if (run.phase === 'dead') return { line: run.death.text, title: '再入轮回', sub: '上一世得灯芯 +' + run.death.wick, off: false, trib: '', tribSub: '', big: '' };
+    const info = game.tribulationInfo(s);
+    const yuan = game.yuanTrialView(s);
+    const boarding = game.atSea(run);
+    const seaEntry = !run.sea && game.seaView(s);
+    const full = game.isFull(s);
+    let line;
+    if (run.mode === 'demon') {
+      line = '魔修：灵气产出 ×' + (1 + game.MAX_DEMON * game.DEMON_QI_RATE) + '，不能渡劫。普通延寿无效，只能服散续命。';
+    } else if (info) {
+      line = info.name + '：考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + '，各需 ' + info.req +
+        '。当前成功率 ' + percent(info.chance) + '%';
+    } else if (boarding) {
+      line = '枯海沉舟 · 潮位 ' + run.sea.tide + ' / ' + game.SEA_TIDE_LIMIT;
+    } else if (yuan) {
+      line = yuan.ready ? '元婴劫 · ' + yuan.name : (full ? '了结手中的机缘或功法，然后再渡元婴劫。' : '休养回满灵气，再渡元婴劫。');
+    } else if (run.realm === game.SEA_REALM) {
+      line = full ? (seaEntry ? '金丹圆满。烬灯照出一条通往枯海的航路。' : '金丹圆满。了结手中的机缘或功法，然后入枯海。') : '金丹后期灵气圆满后，可入枯海。';
+    } else {
+      line = full ? '元婴圆满。可继续修行，或在轮回页坐化。' : '元婴已成，继续修行可达圆满。';
+    }
+    const max = game.maxChance(s);
+    const count = Math.floor(run.chance);
+    let title;
+    let sub;
+    let off = false;
+    if (boarding) {
+      title = '继续沉舟探索';
+      sub = '查看本章与返航选项';
+    } else if (run.pending) {
+      title = '取舍功法';
+      sub = '新功法还在等你决定';
+    } else if (run.event) {
+      title = '继续机缘';
+      sub = '还有一件事等你决定';
+    } else if (count >= 1) {
+      title = '翻开机缘';
+      sub = '已攒 ' + count + ' / ' + max + ' 次';
+    } else {
+      title = '机缘未至';
+      sub = game.formatDuration(Math.ceil((1 - run.chance) * game.chanceInterval(s))) + '后有新的机缘';
+      off = true;
+    }
+    const powder = game.powderInfo(s);
+    return {
+      line: line,
+      title: title,
+      sub: sub,
+      off: off,
+      sea: seaEntry ? '进入枯海' : '',
+      trib: yuan && yuan.ready ? '渡元婴劫' : (info && info.ready ? '渡' + info.name : ''),
+      tribSub: yuan && yuan.ready ? yuan.name + ' ' + yuan.step + ' / 2' : (info && info.ready ? '成功率 ' + percent(info.chance) + '%' : ''),
+      big: !boarding && s.big > 0 ? '大机缘' : '',
+      bigSub: '可用 ' + s.big + ' 次',
+      powder: powder.visible ? '服散续命' : '',
+      powderSub: powder.visible ? '耗 ' + game.formatNumber(powder.cost) + ' 灵气，燃寿 +' + powder.years + ' 年' : '',
+      powderOff: !powder.ready
+    };
+  },
+
+  // 初次游戏的点击指引：不遮挡界面，气泡指着该点的地方，玩家点了真的按钮才往下走。
+  tipView() {
+    const none = { at: '', text: '', next: '' };
+    const s = this.state;
+    const run = s.run;
+    if (this.tipDone || this.guideOpen || this.data.modal.show) return none;
+    if (run.phase === 'root') {
+      return { at: 'sheet', text: '欢迎。先挑一副这一世的根骨，点下面任意一项。', next: '' };
+    }
+    if (run.phase !== 'alive' || run.pending) return none;
+    if (this.result) {
+      return { at: 'sheet', text: '这是刚才那个选择的结果，中间的小人也会跟着做动作。点“收起”。', next: '' };
+    }
+    if (run.event && this.eventOpen) {
+      return { at: 'sheet', text: '每个选项都写明了代价和收益，右边是要耗掉的寿元。挑一个点下去。', next: '' };
+    }
+    if (run.choices === 0) {
+      return { at: 'main', text: '灵气会自己涨。你要做的只有一件事：点这里翻开机缘。', next: '' };
+    }
+    const info = TIP_INFO[this.tipStep];
+    return { at: info.at, text: info.text, next: this.tipStep === TIP_INFO.length - 1 ? '开始修行' : '下一步' };
+  },
+
+  finishTip() {
+    this.tipDone = true;
+    try {
+      wx.setStorageSync(TIP_KEY, 1);
+    } catch (e) {
+      console.error('保存指引进度失败', e);
+    }
+    this.refresh();
+  },
+
+  onTipNext() {
+    audio.play('tap');
+    if (this.tipStep >= TIP_INFO.length - 1) {
+      this.finishTip();
+      return;
+    }
+    this.tipStep++;
+    this.refresh();
+  },
+
+  onTipSkip() {
+    this.finishTip();
+  },
+
+  guideView() {
+    const s = this.state;
+    // 标题和正文排成一个单层列表，模板里不用嵌套循环。
+    const sec = (title, lines) => [{ head: true, text: title }].concat(lines.map((text) => ({ head: false, text: text })));
+    const rows = [].concat(
+        sec('怎么玩', [
+          '灵气自己涨，离线也涨，不用点。',
+          '你要做的只有一件事：翻开机缘，在几个选项里挑一个。每个选项都写明了代价和收益。',
+          '寿元只在做选择时流逝，挂机和离线都不扣。寿元耗尽就身死，然后带着灯芯重来。'
+        ]),
+        sec('机缘', [
+          '每 ' + game.formatDuration(Math.round(game.chanceInterval(s))) + '攒 1 次，最多存 ' + game.maxChance(s) + ' 次，离线也攒。',
+          '传承：学功法或升品。奇遇：有风险的交易，成功率写在选项上。因果：现在种因，几次选择之后结果。闲事：小得小失。',
+          '拿不准就选“闭关不理”，耗 1 年换一点灵气。也可以点“稍后再选”先收起来。',
+          '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，渡劫、坐化和投胎仍由你决定。',
+          '有些事件会直接给机缘次数，或提高这一世的机缘积攒速度；当前速度显示在顶部和“轮回”页。',
+          '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：必为传承，多一个选项，功法高一品，不耗寿元。进度和次数跨世保留。'
+        ]),
+        sec('机缘之间的联动', [
+          '余势：上一回的结果会影响紧接着的下一回，机缘面板上会写明。上一回成了，这一回成功率 +10%；没成，这一回折寿减半；闭关了，这一回少耗 1 年。',
+          '功法：同一系凑到 2 门后，不少机缘会多出这一系才有的选项，前面标着“因某系 2 门”，通常比原有选项划算。',
+          '有些选择会记下一段经历，比如入了守骸宗、欠了丹盟的账、养了一个字。经历列在“见闻”页。',
+          '经历会带出后续的故事章节，也会让别处的机缘多出或少掉选项。多出来的选项前面标着“因【某经历】”。',
+          '几条线会互相牵扯：同一件事，守骸宗弟子和食仙教徒能做的选择不一样。经历只管这一世，轮回后清空。'
+        ]),
+        sec('突发与余波', [
+          '筑基后的主动小境界突破、渡劫成功和秘法合成，可能分别引出经脉错乱、天劫余波和功法反噬；大机缘、机缘接近存满或经历累积，也可能引出福极生变与旧债上门。',
+          '每段经历分“征兆”和“突发”两回机缘，不能重抽。处理突发后，余波影响接下来的三次普通机缘；征兆和突发本身不计入这三次。',
+          '余波包括事件灵气奖励 -30%、概率成功率 -10%、秘法暂时失效、机缘间隔 ×1.5，或锋躯神 -10%。顶部和机缘面板会显示剩余次数。',
+          '每世最多三段突发，每段结束后隔四次普通机缘才可再触发。突发链优先于大机缘，大机缘不减少余波和冷却。离线不会新增突发，自动机缘仍会避开致命或入魔选项。'
+        ]),
+        sec('功法与羁绊', [
+          '剑、丹、符、体、运五系，分凡、灵、玄、天四品。重复选中同一门就升品。',
+          '不少功法除了加属性还带特殊效果，比如按心魔加锋、折寿后涨躯、存着机缘不用就变强，说明里都写着。',
+          '同一系凑到 2 门、4 门各触发一条羁绊，效果写在“功法”页。',
+          '一世最多持有 ' + game.maxSkills(s) + ' 门，点亮灯纹“博闻”可以再加；偶尔遇到的“奇缘”也能给这一世加，最多 ' + game.MAX_EXTRA_SLOTS + ' 门。满了再学要换掉一门，可以先收起面板看看羁绊再决定。',
+          '同系两门天品可以在功法卡上合成一门秘法：只占 1 格，全部数值效果约为两者之和的 1.2 倍，不能拆分。',
+          '建议主修一两系凑羁绊，比每系都学一点强。'
+        ]),
+        sec('境界与渡劫', [
+          '凡胎、引气、筑基、金丹、元婴，各分前、中、后期。小境界灵气满了自动突破。',
+          '前三场天劫各考锋、躯、神中的两项，“功法”页会标出需要多少。',
+          '前三场天劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功保命（折寿 10 年，保住一半灵气）。',
+          '成功率低就先别渡，多翻几次机缘把被考的属性堆上去；寿元不够时也可以主动散功保命。'
+        ]),
+        sec('枯海与元婴劫', [
+          '金丹圆满后可登上枯海沉舟。守骸宗、食仙教和缄默书院各有一条航线，此前相应的经历能打开新选项。',
+          '每次选择涨一格潮。第三格结算后返航，途中也可携带已有收获返航。稍后再探会保留所在章节。',
+          '返航后渡元婴劫。盐骨关考锋或躯，问名关考神；枯海所得、逃字和丹修各有用处。失败后休养至灵气圆满即可重试。'
+        ]),
+        sec('心魔', [
+          '贪心的选项会涨心魔。每 10 点心魔降低 3% 渡劫成功率。',
+          '满 ' + game.MAX_DEMON + ' 不再立即身死，而是转魔修：灵气产出 ×5，不能渡劫，普通延寿无效，只能耗灵气服散续命。十年后魔躯燃尽，身死灯芯仍 ×1.5。',
+          '有些闲事和因果能降心魔，别全跳过。'
+        ]),
+        sec('竞技场', [
+          '“轮回”页里的“竞技场”可以挑战排行榜上的人。战力是锋、躯、神之和，对手的战力按他的境界和累计灯芯推算，胜率写在按钮上。',
+          '胜了积累论道积分，解锁竞技场称号。对手越强，积分越多。败了折损 3 年寿元。',
+          '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
+        ]),
+        sec('身死与轮回', [
+          '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
+          '灯芯用来点亮“灯纹”页里永久生效的加成，然后重新投胎，挑一副根骨。',
+          '每次投胎还会抽一张有得有失的命格：早慧、灯下黑或薄命。换一批只换根骨，不换命格。',
+          '根骨分凡、良、珍、绝、仙、神六档，底色各不相同。两到五种根骨可能长在同一个人身上，加成相加，种数越多越稀有；另有几副不靠拼凑的稀有根骨。',
+          '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
+          '寿元快到头又渡不过劫时，可以在“轮回”页主动坐化，直接结算。',
+          '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。'
+        ]),
+        sec('角色在干什么', [
+          '中间的小人是你这一世的肉身。衣服颜色跟境界走，腰带颜色是你主修的那一系。',
+          '白头发说明寿元不到 10 年了；红眼说明心魔过半；头顶有乌云说明可以渡劫了。',
+          '它朝你招手，是机缘攒满了。',
+          '嫌吵的话，点右上角的“♪”关掉音乐和音效。'
+        ])
+    );
+    return { kind: 'guide', rows: rows.map((row, i) => ({ key: i, head: row.head, text: row.text })) };
+  },
+
+  onGuide() {
+    if (this.act === 'thunder') return;
+    audio.play('tap');
+    this.cloudOpen = false;
+    this.arenaOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.chronicleOpen = false;
+    this.guideOpen = true;
+    this.refresh();
+  },
+
+  onGuideClose() {
+    audio.play('tap');
+    this.guideOpen = false;
+    this.refresh();
+  },
+
+  // 竞技场：对手就是排行榜上的人，榜单数据沿用云面板拉回来的那一份。
+  arenaView() {
+    const s = this.state;
+    const cloud = this.data.cloud;
+    const left = Math.floor(s.arena);
+    const wait = game.arenaWait(s);
+    const standing = game.arenaStanding(s);
+    return {
+      kind: 'arena',
+      power: game.formatNumber(game.arenaPower(s)),
+      left: left + ' / ' + game.ARENA_MAX,
+      batch: left >= 2 ? left : 0,
+      standing: standing.title + ' · 论道积分 ' + game.formatNumber(standing.points),
+      nextRank: standing.next ? '再得 ' + game.formatNumber(standing.next.points - standing.points) + ' 积分可获「' + standing.next.title + '」' : '',
+      waitText: '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次' + (wait ? '，下一次还要 ' + game.formatDuration(wait) : '') + '。',
+      loading: cloud.boardLoading,
+      error: cloud.boardError,
+      rows: cloud.rows.map((row) => {
+        const info = game.arenaInfo(s, row);
+        return {
+          id: row.id,
+          rank: row.rank,
+          name: row.name,
+          realm: row.realm,
+          mine: row.mine,
+          power: game.formatNumber(info.power),
+          pct: percent(info.chance),
+          gain: '胜：论道积分 +' + info.win + ' · 败：折寿 ' + info.years + ' 年',
+          off: !!info.reason
+        };
+      })
+    };
+  },
+
+  onArena() {
+    if (this.act === 'thunder' || this.state.run.phase !== 'alive') return;
+    audio.play('tap');
+    this.guideOpen = false;
+    this.cloudOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.arenaOpen = true;
+    this.refresh();
+    this.refreshBoard();
+  },
+
+  onArenaClose() {
+    audio.play('tap');
+    this.arenaOpen = false;
+    this.refresh();
+  },
+
+  onArenaFight(e) {
+    const id = e.currentTarget.dataset.id;
+    const row = this.data.cloud.rows.filter((r) => r.id === id)[0];
+    if (!row || row.mine) return;
+    const info = game.arenaInfo(this.state, row);
+    if (info.reason) {
+      audio.play('bad');
+      this.showBanner(info.reason);
+      return;
+    }
+    const r = game.arenaFight(this.state, row, Math.random, e.currentTarget.dataset.all ? game.ARENA_MAX : 1);
+    if (!r) return;
+    this.result = { title: r.title, label: r.label, lines: r.lines, dead: r.dead, arena: true };
+    if (r.dead) wx.vibrateShort({ type: 'heavy' });
+    this.play(r.dead ? this.deathAct() : actionForTags(r.tags));
+    this.afterAction();
+  },
+
+  tribulationView() {
+    const yuan = game.yuanTrialView(this.state);
+    if (yuan) {
+      const penalty = '失败时折寿 ' + yuan.failYears + ' 年，心魔 +' + yuan.failDemon + '，' + yuan.keepText + '。回满灵气可从盐骨关重试，枯海所得保留。';
+      return {
+        kind: 'yuan',
+        step: yuan.step,
+        title: yuan.name,
+        text: yuan.text,
+        note: '先过盐骨关（锋或躯），再过问名关（神或事先准备）。' + penalty,
+        options: yuan.options.map((option) => ({
+          ...option, rate: option.chance === 1 ? '必过' : percent(option.chance) + '%'
+        }))
+      };
+    }
+    const info = game.tribulationInfo(this.state);
+    if (!info) return HIDDEN_SHEET;
+    return {
+      kind: 'trib',
+      title: info.name,
+      text: '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + '，各需 ' + info.req + '。选一种渡法，选定即引下天雷。',
+      options: [
+        {
+          id: 'endure',
+          label: '硬抗 · 成功率 ' + percent(info.chance) + '%',
+          desc: '成功：寿元上限 +' + info.lifeBonus + ' 年；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
+          disabled: false
+        },
+        {
+          id: 'borrow',
+          label: '借势 · 成功率 ' + percent(info.borrowChance) + '%',
+          desc: '先耗 ' + info.borrowCost + ' 次机缘，成功率 +15%；其余成败结果与硬抗相同。',
+          disabled: !info.borrowReady,
+          note: info.borrowReady ? '当前机缘 ' + Math.floor(this.state.run.chance) + ' 次' : '机缘不足 ' + info.borrowCost + ' 次'
+        },
+        {
+          id: 'scatter',
+          label: '散功 · 必定失败，不会身死',
+          desc: '折寿 ' + info.scatterYears + ' 年，不涨心魔，灵气固定保住一半；用来散去修为，保命重来。',
+          disabled: false
+        }
+      ]
+    };
+  },
+
+  mergeView() {
+    const source = game.skillInfo(this.mergeSource);
+    const options = game.mergeOptions(this.state, this.mergeSource).map((option) => ({
+      id: option.second,
+      name: '《' + game.skillInfo(option.second).name + '》',
+      arcane: '《' + option.arcane.name + '》',
+      desc: game.skillDesc(option.arcane, 1)
+    }));
+    return {
+      kind: 'merge',
+      title: '以《' + source.name + '》合秘法',
+      text: '同系两门天品归一，合成后只占 1 格，全部数值效果约为两者之和的 1.2 倍。秘法不能拆分，也不会再出现在普通传承里。',
+      options: options
+    };
+  },
+
+  chronicleView() {
+    const data = game.chronicle(this.state);
+    return {
+      kind: 'chronicle',
+      title: data.title,
+      subtitle: data.subtitle,
+      intro: data.intro,
+      rows: data.rows.map((row, i) => ({
+        key: i,
+        age: row.age === null ? '年岁未记' : row.age + ' 岁',
+        title: row.title,
+        text: row.text,
+        detail: row.detail
+      })),
+      busy: this.chronicleBusy,
+      ready: !!this.shareImage && !this.chronicleBusy,
+      error: this.chronicleError
+    };
+  },
+
+  onPowder() {
+    if (this.act === 'thunder') return;
+    this.finishChoice(game.takePowder(this.state));
+  },
+
+  onMerge(e) {
+    if (this.act === 'thunder' || this.state.run.pending) return;
+    const id = e.currentTarget.dataset.id;
+    if (!game.mergeOptions(this.state, id).length) return;
+    audio.play('tap');
+    this.mergeSource = id;
+    this.mergeOpen = true;
+    this.eventOpen = false;
+    this.refresh();
+  },
+
+  onMergePick(e) {
+    const first = this.mergeSource;
+    const second = e.currentTarget.dataset.id;
+    const option = game.mergeOptions(this.state, first).filter((item) => item.second === second)[0];
+    if (!option) return;
+    audio.play('tap');
+    this.openModal({
+      title: '炼成《' + option.arcane.name + '》',
+      content: game.skillDesc(option.arcane, 1) + '。两门天品功法将消失，合成不可撤销。',
+      highlight: '两门归一 · 功法位 -1',
+      confirmText: '合成秘法',
+      cancelText: '再想想'
+    }, function () {
+      this.mergeOpen = false;
+      this.finishChoice(game.mergeSkills(this.state, first, second, Math.random));
+    });
+  },
+
+  onChronicle() {
+    if (this.state.run.phase !== 'dead') return;
+    audio.play('tap');
+    this.deadOpen = false;
+    this.chronicleOpen = true;
+    this.shareImage = '';
+    this.chronicleError = '';
+    this.generateChronicleImage();
+  },
+
+  onChronicleClose() {
+    audio.play('tap');
+    this.chronicleOpen = false;
+    this.chronicleBusy = false;
+    this.chronicleToken++;
+    this.shareImage = '';
+    this.deadOpen = true;
+    this.setData({ chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.refresh();
+  },
+
+  onChronicleShare() {
+    if (this.shareImage || this.chronicleBusy) return;
+    this.generateChronicleImage();
+  },
+
+  generateChronicleImage() {
+    if (!this.chronicleOpen || this.state.run.phase !== 'dead') return;
+    const data = game.chronicle(this.state);
+    const layout = chronicleLayout(data);
+    const token = ++this.chronicleToken;
+    this.chronicleBusy = true;
+    this.chronicleError = '';
+    this.shareImage = '';
+    this.refresh();
+    this.setData({ chronicleCanvas: { show: true, width: layout.width, height: layout.height } }, () => {
+      if (token !== this.chronicleToken) return;
+      wx.createSelectorQuery().in(this).select('#chronicleCanvas').fields({ node: true, size: true }).exec((res) => {
+        const canvas = res && res[0] && res[0].node;
+        if (!canvas) {
+          this.failChronicle(token, '当前环境无法创建长图画布');
+          return;
+        }
+        try {
+          let ratio = 1;
+          if (typeof wx.getWindowInfo === 'function') ratio = wx.getWindowInfo().pixelRatio || 1;
+          const dpr = Math.min(2, Math.max(1, ratio));
+          canvas.width = layout.width * dpr;
+          canvas.height = layout.height * dpr;
+          const ctx = canvas.getContext('2d');
+          ctx.scale(dpr, dpr);
+          drawChronicle(ctx, data, layout);
+          wx.canvasToTempFilePath({
+            canvas: canvas,
+            success: (out) => {
+              if (token !== this.chronicleToken) return;
+              this.chronicleBusy = false;
+              this.shareImage = out.tempFilePath;
+              this.refresh();
+            },
+            fail: () => this.failChronicle(token, '长图生成失败，请重试')
+          }, this);
+        } catch (e) {
+          this.failChronicle(token, '长图生成失败，请重试');
+        }
+      });
+    });
+  },
+
+  failChronicle(token, message) {
+    if (token !== this.chronicleToken) return;
+    this.chronicleBusy = false;
+    this.chronicleError = message;
+    this.shareImage = '';
+    this.refresh();
+  },
+
+  onShareAppMessage() {
+    const run = this.state.run;
+    if (run.phase === 'dead' && this.chronicleOpen) {
+      const share = { title: game.chronicle(this.state).title + ' · 烬灯录', path: '/pages/index/index' };
+      if (this.shareImage) share.imageUrl = this.shareImage;
+      return share;
+    }
+    return { title: '烬灯录 · 天道已死，灯火未灭', path: '/pages/index/index' };
+  },
+
+  sheetView() {
+    const s = this.state;
+    const run = s.run;
+    if (this.cloudOpen) return { kind: 'cloud' };
+    if (this.guideOpen) return this.guideView();
+    if (this.chronicleOpen && run.phase === 'dead') return this.chronicleView();
+    if (run.phase === 'root') {
+      const fate = game.FATES.filter((item) => item.id === run.fate)[0];
+      return {
+        fate: fate ? { name: fate.name, desc: fate.desc, text: fate.text } : null,
+        kind: 'root',
+        title: s.lives ? '你又在灯旁醒来' : '你在一盏灯旁醒来',
+        text: '又是一个刚出生的人。挑一副这一世的根骨，底色越亮越稀有。不满意可以换一批：',
+        rolls: run.rootRolls,
+        rollText: run.rootRolls > 0 ? '换一批（还能换 ' + run.rootRolls + ' 次）' : '换一批的次数用完了',
+        options: run.rootChoices.map((id) => {
+          const root = game.rootInfo(id);
+          const perks = [];
+          game.ATTRS.forEach((k) => {
+            if (root[k]) perks.push(game.ATTR_NAMES[k] + ' +' + root[k]);
+          });
+          if (root.qi) perks.push('灵气产出 +' + percent(root.qi) + '%');
+          if (root.life) perks.push('寿元上限 +' + root.life + ' 年');
+          if (root.chance) perks.push('机缘上限 +' + root.chance);
+          perks.push(root.schools.length === game.SCHOOL_IDS.length
+            ? '五系功法都更容易遇到'
+            : '更容易遇到' + root.schools.map((k) => game.SCHOOLS[k].name).join('、') + '系功法');
+          return { id: id, name: root.name, text: root.text, desc: perks.join('，'), rarity: root.rarity, rarityName: game.ROOT_RARITIES[root.rarity].name + '骨' };
+        })
+      };
+    }
+    if (this.result) {
+      const r = this.result;
+      let nextText = '';
+      if (!r.dead) {
+        if (r.nextTrib) nextText = r.nextTrib;
+        else if (r.voyage && game.atSea(run)) nextText = '继续探索';
+        else if (!r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
+      }
+      return {
+        kind: 'result',
+        title: r.title,
+        label: r.label,
+        lines: r.lines.map((text, i) => ({ key: i, text: text })),
+        okText: r.dead ? '……' : (run.pending ? '取舍功法' : '收起'),
+        nextText: nextText
+      };
+    }
+    if (this.arenaOpen && run.phase === 'alive') return this.arenaView();
+    if (this.seaOpen) {
+      const sea = game.seaView(s);
+      if (sea) return Object.assign({ kind: 'sea' }, sea);
+    }
+    if (this.tribOpen && run.phase === 'alive') return this.tribulationView();
+    if (this.mergeOpen && run.phase === 'alive') return this.mergeView();
+    if (run.pending && !this.replaceHidden) {
+      const skill = game.SKILLS.filter((k) => k.id === run.pending.id)[0];
+      return {
+        kind: 'replace',
+        title: game.skillTitle(skill, run.pending.level),
+        text: game.skillDesc(skill, run.pending.level),
+        max: game.maxSkills(s),
+        options: this.skillViews().map((v) => ({ id: v.id, name: '《' + v.name + '》（' + v.school + '·' + v.grade + '）', desc: v.desc }))
+      };
+    }
+    if (run.phase === 'alive' && run.event && this.eventOpen) {
+      return Object.assign({ kind: 'event' }, game.eventView(s));
+    }
+    if (run.phase === 'dead' && this.deadOpen) {
+      return {
+        kind: 'dead',
+        text: run.death.text,
+        wick: run.death.wick,
+        carry: game.canCarry(s) ? this.skillViews().filter((v) => !v.arcane).map((v) => ({ id: v.id, name: v.name, on: s.carry === v.id })) : []
+      };
+    }
+    return HIDDEN_SHEET;
+  },
+
+  skillViews() {
+    return this.state.run.skills.map((entry) => {
+      const skill = game.skillInfo(entry.id);
+      const school = game.SCHOOLS[skill.school];
+      return {
+        id: skill.id,
+        name: skill.name,
+        school: school.name,
+        color: school.color,
+        grade: skill.arcane ? '秘法' : game.GRADES[entry.level - 1] + '品',
+        arcane: !!skill.arcane,
+        suppressed: !!(skill.arcane && this.state.run.aftermath && this.state.run.aftermath.id === 'backlash'),
+        canMerge: !skill.arcane && entry.level === game.GRADES.length && game.mergeOptions(this.state, skill.id).length > 0,
+        desc: game.skillDesc(skill, entry.level)
+      };
+    });
+  },
+
+  refresh() {
+    const s = this.state;
+    const run = s.run;
+    // 天劫动画播完之前不揭晓结果：境界、寿元和结算面板都先不更新。
+    if (this.act === 'thunder') {
+      // 只在开始时设一次，之后不再触碰节点，免得动画被打断。
+      if (!this.data.actor.storm) this.setData({ actor: this.actorView(), sheet: HIDDEN_SHEET });
+      return;
+    }
+    const patch = {
+      hud: this.hudView(),
+      hero: this.heroView(),
+      actor: this.actorView(),
+      tip: this.tipView(),
+      sheet: this.sheetView(),
+      autoUnlocked: game.autoUnlocked(s),
+      alive: run.phase === 'alive',
+      dead: run.phase === 'dead'
+    };
+    const tab = this.data.tab;
+    if (tab === 'skill') {
+      const info = run.phase === 'alive' ? game.tribulationInfo(s) : null;
+      const yuan = run.phase === 'alive' && run.realm === game.SEA_REALM ? game.TRIBS[run.realm] : null;
+      const a = game.attrs(s);
+      const counts = game.setCounts(run);
+      patch.attrs = game.ATTRS.map((k) => ({
+        name: game.ATTR_NAMES[k],
+        value: a[k],
+        need: info && info.tests.indexOf(k) >= 0 ? info.req : (yuan ? yuan.req : 0)
+      }));
+      patch.sets = game.SCHOOL_IDS.map((id) => {
+        const school = game.SCHOOLS[id];
+        return {
+          id: id,
+          name: school.name,
+          color: school.color,
+          count: counts[id],
+          set2: school.set2,
+          set4: school.set4,
+          on2: counts[id] >= 2,
+          on4: counts[id] >= 4
+        };
+      });
+      patch.skills = this.skillViews();
+      patch.skillCount = run.skills.length + ' / ' + game.maxSkills(s);
+    } else if (tab === 'log') {
+      patch.karma = run.karma.map((k) => ({ name: game.KARMA[k.id] }));
+      patch.marks = run.marks.map((m) => ({ name: game.MARKS[m] }));
+      patch.logs = run.log.map((l, i) => ({ key: i, title: l.title, text: l.text, detail: l.detail || '' })).reverse();
+    } else if (tab === 'lamp') {
+      patch.lamps = game.LAMPS.map((lamp) => {
+        const maxed = game.lampMaxed(s, lamp.id);
+        const cost = game.lampCost(s, lamp.id);
+        return {
+          id: lamp.id,
+          branch: lamp.branch,
+          name: lamp.name,
+          desc: lamp.desc + (lamp.max > 1 ? '（每级）' : ''),
+          levelText: game.lampLevel(s, lamp.id) + ' / ' + lamp.max,
+          maxed: maxed,
+          costText: game.formatNumber(cost),
+          affordable: !maxed && s.wick >= cost
+        };
+      });
+    } else {
+      const best = s.best < 0 ? '无' : game.REALMS[Math.floor(s.best / game.STAGES.length)].name + game.STAGES[s.best % game.STAGES.length].name;
+      patch.stats = [
+        { label: '已经历', value: s.lives + ' 世' },
+        { label: '身死时的最高境界', value: best },
+        { label: '累计灯芯', value: game.formatNumber(s.totalWick) },
+        { label: '这一世的根骨', value: run.phase === 'root' ? '-' : game.rootInfo(run.root).name + '（' + game.ROOT_RARITIES[game.rootInfo(run.root).rarity].name + '骨）' },
+        { label: '这一世的命格', value: run.phase === 'root' ? '-' : (game.FATES.filter((f) => f.id === run.fate)[0] || { name: '无（旧世）' }).name },
+        { label: '这一世的道路', value: run.phase === 'root' ? '-' : (run.mode === 'demon' ? '魔修' : '常规修行') },
+        { label: '机缘积攒', value: run.phase === 'root' ? '-' : game.formatDuration(Math.round(game.chanceInterval(s))) + ' / 次' },
+        { label: '这一世的年岁', value: run.phase === 'root' ? '-' : run.age + ' / ' + game.maxLife(s) + ' 岁' },
+        { label: '这一世做过的选择', value: run.choices + ' 个' }
+      ];
+      patch.epitaphs = s.epitaphs.map((text, i) => ({ key: i, text: text }));
+    }
+    this.setData(patch);
+  },
+
+  afterAction() {
+    this.refresh();
+    this.save();
+  },
+
+  onMain() {
+    const s = this.state;
+    const run = s.run;
+    if (this.act === 'thunder') return;
+    if (run.phase === 'dead') {
+      this.onReborn();
+      return;
+    }
+    if (run.phase !== 'alive') return;
+    if (game.atSea(run)) {
+      this.onSea();
+      return;
+    }
+    if (run.pending) {
+      audio.play('tap');
+      this.replaceHidden = false;
+      this.refresh();
+      return;
+    }
+    if (!run.event) {
+      if (!game.drawEvent(s, Math.random)) {
+        this.showBanner('机缘未至，等一等');
+        this.play('shake');
+        this.refresh();
+        return;
+      }
+      this.play('notice');
+    } else {
+      audio.play('tap');
+    }
+    this.eventOpen = true;
+    this.afterAction();
+  },
+
+  onBig() {
+    const s = this.state;
+    const run = s.run;
+    if (run.phase !== 'alive' || this.act === 'thunder') return;
+    if (!run.event) {
+      if (!game.drawBig(s, Math.random)) {
+        audio.play('bad');
+        this.showBanner(run.pending ? '先把功法取舍了' : '功法都已满品，大机缘先留着');
+        return;
+      }
+      this.play('notice');
+    }
+    this.eventOpen = true;
+    this.afterAction();
+  },
+
+  onRoot(e) {
+    if (!game.chooseRoot(this.state, e.currentTarget.dataset.id, Date.now(), Math.random)) return;
+    this.play('born');
+    this.afterAction();
+  },
+
+  onRootReroll() {
+    if (!game.rerollRoots(this.state, Math.random)) return;
+    audio.play('tap');
+    this.save();
+    this.refresh();
+  },
+
+  onSea() {
+    if (this.act === 'thunder' || !game.seaView(this.state)) return;
+    audio.play('tap');
+    this.seaOpen = true;
+    this.refresh();
+  },
+
+  onSeaOption(e) {
+    const data = e.currentTarget.dataset;
+    const result = game.chooseSea(this.state, data.id, Number(data.tide));
+    if (result) this.finishSea(result);
+  },
+
+  onSeaRetreat() {
+    const result = game.retreatSea(this.state);
+    if (result) this.finishSea(result);
+  },
+
+  finishSea(result) {
+    this.seaOpen = false;
+    const yuan = game.yuanTrialView(this.state);
+    this.finishChoice(result, { voyage: true, nextTrib: yuan && yuan.ready ? '渡元婴劫' : '' });
+  },
+
+  finishChoice(result, context) {
+    if (!result) {
+      this.showBanner('灵气不足，选不了这一项');
+      this.play('shrug');
+      this.refresh();
+      return;
+    }
+    this.result = Object.assign({ title: result.title, label: result.label, lines: result.lines, dead: result.dead }, context);
+    this.eventOpen = false;
+    this.replaceHidden = false;
+    if (result.dead) wx.vibrateShort({ type: 'heavy' });
+    this.play(result.dead ? this.deathAct() : actionForTags(result.tags));
+    this.afterAction();
+  },
+
+  onOption(e) {
+    this.finishChoice(game.choose(this.state, Number(e.currentTarget.dataset.index), Math.random));
+  },
+
+  onFallback() {
+    this.finishChoice(game.choose(this.state, -1, Math.random));
+  },
+
+  onReroll() {
+    if (!game.rerollEvent(this.state, Math.random)) return;
+    this.play('divine');
+    this.afterAction();
+  },
+
+  onSheetClose() {
+    audio.play('tap');
+    this.eventOpen = false;
+    this.seaOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.bracing = false;
+    if (this.state.run.pending) this.replaceHidden = true;
+    this.refresh();
+  },
+
+  onResultOk() {
+    audio.play('tap');
+    const dead = this.result && this.result.dead;
+    this.result = null;
+    if (dead) this.deadOpen = true;
+    this.refresh();
+  },
+
+  onResultNext() {
+    const nextTrib = this.result && this.result.nextTrib;
+    this.result = null;
+    if (nextTrib) this.onTrib();
+    else this.onMain();
+  },
+
+  onReplace(e) {
+    if (!game.resolveReplace(this.state, Number(e.currentTarget.dataset.index))) return;
+    if (this.state.run.phase === 'dead') {
+      this.deadOpen = true;
+      this.play(this.deathAct());
+    } else {
+      this.play('toss');
+    }
+    this.afterAction();
+  },
+
+  onTrib() {
+    const info = game.yuanTrialView(this.state) || game.tribulationInfo(this.state);
+    if (!info || !info.ready || this.act === 'thunder') return;
+    audio.play('tap');
+    this.tribOpen = true;
+    this.bracing = true;
+    this.eventOpen = false;
+    this.refresh();
+  },
+
+  onTribMethod(e) {
+    const method = e.currentTarget.dataset.method;
+    const before = this.state.run.realm;
+    const result = game.attemptTribulation(this.state, Math.random, method);
+    if (!result) {
+      this.showBanner(method === 'borrow' ? '机缘不足，借不了这一股势' : '现在还不能渡劫');
+      return;
+    }
+    this.playTribulation({
+      title: result.name,
+      label: result.success ? '雷散了，你还站着' : (method === 'scatter' ? '修为散了，命还在' : '你被劈了下来'),
+      lines: result.lines,
+      dead: result.dead
+    }, before, result.success ? 'ascend' : (result.dead ? this.deathAct() : 'hurt'));
+  },
+
+  onYuanMethod(e) {
+    const data = e.currentTarget.dataset;
+    const before = this.state.run.realm;
+    const result = game.attemptYuanTrial(this.state, Math.random, data.id, Number(data.step));
+    if (!result) return;
+    this.playTribulation({
+      title: result.title, label: result.label, lines: result.lines, dead: result.dead, yuan: true,
+      nextTrib: result.success && !result.advanced ? '前往问名关' : ''
+    }, before, result.advanced ? 'ascend' : (result.success ? 'focus' : (result.dead ? this.deathAct() : 'hurt')));
+  },
+
+  playTribulation(result, before, nextAct) {
+    this.tribOpen = false;
+    this.bracing = false;
+    this.result = result;
+    this.stormTimer = setTimeout(() => wx.vibrateShort({ type: 'heavy' }), STORM_HIT_MS);
+    this.play('thunder', nextAct);
+    this.holdRealm = before;
+    this.afterAction();
+  },
+
+  onCarry(e) {
+    if (!game.setCarry(this.state, e.currentTarget.dataset.id)) return;
+    audio.play('tap');
+    this.afterAction();
+  },
+
+  onDeadLamp() {
+    audio.play('tap');
+    this.deadOpen = false;
+    this.setData({ tab: 'lamp' });
+    this.refresh();
+  },
+
+  onReborn() {
+    if (!game.reincarnate(this.state, Date.now(), Math.random)) return;
+    audio.play('tap');
+    this.stopAct();
+    this.deadOpen = false;
+    this.seaOpen = false;
+    this.chronicleOpen = false;
+    this.chronicleBusy = false;
+    this.shareImage = '';
+    this.chronicleToken++;
+    this.setData({ tab: 'skill', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.afterAction();
+  },
+
+  onTab(e) {
+    if (this.act === 'thunder') return;
+    audio.play('tap');
+    this.setData({ tab: e.currentTarget.dataset.tab });
+    this.refresh();
+  },
+
+  onBuyLamp(e) {
+    const id = e.currentTarget.dataset.id;
+    if (game.lampMaxed(this.state, id)) return;
+    if (game.buyLamp(this.state, id)) {
+      this.play('bow');
+      this.afterAction();
+    } else {
+      audio.play('bad');
+      this.showBanner('灯芯不足');
+    }
+  },
+
+  onRetire() {
+    if (this.state.run.phase !== 'alive' || this.act === 'thunder') return;
+    this.openModal({
+      title: '坐化',
+      content: '主动结束这一世，按当前境界结算灯芯。这一世的功法、灵气和因果都会留在身后。',
+      highlight: '灯芯 +' + game.wickGain(this.state, 'retire'),
+      confirmText: '坐化',
+      cancelText: '再活一阵',
+      danger: true
+    }, function () {
+      if (!game.retire(this.state)) return;
+      this.play(this.deathAct());
+      this.result = null;
+      this.eventOpen = false;
+      this.seaOpen = false;
+      this.deadOpen = true;
+      this.afterAction();
+    });
+  },
+
+  onReset() {
+    if (this.act === 'thunder') return;
+    this.openModal({
+      title: '重置存档',
+      content: '将清空全部进度，包括灯芯、灯纹和墓志铭，且无法恢复。',
+      confirmText: '重置',
+      cancelText: '取消',
+      danger: true
+    }, function () {
+      this.state = game.createState(Date.now());
+      this.stopAct();
+      this.tipDone = false;
+      this.tipStep = 0;
+      try {
+        wx.removeStorageSync(TIP_KEY);
+      } catch (e) {
+        console.error('清除指引进度失败', e);
+      }
+      this.result = null;
+      this.eventOpen = false;
+      this.seaOpen = false;
+      this.tribOpen = false;
+      this.mergeOpen = false;
+      this.chronicleOpen = false;
+      this.chronicleBusy = false;
+      this.shareImage = '';
+      this.chronicleToken++;
+      this.deadOpen = false;
+      this.setData({ tab: 'skill', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+      this.afterAction();
+    });
+  }
+});

@@ -1,0 +1,17 @@
+node_modules/
+miniprogram_npm/
+
+# 本机与发布工具状态
+.workbuddy/
+.playwright-cli/
+.wbapp_*.genie
+.wbapp_*.privacy.json
+project.private.config.json
+utils/cloud-config.js
+
+# 浏览器预览生成物
+tools/preview/index.html
+
+# 系统文件
+.DS_Store
+Thumbs.db

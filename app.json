@@ -1,0 +1,11 @@
+{
+  "pages": ["pages/index/index"],
+  "window": {
+    "navigationBarTitleText": "烬灯录",
+    "navigationBarBackgroundColor": "#2b2019",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0d0c0e"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
