@@ -1,5 +1,6 @@
 // 《烬灯录》的游戏规则，不依赖微信接口。所有随机数由调用方传入 rng（返回 [0, 1) 的函数），便于测试。
 const content = require('./content');
+const combatPower = require('./combat-power');
 const mountain = require('./mountain');
 
 const SCHOOL_IDS = content.SCHOOL_IDS;
@@ -307,11 +308,15 @@ function hasSet(run, school, n) {
   return setCounts(run)[school] >= n;
 }
 
+function skillSuppressed(run, skill) {
+  return skill.arcane && run.aftermath && run.aftermath.id === 'backlash';
+}
+
 function sumSkills(run, key) {
   let total = 0;
   run.skills.forEach((s) => {
     const skill = skillInfo(s.id);
-    if (run.aftermath && run.aftermath.id === 'backlash' && skill.arcane) return;
+    if (skillSuppressed(run, skill)) return;
     total += (skill[key] || 0) * s.level;
   });
   return total;
@@ -494,6 +499,21 @@ function attrs(state) {
     });
   }
   return out;
+}
+
+function combatPowerDetails(state, currentAttrs) {
+  const run = state.run;
+  if (run.phase === 'root') return { total: 0, sources: [] };
+  const mastery = run.skills.reduce((sum, entry) => {
+    const skill = skillInfo(entry.id);
+    return skillSuppressed(run, skill) ? sum : sum + combatPower.masteryPower(entry.level, skill.arcane);
+  }, 0);
+  const counts = setCounts(run);
+  const bonds = SCHOOL_IDS.reduce((sum, id) => sum + combatPower.bondPower(counts[id]), 0);
+  return combatPower.powerProfile(REALMS[run.realm], STAGES[run.stage], currentAttrs || attrs(state), [
+    { id: 'mastery', label: '功法品级', value: mastery },
+    { id: 'bonds', label: '流派羁绊', value: bonds }
+  ]);
 }
 
 function qiCap(state) {
@@ -1516,10 +1536,7 @@ function autoStep(state, rng) {
   return out;
 }
 
-// 竞技场：和排行榜上的人切磋。榜上只有境界和累计灯芯，对手的战力由这两项推算。
-const ARENA_REALM_POWER = [12, 45, 130, 380, 850];
-const ARENA_STAGE_MULT = [1, 1.25, 1.5];
-const ARENA_UNBORN_POWER = 6;
+// 竞技场：和排行榜上的人切磋。
 // 胜利按对手战力发论道积分，失败折寿。
 const ARENA_WIN_RATE = 0.06;
 const ARENA_WIN_MIN = 3;
@@ -1542,23 +1559,13 @@ function arenaStanding(state) {
 }
 
 function arenaPower(state) {
-  const a = attrs(state);
-  return ATTRS.reduce((sum, k) => sum + Math.max(0, a[k]), 0);
-}
-
-function arenaFoePower(row) {
-  const index = Math.floor(Number(row.realmIndex));
-  if (!Number.isFinite(index) || index < 0) return ARENA_UNBORN_POWER;
-  const realm = Math.min(REALMS.length - 1, Math.floor(index / STAGES.length));
-  const wick = Math.max(0, Number(row.totalWick) || 0);
-  return Math.round(ARENA_REALM_POWER[realm] * ARENA_STAGE_MULT[index % STAGES.length] * (1 + Math.min(0.5, Math.log10(1 + wick) / 10)));
+  return combatPowerDetails(state).total;
 }
 
 // row 是榜上的一行：{ id, name, realmIndex, totalWick }。对战次数跨世保留，随时间回复。
-function arenaInfo(state, row) {
+function arenaInfo(state, row, mine = arenaPower(state)) {
   const run = state.run;
-  const mine = arenaPower(state);
-  const foe = arenaFoePower(row);
+  const foe = combatPower.estimatedOpponentPower(row);
   const win = Math.max(ARENA_WIN_MIN, Math.round(foe * ARENA_WIN_RATE));
   const info = {
     power: foe,
@@ -2332,6 +2339,7 @@ module.exports = {
   setCounts,
   hasSet,
   attrs,
+  combatPowerDetails,
   qiCap,
   qiRate,
   maxLife,

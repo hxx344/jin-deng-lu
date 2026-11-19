@@ -13,6 +13,10 @@
     <view class="qi">
       <text class="qi-num">{{hud.qi}}</text>
       <text class="qi-cap">/ {{hud.cap}} 灵气</text>
+      <view class="power-badge">
+        <text class="power-label">战力</text>
+        <text class="power-value">{{hud.power}}</text>
+      </view>
     </view>
     <view class="bar bar-qi">
       <view class="bar-fill" style="width: {{hud.qiPct}}%;"></view>
@@ -173,6 +177,18 @@
           <text class="attr-name">{{item.name}}</text>
           <text class="attr-value">{{item.value}}</text>
           <text wx:if="{{item.need}}" class="attr-hint">天劫需 {{item.need}}</text>
+        </view>
+      </view>
+      <view wx:if="{{powerSources.length}}" class="power-panel">
+        <view class="power-panel-head">
+          <text>战力构成</text>
+          <text class="power-value">{{hud.power}}</text>
+        </view>
+        <view class="power-sources">
+          <view wx:for="{{powerSources}}" wx:key="id" class="power-source">
+            <text>{{item.label}}</text>
+            <text class="power-source-value">{{item.value}}</text>
+          </view>
         </view>
       </view>
       <view class="section">羁绊</view>
@@ -499,7 +515,7 @@
         </view>
         <view class="sheet-title">我的战力 {{sheet.power}} · 对战次数 {{sheet.left}}</view>
         <view class="sheet-text">{{sheet.standing}}<text wx:if="{{sheet.nextRank}}"> · {{sheet.nextRank}}</text></view>
-        <view class="sheet-text">对手战力按境界和累计灯芯推算。胜了获论道积分，败了折寿。{{sheet.waitText}}连战时，寿元经不起一败会自动停手。</view>
+        <view class="sheet-text">对手战力按历史最高境界和累计灯芯估算。胜了获论道积分，败了折寿。{{sheet.waitText}}连战时，寿元经不起一败会自动停手。</view>
         <scroll-view scroll-y class="sheet-body cloud-body">
           <view wx:if="{{sheet.error}}" class="cloud-error">{{sheet.error}}</view>
           <view wx:if="{{sheet.loading && !sheet.rows.length}}" class="empty">正在读取榜单…</view>
@@ -508,7 +524,7 @@
             <text class="rank-no">{{item.rank}}</text>
             <view class="rank-info">
               <text class="rank-name">{{item.name}}</text>
-              <text class="rank-realm">{{item.realm}} · 战力 {{item.power}}</text>
+              <text class="rank-realm">{{item.realm}} · {{item.mine ? '战力' : '估算战力'}} {{item.power}}</text>
               <text wx:if="{{!item.mine}}" class="rank-realm">{{item.gain}}</text>
             </view>
             <view wx:if="{{item.mine}}" class="arena-btn arena-btn-off">自己</view>

@@ -215,6 +215,7 @@ Page({
     alive: false,
     dead: false,
     attrs: [],
+    powerSources: [],
     sets: [],
     skills: [],
     skillCount: '',
@@ -888,7 +889,7 @@ Page({
     return view;
   },
 
-  hudView() {
+  hudView(power) {
     const s = this.state;
     const run = s.run;
     const cap = game.qiCap(s);
@@ -900,6 +901,7 @@ Page({
       wick: game.formatNumber(s.wick),
       qi: game.formatNumber(Math.floor(run.qi)),
       cap: game.formatNumber(cap),
+      power: born ? game.formatNumber(power) : '—',
       qiPct: Math.min(100, Math.floor(run.qi / cap * 100)),
       rate: game.formatNumber(game.qiRate(s)),
       years: run.phase === 'alive' ? left : '-',
@@ -1090,8 +1092,9 @@ Page({
           '满 ' + game.MAX_DEMON + ' 不再立即身死，而是转魔修：灵气产出 ×5，不能渡劫，普通延寿无效，只能耗灵气服散续命。十年后魔躯燃尽，身死灯芯仍 ×1.5。',
           '有些闲事和因果能降心魔，别全跳过。'
         ]),
-        sec('竞技场', [
-          '“轮回”页里的“竞技场”可以挑战排行榜上的人。战力是锋、躯、神之和，对手的战力按他的境界和累计灯芯推算，胜率写在按钮上。',
+        sec('战力与竞技场', [
+          '主界面显示当前战力，“功法”页可以查看来源。提升境界、锋躯神、功法品级和羁绊都能提高战力。单项属性过高后增幅会放缓，三项兼修会加分。',
+          '“轮回”页里的“竞技场”可以挑战榜上玩家。对手战力按历史最高境界和累计灯芯估算，胜率写在按钮上。',
           '胜了积累论道积分，解锁竞技场称号。对手越强，积分越多。败了折损 3 年寿元。',
           '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
         ]),
@@ -1133,7 +1136,7 @@ Page({
   },
 
   // 竞技场：对手就是排行榜上的人，榜单数据沿用云面板拉回来的那一份。
-  arenaView() {
+  arenaView(power) {
     const s = this.state;
     const cloud = this.data.cloud;
     const left = Math.floor(s.arena);
@@ -1141,7 +1144,7 @@ Page({
     const standing = game.arenaStanding(s);
     return {
       kind: 'arena',
-      power: game.formatNumber(game.arenaPower(s)),
+      power: game.formatNumber(power),
       left: left + ' / ' + game.ARENA_MAX,
       batch: left >= 2 ? left : 0,
       standing: standing.title + ' · 论道积分 ' + game.formatNumber(standing.points),
@@ -1150,14 +1153,14 @@ Page({
       loading: cloud.boardLoading,
       error: cloud.boardError,
       rows: cloud.rows.map((row) => {
-        const info = game.arenaInfo(s, row);
+        const info = game.arenaInfo(s, row, power);
         return {
           id: row.id,
           rank: row.rank,
           name: row.name,
-          realm: row.realm,
+          realm: row.mine ? game.realmText(s.run) : row.realm,
           mine: row.mine,
-          power: game.formatNumber(info.power),
+          power: game.formatNumber(row.mine ? power : info.power),
           pct: percent(info.chance),
           gain: '胜：论道积分 +' + info.win + ' · 败：折寿 ' + info.years + ' 年',
           off: !!info.reason
@@ -1404,7 +1407,7 @@ Page({
     return { title: '烬灯录 · 天道已死，灯火未灭', path: '/pages/index/index' };
   },
 
-  sheetView() {
+  sheetView(power) {
     const s = this.state;
     const run = s.run;
     if (this.cloudOpen) return { kind: 'cloud' };
@@ -1453,7 +1456,7 @@ Page({
         nextText: nextText
       };
     }
-    if (this.arenaOpen && run.phase === 'alive') return this.arenaView();
+    if (this.arenaOpen && run.phase === 'alive') return this.arenaView(power);
     if (this.seaOpen) {
       const sea = game.seaView(s);
       if (sea) return Object.assign({ kind: 'sea' }, sea);
@@ -1515,22 +1518,28 @@ Page({
       if (!this.data.actor.storm) this.setData({ actor: this.actorView(), sheet: HIDDEN_SHEET });
       return;
     }
+    const tab = this.data.tab;
+    const a = run.phase !== 'root' || tab === 'skill' ? game.attrs(s) : null;
+    const power = game.combatPowerDetails(s, a);
     const patch = {
-      hud: this.hudView(),
+      hud: this.hudView(power.total),
       hero: this.heroView(),
       actor: this.actorView(),
       tip: this.tipView(),
-      sheet: this.sheetView(),
+      sheet: this.sheetView(power.total),
       autoUnlocked: game.autoUnlocked(s),
       alive: run.phase === 'alive',
       dead: run.phase === 'dead'
     };
-    const tab = this.data.tab;
     if (tab === 'skill') {
       const info = run.phase === 'alive' ? game.tribulationInfo(s) : null;
       const yuan = run.phase === 'alive' && run.realm === game.SEA_REALM ? game.TRIBS[run.realm] : null;
-      const a = game.attrs(s);
       const counts = game.setCounts(run);
+      patch.powerSources = power.sources.map((source) => ({
+        id: source.id,
+        label: source.label,
+        value: (source.value < 0 ? '−' : '+') + game.formatNumber(Math.abs(source.value))
+      }));
       patch.attrs = game.ATTRS.map((k) => ({
         name: game.ATTR_NAMES[k],
         value: a[k],
