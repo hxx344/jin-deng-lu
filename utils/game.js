@@ -273,8 +273,11 @@ function createState(now, rng) {
   return state;
 }
 
+const SKILL_INDEX = new Map();
+ARCANES.concat(SKILLS).forEach((skill) => SKILL_INDEX.set(skill.id, skill));
+
 function skillInfo(id) {
-  return findById(SKILLS, id) || findById(ARCANES, id);
+  return SKILL_INDEX.get(id) || null;
 }
 
 function skillEntry(run, id) {
