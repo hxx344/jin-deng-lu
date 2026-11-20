@@ -2535,7 +2535,7 @@ function gearGain(state, item) {
     out.worn = true;
   } else if (g.pack.length < gear.PACK_MAX) {
     g.pack.push(item);
-    out.better = gear.rating(item) > gear.rating(g.worn[item.slot]);
+    out.better = gear.better(item, g.worn[item.slot]);
   } else {
     out.scrapped = gear.scrapValue(item);
     g.forge = Math.min(FORGE_MAX, g.forge + out.scrapped);
@@ -2569,12 +2569,12 @@ function gearEquipBest(state) {
   if (run.phase !== 'alive') return 0;
   let count = 0;
   gear.SLOTS.forEach((slot) => {
+    const worn = run.gear.worn[slot.id];
     let best = null;
     run.gear.pack.forEach((item) => {
-      if (item.slot === slot.id && (!best || gear.rating(item) > gear.rating(best))) best = item;
+      if (item.slot === slot.id && gear.better(item, worn) && (!best || gear.rating(item) > gear.rating(best))) best = item;
     });
-    const worn = run.gear.worn[slot.id];
-    if (best && (!worn || gear.rating(best) > gear.rating(worn)) && gearEquip(state, best.uid)) count++;
+    if (best && gearEquip(state, best.uid)) count++;
   });
   return count;
 }
@@ -2600,14 +2600,11 @@ function gearScrap(state, uid) {
   return value;
 }
 
-// 把背包里不比身上好的都分解掉。
+// 把背包里战斗数值和装备分都不比身上高的分解掉。
 function gearScrapSpare(state) {
   const run = state.run;
   if (run.phase !== 'alive') return { count: 0, forge: 0 };
-  const spare = run.gear.pack.filter((item) => {
-    const worn = run.gear.worn[item.slot];
-    return worn && gear.rating(item) <= gear.rating(worn);
-  });
+  const spare = run.gear.pack.filter((item) => gear.spare(item, run.gear.worn[item.slot]));
   let forge = 0;
   spare.forEach((item) => {
     forge += gearScrap(state, item.uid);
@@ -2618,7 +2615,7 @@ function gearScrapSpare(state) {
 // 背包里有没有比身上好的；标签页上的红点只问这一句，不必排一遍整个背包。
 function gearHasBetter(state) {
   const g = state.run.gear;
-  return g.pack.some((item) => !g.worn[item.slot] || gear.rating(item) > gear.rating(g.worn[item.slot]));
+  return g.pack.some((item) => gear.better(item, g.worn[item.slot]));
 }
 
 function gearView(state) {
@@ -2631,7 +2628,7 @@ function gearView(state) {
   });
   const pack = g.pack.map((item) => {
     const mine = g.worn[item.slot];
-    return Object.assign(gear.describe(item), { better: !mine || gear.rating(item) > gear.rating(mine), scrap: gear.scrapValue(item) });
+    return Object.assign(gear.describe(item), { better: gear.better(item, mine), spare: gear.spare(item, mine), scrap: gear.scrapValue(item) });
   }).sort((a, b) => (a.slot === b.slot ? b.tier - a.tier || b.score - a.score : gear.SLOTS.findIndex((s) => s.id === a.slot) - gear.SLOTS.findIndex((s) => s.id === b.slot)));
   return {
     score: gearScore(state),
@@ -2643,7 +2640,7 @@ function gearView(state) {
     pack: pack,
     packMax: gear.PACK_MAX,
     hasBetter: pack.some((item) => item.better),
-    hasSpare: pack.some((item) => !item.better)
+    hasSpare: pack.some((item) => item.spare)
   };
 }
 

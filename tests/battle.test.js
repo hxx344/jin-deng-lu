@@ -461,6 +461,35 @@ test('装备：换上、一键换好的、强化、分解，背包满了新掉�
   assert.strictEqual(g.forge, full.drop.scrapped);
 });
 
+test('装备：高几阶的白板装备装备分不如强化过的旧装备时，不算更好也不算用不上', () => {
+  const s = cultivator(13, 13, 13);
+  const g = s.run.gear;
+  g.worn.weapon = { uid: 1, slot: 'weapon', grade: 2, tier: 20, level: 5, affixes: ['atk', 'crit'] };
+  const raw = { uid: 2, slot: 'weapon', grade: 2, tier: 25, level: 0, affixes: ['atk', 'crit'] };
+  g.pack = [raw];
+  g.seq = 2;
+  assert.ok(gear.rating(raw) > gear.rating(g.worn.weapon) && gear.score(raw) < gear.score(g.worn.weapon));
+  const before = game.gearScore(s);
+  let view = game.gearView(s);
+  assert.strictEqual(view.pack[0].better, false);
+  assert.strictEqual(view.hasBetter, false);
+  assert.strictEqual(view.hasSpare, false);
+  assert.strictEqual(game.gearHasBetter(s), false);
+  assert.strictEqual(game.gearEquipBest(s), 0);
+  assert.deepStrictEqual(game.gearScrapSpare(s), { count: 0, forge: 0 });
+  assert.strictEqual(game.gearScore(s), before);
+  assert.strictEqual(g.pack.length, 1);
+  // 阶高到装备分也超过了才算更好；换上去装备分不降。
+  g.pack.push({ uid: 3, slot: 'weapon', grade: 2, tier: 45, level: 0, affixes: ['atk', 'crit'] });
+  g.seq = 3;
+  view = game.gearView(s);
+  assert.deepStrictEqual(view.pack.map((item) => [item.uid, item.better]), [[3, true], [2, false]]);
+  assert.strictEqual(game.gearEquipBest(s), 1);
+  assert.strictEqual(g.worn.weapon.uid, 3);
+  assert.ok(game.gearScore(s) >= before);
+  // 换下来的两件现在两项都不如身上的，才分解。
+  assert.strictEqual(game.gearScrapSpare(s).count, 2);
+});
 test('储物袋攒装备：每 20 分钟一件，有上限，收取时按眼下的关数掷', () => {
   const s = cultivator(13, 13, 13);
   game.advance(s, s.lastTime + 3600 * 1000);

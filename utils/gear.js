@@ -126,9 +126,19 @@ function score(item) {
   return Math.round((GRADES[item.grade].score * (1 + LEVEL_BONUS * item.level) + AFFIX_SCORE * item.affixes.length) * (1 + TIER_SCORE * (item.tier - 1)));
 }
 
-// 比较两件同槽位装备谁更好用的粗略分数。
+// 比较两件同槽位装备谁在战斗里更好用的粗略分数。
 function rating(item) {
   return strength(item) * (1 + 0.12 * item.affixes.length);
+}
+
+// 比身上的好：战斗里更好用，装备分也不降。高几阶的白板装备战斗数值常常高过强化过的旧装备，装备分却更低，
+// 这种各有高低的既不算更好也不算用不上，留给玩家自己定。
+function better(item, worn) {
+  return !worn || (rating(item) > rating(worn) && score(item) >= score(worn));
+}
+
+function spare(item, worn) {
+  return !!worn && rating(item) <= rating(worn) && score(item) <= score(worn);
 }
 
 function enhanceCost(item) {
@@ -188,4 +198,4 @@ function clean(raw) {
   return { slot: raw.slot, grade: grade, tier: tier, level: level, affixes: affixes };
 }
 
-module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, roll, stats, bonus, statsText, score, rating, enhanceCost, scrapValue, describe, clean };
+module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, roll, stats, bonus, statsText, score, rating, better, spare, enhanceCost, scrapValue, describe, clean };
