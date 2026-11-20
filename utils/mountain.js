@@ -10,8 +10,30 @@ const AFTERMATH_LENGTH = 2;
 const FACILITIES = [
   { id: 'array', name: '聚灵阵', effects: ['灵气产出 +12%', '灵气产出 +25%'] },
   { id: 'field', name: '灵田', effects: ['每累计两次普通机缘多得 1 灵材；定神丹少耗 3 次机缘', '每次普通机缘多得 1 灵材；定神丹少耗 6 次机缘'] },
-  { id: 'library', name: '藏经室', effects: ['更常遇到已修流派的功法；弟子可学至天品', '进一步偏向已修流派；弟子可学秘法'] }
+  { id: 'library', name: '藏经室', effects: ['更常遇到已修流派的功法；弟子可学至天品', '进一步偏向已修流派；弟子可学秘法'] },
+  { id: 'tree', name: '仙树', effects: ['可用玉露浇灌结仙果；每颗仙果寿元上限 +8 年', '每颗仙果寿元上限 +12 年'] }
 ];
+
+// 筑石和玉露从历练里来：筑石开府、修设施，玉露浇仙树。
+const STONE_MAX = 99;
+const DEW_MAX = 99;
+const FRUIT_MAX = 99;
+// 浇一次仙树耗这么多玉露，过这么多次普通机缘后结一颗仙果；仙果加的寿元上限按仙树的级别算。
+const FRUIT_DEW = 2;
+const FRUIT_CHOICES = 2;
+const FRUIT_LIFE = [8, 12];
+
+function addStone(run, amount) {
+  const gained = Math.min(amount, STONE_MAX - run.stone);
+  run.stone += gained;
+  return gained;
+}
+
+function addDew(run, amount) {
+  const gained = Math.min(amount, DEW_MAX - run.dew);
+  run.dew += gained;
+  return gained;
+}
 
 const PATROL_HAUL_MAX = 16;
 const RANK_AFTER = ['', ' 匾后来换过一回大的。', ' 山下的人如今提起这里，都要先整一整衣襟。', ' 骸山这一带的地图上，现在印着这个名字。'];
@@ -39,7 +61,7 @@ function cleanName(name) {
 }
 
 function emptyCave() {
-  return { array: 0, field: 0, library: 0 };
+  return { array: 0, field: 0, library: 0, tree: 0, ripe: 0, fruit: 0 };
 }
 
 function newDisciple(id) {
@@ -51,6 +73,12 @@ function progressChoices(run, lines, rng) {
   const extra = field === 2 || (field === 1 && run.mountainChoices % 2 === 0);
   const gained = addMaterials(run, 1 + Number(extra));
   if (gained) lines.push('灵材 +' + gained);
+  const cave = run.cave;
+  if (cave && cave.ripe && run.mountainChoices >= cave.ripe) {
+    cave.ripe = 0;
+    cave.fruit = Math.min(FRUIT_MAX, cave.fruit + 1);
+    lines.push('仙树结果，仙果 +1');
+  }
   const sect = run.sect;
   if (sect && sect.patrol && run.mountainChoices >= sect.patrol.due) {
     const patrol = sect.patrol;
@@ -117,19 +145,28 @@ function mountainView(state, page, selected, context) {
     const material = cost.material || 0;
     const years = cost.years || 0;
     const stock = cost.stock || 0;
+    const stone = cost.stone || 0;
+    const dew = cost.dew || 0;
     const parts = [];
     if (stock) parts.push(stock + ' 库藏');
     if (qi) parts.push(context.format(qi) + ' 灵气');
     if (material) parts.push(material + ' 灵材');
+    if (stone) parts.push(stone + ' 筑石');
+    if (dew) parts.push(dew + ' 玉露');
     if (years) parts.push(years + ' 年寿元');
-    const note = stock && sect.world.stock < stock ? '库藏不足' : run.materials < material ? '灵材不足' : (run.qi < qi ? '灵气不足' : (context.years <= years ? '寿元不足' : ''));
+    const note = stock && sect.world.stock < stock ? '库藏不足' : run.materials < material ? '灵材不足' :
+      run.stone < stone ? '筑石不足' : run.dew < dew ? '玉露不足' : (run.qi < qi ? '灵气不足' : (context.years <= years ? '寿元不足' : ''));
     view.options.push(Object.assign({
       id: id, label: label, desc: desc, cost: parts.join(' · '), qi: qi, material: material, years: years, stock: stock,
-      note: note, disabled: !!note
+      stone: stone, dew: dew, note: note, disabled: !!note
     }, data));
   };
-  view.stats.push({ label: '灵材', value: run.materials + ' / ' + MATERIAL_MAX },
-    { label: '灵气', value: context.format(Math.floor(run.qi)) });
+  if (page === 'cave') {
+    view.stats.push({ label: '筑石', value: run.stone + ' / ' + STONE_MAX }, { label: '玉露', value: run.dew + ' / ' + DEW_MAX });
+  } else {
+    view.stats.push({ label: '灵材', value: run.materials + ' / ' + MATERIAL_MAX });
+  }
+  view.stats.push({ label: '灵气', value: context.format(Math.floor(run.qi)) });
 
   if (page === 'return') {
     const old = state.mountainLegacy;
@@ -155,19 +192,26 @@ function mountainView(state, page, selected, context) {
 
   if (page === 'cave') {
     view.title = cave ? '修整洞府' : '开辟洞府';
-    view.text = '金丹后每完成一次普通机缘得 1 灵材。开府后可修建三种设施，各有两级。';
+    view.text = '历练每过一关得筑石，过首领关另得玉露。筑石用来开府和修建四种设施，各有两级；玉露浇灌仙树，结出的仙果能添寿元。';
     if (!cave) {
       add('open', '修复石门', run.marks.includes('dog2') ? '黄狗先挤了进去，熟门熟路地找到了避雨的地方。' : '推开半塌的石门，清出一间可以住人的石室。',
-        { qi: 0.15, material: 2, years: 2 });
+        { qi: 0.15, stone: 2, years: 2 });
       return view;
+    }
+    if (cave.tree) {
+      const life = FRUIT_LIFE[cave.tree - 1];
+      view.stats.push({ label: '仙果', value: cave.fruit + ' 颗' });
+      if (cave.fruit) add('eat', '服下仙果', '寿元上限 +' + life + ' 年。', {},
+        { life: life, disabled: context.demon, note: context.demon ? '魔躯燃寿已定，仙果无用' : '' });
+      if (!cave.ripe) add('water', '浇灌仙树', '再完成 ' + FRUIT_CHOICES + ' 次普通机缘，树上结一颗仙果。', { dew: FRUIT_DEW });
     }
     FACILITIES.forEach((facility) => {
       const level = cave[facility.id];
-      view.stats.push({ label: facility.name, value: level ? '第 ' + level + ' 级' : '未建' });
+      const growing = facility.id === 'tree' && cave.ripe ? ' · 还差 ' + Math.max(1, cave.ripe - run.mountainChoices) + ' 次机缘结果' : '';
+      view.stats.push({ label: facility.name, value: level ? '第 ' + level + ' 级' + growing : '未建' });
       if (level < 2) add(facility.id, (level ? '扩建' : '修建') + facility.name, facility.effects[level],
-        level ? { qi: 0.24, material: 5, years: 2 } : { qi: 0.15, material: 3, years: 1 });
+        level ? { qi: 0.24, stone: 5, years: 2 } : { qi: 0.15, stone: 3, years: 1 });
     });
-    if (!view.options.length) view.text = '三处设施均已扩建完成。';
     return view;
   }
 
@@ -271,6 +315,8 @@ function chooseMountain(state, page, selected, stamp, id, name, context, rng) {
 
   run.mountainRevision++;
   run.materials -= option.material;
+  run.stone -= option.stone;
+  run.dew -= option.dew;
   if (option.stock) run.sect.world.stock -= option.stock;
   run.qi -= option.qi;
   run.age += option.years;
@@ -288,6 +334,12 @@ function chooseMountain(state, page, selected, stamp, id, name, context, rng) {
     if (id === 'open') {
       run.cave = emptyCave();
       lines.push('有了一处自己的洞府。');
+    } else if (id === 'eat') {
+      run.cave.fruit--;
+      result.life = option.life;
+    } else if (id === 'water') {
+      run.cave.ripe = run.mountainChoices + FRUIT_CHOICES;
+      lines.push(option.desc);
     } else {
       run.cave[id]++;
       lines.push(option.desc);
@@ -371,6 +423,10 @@ function normalizeRunMountain(run, raw, yuan, toCount) {
   if (!raw.cave || typeof raw.cave !== 'object' || Array.isArray(raw.cave)) return;
   run.cave = emptyCave();
   FACILITIES.forEach((item) => { run.cave[item.id] = toCount(raw.cave[item.id], 2); });
+  if (run.cave.tree) {
+    run.cave.ripe = toCount(raw.cave.ripe, run.mountainChoices + FRUIT_CHOICES);
+    run.cave.fruit = toCount(raw.cave.fruit, FRUIT_MAX);
+  }
   const sect = raw.sect;
   const rule = yuan && sect && find(RULES, sect.rule);
   if (!rule || !Array.isArray(sect.disciples)) return;
@@ -417,4 +473,4 @@ function normalizeArchive(raw, lives, toCount) {
   };
 }
 
-module.exports = { mountainView, chooseMountain, progressChoices, archive, normalizeRunMountain, normalizeArchive };
+module.exports = { STONE_MAX, DEW_MAX, addStone, addDew, mountainView, chooseMountain, progressChoices, archive, normalizeRunMountain, normalizeArchive };

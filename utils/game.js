@@ -113,6 +113,12 @@ REALMS.forEach((realm) => {
 });
 const SEA_REALM = TRIBS.findIndex((trial) => trial.seaTrial);
 const SEA_LAYER = REALMS[SEA_REALM + 1].layer;
+// 洞府在枯海前一个大境界的后期开放。
+const CAVE_REALM = SEA_REALM - 1;
+
+function caveOpen(run) {
+  return run.realm > CAVE_REALM || (run.realm === CAVE_REALM && run.stage === STAGES.length - 1);
+}
 const SEA_TIDE_LIMIT = 3;
 const SALT_ANCHOR_BONUS = 60;
 const DEATH_MULT = { age: 1, retire: 1, trib: 1.2, demon: 1.5 };
@@ -297,6 +303,8 @@ function newRun(state, rng) {
     trib: null,
     sea: null,
     materials: 0,
+    stone: 0,
+    dew: 0,
     mountainChoices: 0,
     mountainRevision: 0,
     cave: null,
@@ -1900,7 +1908,7 @@ function choose(state, index, rng) {
     run.demon -= soothe;
     lines.push('心魔 -' + soothe);
   }
-  if (run.realm >= SEA_REALM) {
+  if (caveOpen(run)) {
     run.mountainChoices++;
     mountain.progressChoices(run, lines, rng);
   }
@@ -2282,6 +2290,10 @@ const TRAIN_DROP = 0.3;
 const TRAIN_DROP_PITY = 3;
 const TRAIN_LOOT_SEC = 1200;
 const TRAIN_LOOT_MAX = TRAIN_BAG_HOURS * 3600 / TRAIN_LOOT_SEC;
+// 洞府材料：每过一关得筑石，首领关多得几块并得玉露；储物袋每攒一件装备也带一块筑石。
+const TRAIN_STONE = 1;
+const TRAIN_BOSS_STONE = 3;
+const TRAIN_BOSS_DEW = 1;
 const FORGE_MAX = 99;
 // 装备分不够时，渡劫成功率最多扣这么多。
 const GEAR_TRIB_MAX = 0.3;
@@ -2419,11 +2431,14 @@ function trainClear(state, stage, rng) {
   } else {
     run.gear.dry++;
   }
+  const stone = mountain.addStone(run, boss ? TRAIN_BOSS_STONE : TRAIN_STONE);
+  const dew = boss ? mountain.addDew(run, TRAIN_BOSS_DEW) : 0;
   if (boss) {
-    run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '，得' + drop.item.grade + drop.item.name + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
+    run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '，得' + drop.item.grade + drop.item.name +
+      (stone ? '、筑石 ' + stone + ' 块' : '') + (dew ? '、玉露 ' + dew + ' 滴' : '') + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
     run.log = run.log.slice(-MAX_LOG);
   }
-  return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop };
+  return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop, stone: stone, dew: dew };
 }
 
 // 第 stage 关败了：往回退 TRAIN_RETREAT 关，最多退到第 1 关。返回退到了第几关。
@@ -2471,6 +2486,8 @@ function trainCollect(state, rng) {
   for (let i = 0; i < pieces; i++) drops.push(gearGain(state, gear.roll(Math.max(1, run.battle.cleared), roll, false)));
   run.battle.loot -= pieces;
   if (pieces) lines.push('装备 ' + pieces + ' 件');
+  const stone = mountain.addStone(run, pieces);
+  if (stone) lines.push('筑石 ' + stone + ' 块');
   run.log.push({ age: run.age, title: '历练', text: '收了储物袋：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   return { title: '历练', label: '收了储物袋', qi: amount >= 1 ? amount : 0, gained: Math.max(0, Math.floor(run.qi - qi)), drops: drops, lines: lines, tags: tags };
@@ -2733,13 +2750,13 @@ function seaResult(state, title, label, lines, tags, before, cause) {
 
 function mountainReady(state) {
   const run = state.run;
-  return run.phase === 'alive' && run.realm >= SEA_REALM && !atSea(run) && !run.event && !run.pending;
+  return run.phase === 'alive' && caveOpen(run) && !atSea(run) && !run.event && !run.pending;
 }
 
 function mountainContext(state) {
   const power = combatPowerDetails(state);
   return {
-    ready: mountainReady(state), yuan: state.run.realm > SEA_REALM,
+    ready: mountainReady(state), yuan: state.run.realm > SEA_REALM, demon: state.run.mode === 'demon',
     cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber,
     // 亲自出阵按不含破境加成的战力折算，免得境界一高就把出阵的上限顶满。
     power: power.total - power.sources.reduce((sum, source) => sum + (source.id === 'boost' ? source.value : 0), 0)
@@ -2758,9 +2775,9 @@ function chooseMountain(state, page, disciple, stamp, id, name, rng = Math.rando
   passYears(state, state.run.age - age, result.lines);
   const tags = [];
   if (result.book) gainSkill(state, result.book.id, result.book.level, result.lines, tags);
-  if (result.demon || result.chance) {
+  if (result.demon || result.chance || result.life) {
     const demon = result.demon ? Math.max(-state.run.demon, result.demon) : 0;
-    applyFx(state, { demon: demon, chance: result.chance }, Math.random, result.lines, tags);
+    applyFx(state, { demon: demon, chance: result.chance, life: result.life }, Math.random, result.lines, tags);
   }
   return seaResult(state, result.title, result.label, result.lines, tags, before);
 }
@@ -3445,7 +3462,7 @@ function normalizeRun(state, raw, rng) {
   run.tribs = validAspects(raw.tribs) || TRIB_ASPECTS.slice(0, SEA_REALM).map((aspect) => aspect.id);
   run.heaven = toCount(raw.heaven, state.heavenMax);
   run.path = SCHOOLS[raw.path] && run.realm >= 1 ? raw.path : '';
-  if (run.realm >= SEA_REALM) mountain.normalizeRunMountain(run, raw, run.realm > SEA_REALM, toCount);
+  if (caveOpen(run)) mountain.normalizeRunMountain(run, raw, run.realm > SEA_REALM, toCount);
   if (Array.isArray(raw.karma)) {
     raw.karma.forEach((k) => {
       if (k && KARMA[k.id] && !findById(run.karma, k.id)) run.karma.push({ id: k.id, due: toCount(k.due) });
@@ -3536,6 +3553,11 @@ function normalizeRun(state, raw, rng) {
   run.battle.bag = clamp(toNumber(saved.bag), 0, trainRate(state, run.battle.cleared) * TRAIN_BAG_HOURS);
   run.battle.loot = run.battle.cleared > 0 ? clamp(toNumber(saved.loot), 0, TRAIN_LOOT_MAX) : 0;
   run.gear = normalizeGear(raw.gear);
+  // 加入筑石和玉露之前的存档，按已经过的关数补发。
+  const cleared = run.battle.cleared;
+  const bosses = Math.floor(cleared / TRAIN_BOSS_EVERY);
+  run.stone = raw.stone === undefined ? Math.min(mountain.STONE_MAX, (cleared - bosses) * TRAIN_STONE + bosses * TRAIN_BOSS_STONE) : toCount(raw.stone, mountain.STONE_MAX);
+  run.dew = raw.dew === undefined ? Math.min(mountain.DEW_MAX, bosses * TRAIN_BOSS_DEW) : toCount(raw.dew, mountain.DEW_MAX);
   return run;
 }
 
@@ -3741,6 +3763,10 @@ module.exports = {
   TRAIN_BOSS_EVERY,
   TRAIN_RETREAT,
   TRAIN_BAG_HOURS,
+  TRAIN_STONE,
+  TRAIN_BOSS_STONE,
+  TRAIN_BOSS_DEW,
+  caveOpen,
   trainFighter,
   trainFoe,
   trainView,

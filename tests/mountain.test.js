@@ -38,6 +38,7 @@ function act(state, page, id, member = '', name = '', roll = rng) {
 function fund(state, materials = 50) {
   state.run.qi = game.qiCap(state);
   state.run.materials = materials;
+  state.run.stone = 50;
 }
 
 function found(state, rule = 'guard') {
@@ -46,18 +47,21 @@ function found(state, rule = 'guard') {
   act(state, 'sect', rule, '', '听雪门');
 }
 
-test('开府与扩建使用同一份灵材和灵气，旧档和早期境界仍可继续修行', () => {
+test('开府与扩建使用筑石和灵气，旧档和早期境界仍可继续修行', () => {
   assert.equal(game.mountainView(cultivator(KIN - 1), 'cave', ''), null);
   let state = cultivator(KIN);
   const old = JSON.parse(JSON.stringify(state));
   for (const key of ['cave', 'sect', 'materials', 'mountainChoices', 'mountainRevision']) delete old.run[key];
   state = game.normalizeState(old, NOW, rng);
   assert.equal(state.run.cave, null);
-  assert.equal(game.mountainView(state, 'cave', '').options[0].note, '灵材不足');
+  assert.equal(game.mountainView(state, 'cave', '').options[0].note, '筑石不足');
   game.advance(state, NOW + 3600000);
   assert.equal(state.run.materials, 0);
   ordinary(state, 2);
   assert.equal(state.run.materials, 2);
+  // 开府只收筑石，灵材留给宗门
+  assert.equal(game.mountainView(state, 'cave', '').options[0].note, '筑石不足');
+  state.run.stone = 2;
   const quote = game.mountainView(state, 'cave', '');
   const oldQi = state.run.qi;
   const oldAge = state.run.age;
@@ -66,7 +70,8 @@ test('开府与扩建使用同一份灵材和灵气，旧档和早期境界仍�
   const gain = game.qiRate(state) * game.YEAR_SECONDS * (state.run.age - oldAge);
   assert.ok(state.run.age > oldAge);
   assert.ok(Math.abs(state.run.qi - (oldQi - quote.options[0].qi + gain)) < 1e-6);
-  assert.equal(state.run.materials, 0);
+  assert.equal(state.run.materials, 2);
+  assert.equal(state.run.stone, 0);
   assert.equal(game.chooseMountain(state, 'cave', '', quote.stamp, 'array'), null);
   assert.equal(game.mountainView(state, 'sect', '').page, 'cave');
 
@@ -87,6 +92,118 @@ test('开府与扩建使用同一份灵材和灵气，旧档和早期境界仍�
   game.choose(state, -1, rng);
   assert.equal(state.run.materials, materials + 4);
   assert.deepEqual(reload(state), state);
+});
+
+test('洞府在筑基后期开放：之前没有入口也不产灵材，之后照常开府', () => {
+  const state = cultivator(KIN - 1);
+  state.run.stage = 1;
+  assert.equal(game.mountainReady(state), false);
+  assert.equal(game.mountainView(state, 'cave', ''), null);
+  ordinary(state, 1);
+  assert.equal(state.run.materials, 0);
+  state.run.stage = 2;
+  state.run.qi = 0;
+  assert.equal(game.mountainReady(state), true);
+  assert.deepEqual(game.mountainView(state, 'cave', '').tabs.map((tab) => tab.id), ['cave']);
+  ordinary(state, 1);
+  assert.equal(state.run.materials, 1);
+  fund(state);
+  act(state, 'cave', 'open');
+  act(state, 'cave', 'array');
+  assert.equal(state.run.cave.array, 1);
+  assert.equal(state.run.stone, 50 - 2 - 3);
+  assert.deepEqual(reload(state), state);
+});
+
+test('历练产筑石和玉露：寻常关 1 块筑石，首领关 3 块筑石加 1 滴玉露，储物袋的装备各带 1 块，旧档按关数补发', () => {
+  const state = cultivator(1);
+  for (let stage = 1; stage <= 4; stage++) {
+    const r = game.trainClear(state, stage, rng);
+    assert.equal(r.stone, 1);
+    assert.equal(r.dew, 0);
+  }
+  const boss = game.trainClear(state, 5, rng);
+  assert.equal(boss.stone, 3);
+  assert.equal(boss.dew, 1);
+  assert.equal(state.run.stone, 7);
+  assert.equal(state.run.dew, 1);
+  assert.match(state.run.log[state.run.log.length - 1].text, /筑石 3 块、玉露 1 滴/);
+
+  game.advance(state, state.lastTime + 2400 * 1000);
+  const collected = game.trainCollect(state, rng);
+  assert.equal(collected.drops.length, 2);
+  assert.ok(collected.lines.includes('筑石 2 块'));
+  assert.equal(state.run.stone, 9);
+  assert.deepEqual(reload(state), state);
+
+  // 败退后重打的关不再给筑石
+  assert.ok(game.trainLose(state, 6));
+  assert.equal(game.trainClear(state, 4, rng).again, true);
+  assert.equal(game.trainClear(state, 5, rng).again, true);
+  assert.equal(state.run.stone, 9);
+  assert.equal(state.run.dew, 1);
+
+  state.run.stone = 98;
+  assert.equal(game.trainClear(state, 6, rng).stone, 1);
+  assert.equal(game.trainClear(state, 7, rng).stone, 0);
+  assert.equal(state.run.stone, 99);
+
+  const old = JSON.parse(JSON.stringify(state));
+  delete old.run.stone;
+  delete old.run.dew;
+  old.run.battle.cleared = 12;
+  const loaded = game.normalizeState(old, state.lastTime, rng);
+  assert.equal(loaded.run.stone, 10 + 2 * 3);
+  assert.equal(loaded.run.dew, 2);
+});
+
+test('仙树：玉露浇灌后过两次普通机缘结果，仙果加寿元上限，扩建后加得更多，魔修吃了没用', () => {
+  const state = cultivator(KIN - 1);
+  state.run.stage = 2;
+  fund(state);
+  act(state, 'cave', 'open');
+  const ids = () => game.mountainView(state, 'cave', '').options.map((item) => item.id);
+  assert.equal(ids().includes('water'), false);
+  act(state, 'cave', 'tree');
+  assert.equal(game.mountainView(state, 'cave', '').options.find((item) => item.id === 'water').note, '玉露不足');
+  state.run.dew = 5;
+  const age = state.run.age;
+  act(state, 'cave', 'water');
+  assert.equal(state.run.dew, 3);
+  assert.equal(state.run.age, age);
+  // 果子挂在树上时不能再浇
+  assert.equal(ids().includes('water'), false);
+  assert.equal(ids().includes('eat'), false);
+  assert.deepEqual(reload(state), state);
+  ordinary(state, 1);
+  assert.equal(state.run.cave.fruit, 0);
+  ordinary(state, 1);
+  assert.equal(state.run.cave.fruit, 1);
+  assert.equal(state.run.cave.ripe, 0);
+
+  let life = game.maxLife(state);
+  const eaten = act(state, 'cave', 'eat');
+  assert.ok(eaten.lines.includes('寿元上限 +8 年'));
+  assert.equal(game.maxLife(state), life + 8);
+  assert.equal(state.run.cave.fruit, 0);
+  assert.equal(ids().includes('eat'), false);
+
+  fund(state);
+  act(state, 'cave', 'tree');
+  act(state, 'cave', 'water');
+  ordinary(state, 2);
+  life = game.maxLife(state);
+  act(state, 'cave', 'eat');
+  assert.equal(game.maxLife(state), life + 12);
+  assert.equal(state.run.dew, 1);
+  assert.equal(game.mountainView(state, 'cave', '').options.find((item) => item.id === 'water').disabled, true);
+
+  state.run.cave.fruit = 1;
+  state.run.mode = 'demon';
+  const eat = game.mountainView(state, 'cave', '').options.find((item) => item.id === 'eat');
+  assert.equal(eat.disabled, true);
+  assert.equal(game.chooseMountain(state, 'cave', '', game.mountainView(state, 'cave', '').stamp, 'eat', ''), null);
+  assert.equal(state.run.cave.fruit, 1);
 });
 
 test('突破改变设施价格后，过时的设施报价不能扣掉更多灵气', () => {

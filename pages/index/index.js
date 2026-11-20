@@ -1032,7 +1032,8 @@ Page({
     const quest = run.sect && run.sect.quest;
     const mountainNotice = s.mountainLegacy ? '旧山门来信 · 可回山' :
       (quest && quest.outcome && !quest.after && quest.due <= run.mountainChoices ? '寒潮退去 · 弟子来报' :
-        (run.sect && run.sect.world.event ? '山外有事 · 待决断' : ''));
+        (run.sect && run.sect.world.event ? '山外有事 · 待决断' :
+          (run.cave && run.cave.fruit && run.mode !== 'demon' ? '仙果熟了 · 可服用' : '')));
     const term = game.tribTerm(s);
     const path = !boarding && game.pathReady(s);
     return {
@@ -1050,7 +1051,7 @@ Page({
       big: !boarding && s.big > 0 ? '大机缘' : '',
       bigSub: '可用 ' + s.big + ' 次',
       mountainTitle: mountain ? (run.sect ? run.sect.name : (run.cave ? '洞府与山门' : '洞府')) : '',
-      mountainSub: mountain ? (mountainNotice || '灵材 ' + run.materials + (run.sect ? ' · 管理宗门' : (run.cave ? ' · 修建设施' : ' · 开辟洞府'))) : '',
+      mountainSub: mountain ? (mountainNotice || (run.sect ? '灵材 ' + run.materials + ' · 管理宗门' : '筑石 ' + run.stone + (run.cave ? ' · 修建设施' : ' · 开辟洞府'))) : '',
       powder: powder.visible ? '服散续命' : '',
       powderSub: powder.visible ? (powder.left ? '耗 ' + game.formatNumber(powder.cost) + ' 灵气，燃寿 +' + powder.years + ' 年，还能服 ' + powder.left + ' 次' : '这一世已经服不动了') : '',
       powderOff: !powder.ready
@@ -1162,11 +1163,13 @@ Page({
           '返航后渡元婴劫。盐骨关考锋或躯，问名关考神；枯海所得、逃字和丹修各有用处。失败后休养至灵气圆满即可重试。'
         ]),
         sec('洞府与宗门', [
-          '金丹起，每次普通机缘产出灵材。花灵材与灵气开辟洞府，修建或扩建聚灵阵、灵田和藏经室。',
+          '筑基后期起可以开辟洞府。开府和修建、扩建聚灵阵、灵田、藏经室、仙树，耗的是历练得来的筑石，外加灵气和少量寿元。',
+          '仙树要用玉露浇灌：浇一次耗 2 滴，再做 2 次普通机缘结一颗仙果。服下仙果寿元上限 +8 年，仙树扩建后 +12 年；魔修吃了没用。',
+          '洞府开放后，每次普通机缘产出灵材，留给立宗、收徒和山门事务用。',
           '元婴后可在洞府立宗，招收弟子、提升修为、传授本世功法，并派人巡山或应对寒潮。弟子修为、特长和所学功法会影响结果。',
           '立宗后多出「山外」一页。门人、库藏和山外的小事随每次普通机缘自行增减：声望高、占着盐滩村，门人来得快；门人多、领地多，库藏涨得快；库藏见底门人就不再来。每 4 次机缘门中送一份月例灵材。',
           '扩张、战役和升阶是送上山的大事，每件给两三个选项：占下无主之地，守住或攻打食仙教的据点，声望、领地和门人够了就立碑升阶。战役比的是宗门战力（品阶、弟子修为与所学、领地、门人），亲自出阵按你的战力再加一截。山门分草庐、山门、宗门、大宗四阶，每升一阶多收一名弟子，弟子修为上限 +1。',
-          '二级藏经室可传授秘法。可以选一位弟子托付传承，下一世到金丹后回山取回他保管的功法或秘法。'
+          '二级藏经室可传授秘法。可以选一位弟子托付传承，下一世洞府开放后（筑基后期）回山取回他保管的功法或秘法。'
         ]),
         sec('心魔', [
           '贪心的选项会涨心魔。每 10 点心魔降低 3% 渡劫成功率。',
@@ -1184,6 +1187,7 @@ Page({
           '引气之后，会有东西冲着灯找上门，他坐在灯前自己打，战况就在场景里：左上角是他的气血和打到第几关，右上角是眼前这只的气血。',
           '历练不耗寿元和机缘，也不算进劫期。关卡没有尽头，越往后越硬：寻常的关连打 ' + game.TRAIN_MOBS + ' 只小的，每 ' + game.TRAIN_BOSS_EVERY + ' 关是一个首领。败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再一关一关打回来；重打的关不再掉装备，储物袋也不会因此变慢。',
           '每过一关，储物袋攒灵气就快一档，过首领关涨得更多。储物袋跟着现实时间攒，关掉游戏也在攒，最多存 ' + game.TRAIN_BAG_HOURS + ' 小时的量；点场景上方的“储物袋”把灵气收进丹田。',
+          '每过一关得 ' + game.TRAIN_STONE + ' 块筑石，过首领关得 ' + game.TRAIN_BOSS_STONE + ' 块筑石和 ' + game.TRAIN_BOSS_DEW + ' 滴玉露；储物袋里每攒一件装备也带 1 块筑石。筑石修洞府，玉露浇仙树，筑基后期洞府开放后用得上。',
           '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
           '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
         ]),
@@ -1327,12 +1331,12 @@ Page({
       kind: 'train',
       title: v.open ? '历练 · 第 ' + v.stage + ' 关' : '历练',
       text: v.open
-        ? '他坐在灯前自己打，不耗寿元和机缘。关卡没有尽头，每 ' + v.bossEvery + ' 关一个首领；败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再打，重打的关不再掉东西。这一世最远过了 ' + v.cleared + ' 关，历来最远 ' + v.best + ' 关。'
+        ? '他坐在灯前自己打，不耗寿元和机缘。关卡没有尽头，每 ' + v.bossEvery + ' 关一个首领；败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再打，重打的关不再掉东西。这一世最远过了 ' + v.cleared + ' 关，历来最远 ' + v.best + ' 关。头一回过关得筑石，过首领关另得玉露，留着修洞府：手里有筑石 ' + s.run.stone + ' 块、玉露 ' + s.run.dew + ' 滴。'
         : v.reason,
       me: me ? '气血 ' + game.formatNumber(me.hp) + ' · 攻击 ' + game.formatNumber(me.atk) + ' · 每 ' + me.interval.toFixed(2) + ' 秒出手 · 减伤 ' + percent(me.reduce) + '% · 暴击 ' + percent(me.crit) + '%' : '',
       bagTitle: '储物袋 · 灵气 ' + game.formatNumber(bag.qi) + ' / ' + game.formatNumber(bag.max) + ' · 装备 ' + bag.gear + ' / ' + bag.gearMax,
       bagText: bag.perHour
-        ? '每小时攒灵气 ' + game.formatNumber(bag.perHour) + '，每 ' + bag.gearMinutes + ' 分钟攒一件装备，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时灵气 ' + game.formatNumber(v.nextPerHour) + '。'
+        ? '每小时攒灵气 ' + game.formatNumber(bag.perHour) + '，每 ' + bag.gearMinutes + ' 分钟攒一件装备和一块筑石，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时灵气 ' + game.formatNumber(v.nextPerHour) + '。'
         : '过了第 1 关才开始攒。每过一关攒得更快，过首领关涨得更多。',
       bagOff: bag.qi < 1 && bag.gear < 1,
       stages: stages
@@ -1456,7 +1460,7 @@ Page({
     const drop = r.drop ? this.dropText(r.drop) : '';
     if (r.boss) {
       audio.play('good');
-      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + (drop ? ' · ' + drop : '') + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
+      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + (drop ? ' · ' + drop : '') + (r.stone ? ' · 筑石 +' + r.stone : '') + (r.dew ? ' · 玉露 +' + r.dew : '') + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
       if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
     } else if (drop) {
       audio.play('coin');
