@@ -1,45 +1,64 @@
 // 装备：不依赖游戏状态。一件装备只记 { uid, slot, grade, tier, level, affixes }，数值都由这里按规则算出来。
 // 装备只在历练的战斗里起作用，不改锋躯神，所以不影响渡劫。
+// 每个槽位的主属性：atk、hp 是第 9 关凡品的基础值，随品级、强化和阶放大；extra 是按品级查表的附带属性，不随阶变。
 const SLOTS = [
-  { id: 'weapon', name: '兵', names: ['柴刀', '青锋剑', '断岳刀', '照夜剑'] },
-  { id: 'armor', name: '衣', names: ['粗布衣', '灵蚕袍', '玄龟甲', '天罗衣'] },
-  { id: 'charm', name: '佩', names: ['铜钱串', '养魂玉', '避尘珠', '长明佩'] }
+  { id: 'weapon', name: '兵', atk: 6.5, names: ['柴刀', '青锋剑', '断岳刀', '照夜剑', '斩仙刃', '弑神戟', '无名剑'] },
+  { id: 'armor', name: '衣', hp: 39, names: ['粗布衣', '灵蚕袍', '玄龟甲', '天罗衣', '羽化仙衣', '神骸甲', '无缝天衣'] },
+  { id: 'crown', name: '冠', hp: 20, extra: 'reduce', table: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07],
+    names: ['斗笠', '束发冠', '玄铁盔', '紫金冠', '朝元冠', '神目冕', '太虚冠'] },
+  { id: 'boots', name: '靴', hp: 12, extra: 'haste', table: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07],
+    names: ['草鞋', '踏云履', '追风靴', '登天靴', '步虚履', '缩地神靴', '无迹履'] },
+  { id: 'charm', name: '佩', atk: 2.6, hp: 15.6, extra: 'crit', table: [0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14],
+    names: ['铜钱串', '养魂玉', '避尘珠', '长明佩', '蜕凡佩', '神血坠', '道纹佩'] },
+  { id: 'ring', name: '戒', atk: 3.5, extra: 'critDmg', table: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35],
+    names: ['骨戒', '聚灵戒', '玄铁指环', '天星戒', '仙蜕环', '神谕戒', '归一戒'] }
 ];
-// score 是装备分的基础分，mult 是主属性倍率，affixes 是词条数。
+// score 是装备分的基础分，mult 是主属性倍率，affixes 是词条数。weight 是掉落权重：基础值加上每一阶的增量，
+// 小于零按零算，所以仙品要到 11 关、神品 34 关、道品 76 关之后才会掉。
 const GRADES = [
-  { name: '凡', color: '#8c8275', score: 4, mult: 1, affixes: 0, scrap: 1 },
-  { name: '灵', color: '#3f9a7c', score: 8, mult: 1.4, affixes: 1, scrap: 2 },
-  { name: '玄', color: '#5a6fd0', score: 14, mult: 1.9, affixes: 2, scrap: 4 },
-  { name: '天', color: '#c98a24', score: 22, mult: 2.5, affixes: 3, scrap: 8 }
+  { name: '凡', color: '#8c8275', score: 4, mult: 1, affixes: 0, scrap: 1, weight: [60, 0] },
+  { name: '灵', color: '#3f9a7c', score: 8, mult: 1.4, affixes: 1, scrap: 2, weight: [30, 0.8] },
+  { name: '玄', color: '#5a6fd0', score: 14, mult: 1.9, affixes: 2, scrap: 4, weight: [9, 0.5] },
+  { name: '天', color: '#c98a24', score: 22, mult: 2.5, affixes: 3, scrap: 8, weight: [1, 0.2] },
+  { name: '仙', color: '#b565c9', score: 32, mult: 3.2, affixes: 4, scrap: 14, weight: [-1, 0.1] },
+  { name: '神', color: '#d14f45', score: 44, mult: 4, affixes: 5, scrap: 22, weight: [-2, 0.06] },
+  { name: '道', color: '#2fb6c4', score: 58, mult: 5, affixes: 6, scrap: 32, weight: [-3, 0.04] }
 ];
+// 词条。key 是加到哪一项战斗加成上；text 里的 # 换成百分比。
 const AFFIXES = [
-  { id: 'atk', name: '攻击', value: 0.06 },
-  { id: 'hp', name: '气血', value: 0.08 },
-  { id: 'crit', name: '暴击', value: 0.03 },
-  { id: 'reduce', name: '减伤', value: 0.03 },
-  { id: 'haste', name: '出手加快', value: 0.04 }
+  { id: 'atk', key: 'atkPct', value: 0.06, text: '攻击 +#' },
+  { id: 'hp', key: 'hpPct', value: 0.08, text: '气血 +#' },
+  { id: 'crit', key: 'crit', value: 0.03, text: '暴击 +#' },
+  { id: 'reduce', key: 'reduce', value: 0.03, text: '减伤 +#' },
+  { id: 'haste', key: 'haste', value: 0.04, text: '出手加快 #' },
+  { id: 'critDmg', key: 'critDmg', value: 0.12, text: '暴击伤害 +#' },
+  { id: 'leech', key: 'leech', value: 0.03, text: '吸血 #' },
+  { id: 'thorns', key: 'thorns', value: 0.06, text: '反伤 #' },
+  { id: 'regen', key: 'regen', value: 0.015, text: '每 5 秒回血 #' },
+  { id: 'shield', key: 'shield', value: 0.08, text: '开场护盾 #' },
+  { id: 'pierce', key: 'pierce', value: 0.05, text: '破甲 #' },
+  { id: 'guard', key: 'guard', value: 0.1, text: '招式伤害 -#' },
+  { id: 'combo', key: 'combo', value: 0.05, text: '连击 #' }
 ];
+const STAT_KEYS = ['atk', 'hp', 'atkPct', 'hpPct', 'crit', 'critDmg', 'reduce', 'haste', 'leech', 'thorns', 'regen', 'shield', 'pierce', 'guard', 'combo'];
+const STAT_TEXT = {
+  atkPct: '攻击 +#', hpPct: '气血 +#', crit: '暴击 +#', critDmg: '暴击伤害 +#', reduce: '减伤 +#', haste: '出手加快 #', leech: '吸血 #',
+  thorns: '反伤 #', regen: '每 5 秒回血 #', shield: '开场护盾 #', pierce: '破甲 #', guard: '招式伤害 -#', combo: '连击 #'
+};
 const MAX_LEVEL = 5;
 const LEVEL_BONUS = 0.1;
 const AFFIX_SCORE = 2;
-const PACK_MAX = 20;
-// 主属性随掉落时的关数（阶）涨，和敌人攻击的增长率一致。第 9 关的凡品兵器加 6.5 点攻击。
+const PACK_MAX = 30;
+// 主属性随掉落时的关数（阶）涨，和敌人攻击的增长率一致。
 const TIER_GROWTH = 1.1;
 const TIER_BASE = 9;
-const WEAPON_ATK = 6.5;
-const ARMOR_HP = 39;
-const CHARM_ATK = 2.6;
-const CHARM_HP = 15.6;
-const CHARM_CRIT = [0.02, 0.04, 0.06, 0.08];
-// 各品级的掉落权重：基础值加上每一阶的增量，越往后好东西越多。
-const GRADE_WEIGHT = [[60, 0], [30, 0.8], [9, 0.5], [1, 0.2]];
 
 function slotInfo(id) {
   return SLOTS.filter((slot) => slot.id === id)[0] || null;
 }
 
 function rollGrade(tier, rng) {
-  const weights = GRADE_WEIGHT.map((w) => w[0] + w[1] * tier);
+  const weights = GRADES.map((grade) => Math.max(0, grade.weight[0] + grade.weight[1] * tier));
   let roll = rng() * weights.reduce((sum, w) => sum + w, 0);
   for (let i = 0; i < weights.length; i++) {
     roll -= weights[i];
@@ -65,33 +84,36 @@ function strength(item) {
   return GRADES[item.grade].mult * (1 + LEVEL_BONUS * item.level) * Math.pow(TIER_GROWTH, item.tier - TIER_BASE);
 }
 
+function emptyStats() {
+  const out = {};
+  STAT_KEYS.forEach((key) => {
+    out[key] = 0;
+  });
+  return out;
+}
+
 // 一件装备给的战斗加成。
 function stats(item) {
-  const out = { atk: 0, hp: 0, atkPct: 0, hpPct: 0, crit: 0, reduce: 0, haste: 0 };
+  const out = emptyStats();
+  const slot = slotInfo(item.slot);
   const power = strength(item);
-  if (item.slot === 'weapon') out.atk = Math.max(1, Math.round(WEAPON_ATK * power));
-  if (item.slot === 'armor') out.hp = Math.max(1, Math.round(ARMOR_HP * power));
-  if (item.slot === 'charm') {
-    out.atk = Math.max(1, Math.round(CHARM_ATK * power));
-    out.hp = Math.max(1, Math.round(CHARM_HP * power));
-    out.crit = CHARM_CRIT[item.grade];
-  }
+  if (slot.atk) out.atk = Math.max(1, Math.round(slot.atk * power));
+  if (slot.hp) out.hp = Math.max(1, Math.round(slot.hp * power));
+  if (slot.extra) out[slot.extra] += slot.table[item.grade];
   item.affixes.forEach((id) => {
     const affix = AFFIXES.filter((entry) => entry.id === id)[0];
-    if (id === 'atk') out.atkPct += affix.value;
-    else if (id === 'hp') out.hpPct += affix.value;
-    else out[id] += affix.value;
+    out[affix.key] += affix.value;
   });
   return out;
 }
 
 // 身上几件加起来。
 function bonus(items) {
-  const out = { atk: 0, hp: 0, atkPct: 0, hpPct: 0, crit: 0, reduce: 0, haste: 0 };
+  const out = emptyStats();
   items.forEach((item) => {
     if (!item) return;
     const s = stats(item);
-    Object.keys(out).forEach((key) => {
+    STAT_KEYS.forEach((key) => {
       out[key] += s[key];
     });
   });
@@ -119,18 +141,16 @@ function scrapValue(item) {
 }
 
 function percent(value) {
-  return Math.round(value * 100) + '%';
+  return Math.round(value * 1000) / 10 + '%';
 }
 
 function statsText(s) {
   const parts = [];
   if (s.atk) parts.push('攻击 +' + s.atk);
   if (s.hp) parts.push('气血 +' + s.hp);
-  if (s.atkPct) parts.push('攻击 +' + percent(s.atkPct));
-  if (s.hpPct) parts.push('气血 +' + percent(s.hpPct));
-  if (s.crit) parts.push('暴击 +' + percent(s.crit));
-  if (s.reduce) parts.push('减伤 +' + percent(s.reduce));
-  if (s.haste) parts.push('出手加快 ' + percent(s.haste));
+  Object.keys(STAT_TEXT).forEach((key) => {
+    if (s[key]) parts.push(STAT_TEXT[key].replace('#', percent(s[key])));
+  });
   return parts.join('，');
 }
 
@@ -166,4 +186,4 @@ function clean(raw) {
   return { slot: raw.slot, grade: grade, tier: tier, level: level, affixes: affixes };
 }
 
-module.exports = { SLOTS, GRADES, AFFIXES, MAX_LEVEL, PACK_MAX, roll, stats, bonus, statsText, score, rating, enhanceCost, scrapValue, describe, clean };
+module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, roll, stats, bonus, statsText, score, rating, enhanceCost, scrapValue, describe, clean };

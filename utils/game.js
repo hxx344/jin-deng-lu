@@ -2445,7 +2445,11 @@ function trainCollect(state, rng) {
 
 // 装备：历练掉落，只管这一世。身上兵、衣、佩三个槽位，背包最多 PACK_MAX 件，装不下的直接分解成锻材。
 function emptyGear() {
-  return { worn: { weapon: null, armor: null, charm: null }, pack: [], forge: 0, seq: 0, dry: 0 };
+  const worn = {};
+  gear.SLOTS.forEach((slot) => {
+    worn[slot.id] = null;
+  });
+  return { worn: worn, pack: [], forge: 0, seq: 0, dry: 0 };
 }
 
 function wornItems(run) {

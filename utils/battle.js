@@ -8,6 +8,12 @@ const ATK_PER_EDGE = 2;
 const BASE_INTERVAL = 1.6;
 const MIN_INTERVAL = 1;
 const MAX_REDUCE = 0.8;
+// 装备词条的上限和节奏。
+const MAX_LEECH = 0.3;
+const MAX_PIERCE = 0.6;
+const MAX_GUARD = 0.6;
+const MAX_COMBO = 0.4;
+const REGEN_EVERY = 5;
 // 神每达到软上限的一成，出手快这么多。
 const HASTE_PER_TENTH = 0.02;
 const BASE_CRIT = 0.05;
@@ -49,7 +55,7 @@ function ratio(value, cap) {
 }
 
 // input: { name, attrs: { edge, body, mind }, softCap, demon, demonMode, schools: { 流派: { count, power } }, gear }
-// gear 是装备加成 { atk, hp, atkPct, hpPct, crit, reduce, haste }，可以不给。
+// gear 是装备加成（见 gear.js 的 STAT_KEYS），可以不给。
 function playerFighter(input) {
   const cap = Math.max(1, num(input.softCap));
   const edge = num(input.attrs.edge);
@@ -62,7 +68,7 @@ function playerFighter(input) {
     if (school && school.count > 0) schools[id] = { count: school.count, power: num(school.power) };
   });
   const extra = {};
-  ['atk', 'hp', 'atkPct', 'hpPct', 'crit', 'reduce', 'haste'].forEach((key) => {
+  ['atk', 'hp', 'atkPct', 'hpPct', 'crit', 'critDmg', 'reduce', 'haste', 'leech', 'thorns', 'regen', 'shield', 'pierce', 'guard', 'combo'].forEach((key) => {
     extra[key] = num(input.gear && input.gear[key]);
   });
   return {
@@ -72,6 +78,14 @@ function playerFighter(input) {
     interval: Math.max(MIN_INTERVAL, BASE_INTERVAL * (1 - HASTE_PER_TENTH * Math.floor(mind / (cap * 0.1))) * (1 - Math.min(0.5, extra.haste))),
     reduce: Math.min(MAX_REDUCE, ratio(body, cap) + extra.reduce),
     crit: Math.min(MAX_CRIT, BASE_CRIT + CRIT_PER_CAP * mind / cap + extra.crit),
+    critMult: CRIT_MULT + extra.critDmg,
+    leech: Math.min(MAX_LEECH, extra.leech),
+    thorns: extra.thorns,
+    regen: extra.regen,
+    shield: extra.shield,
+    pierce: Math.min(MAX_PIERCE, extra.pierce),
+    guard: Math.min(MAX_GUARD, extra.guard),
+    combo: Math.min(MAX_COMBO, extra.combo),
     resist: ratio(mind, cap),
     taken: 1 + rage,
     schools: schools
@@ -136,12 +150,16 @@ function simulate(me, foe, rng) {
     if (to === 'me' && bond('body', 4)) reduce = Math.min(0.9, reduce + BODY_GUARD * (1 - mine.hp / mine.max));
     let taken = target.def.taken;
     if (to === 'foe' && cursed('break')) taken += TALISMAN_BREAK;
-    const raw = attacker.def.atk * mult * (1 - SPREAD / 2 + SPREAD * rng()) * (crit ? CRIT_MULT : 1);
-    return { dealt: hurt(target, raw * (1 - reduce) * taken), crit: crit };
+    if (attacker.def.pierce) reduce = Math.max(0, reduce - attacker.def.pierce);
+    const raw = attacker.def.atk * mult * (1 - SPREAD / 2 + SPREAD * rng()) * (crit ? attacker.def.critMult || CRIT_MULT : 1);
+    const dealt = hurt(target, raw * (1 - reduce) * taken);
+    if (attacker.def.leech && attacker.hp > 0) attacker.hp = Math.min(attacker.max, attacker.hp + dealt * attacker.def.leech);
+    return { dealt: dealt, crit: crit };
   };
 
-  if (school('body') && bond('body', 2)) {
-    mine.shield = Math.round(mine.max * BODY_SHIELD);
+  const shieldRate = (school('body') && bond('body', 2) ? BODY_SHIELD : 0) + (me.shield || 0);
+  if (shieldRate > 0) {
+    mine.shield = Math.round(mine.max * shieldRate);
     push('me', 'shield', mine.shield, '气血凝成一层护盾');
   }
   if (school('talisman')) {
@@ -157,6 +175,7 @@ function simulate(me, foe, rng) {
     }
   }
   const pillEvery = steps(PILL_EVERY);
+  const regenEvery = steps(REGEN_EVERY);
   const skillEvery = foe.skill ? steps(foe.skill.every) : 0;
 
   const down = () => {
@@ -178,6 +197,10 @@ function simulate(me, foe, rng) {
       const double = school('luck') && rng() < luckDouble(school('luck').power);
       const hit = strike('me', 'foe', double ? 2 : 1, false);
       push('me', hit.crit ? 'crit' : (double ? 'double' : 'hit'), hit.dealt, double ? '铜钱落地是正面，这一下算两下' : '');
+      if (me.combo && theirs.hp > 0 && rng() < me.combo) {
+        const again = strike('me', 'foe', 1, false);
+        push('me', again.crit ? 'crit' : 'extra', again.dealt, '连击');
+      }
       if (school('sword') && mine.hits % SWORD_EVERY === 0 && theirs.hp > 0) {
         const extra = strike('me', 'foe', swordExtra(school('sword').power), bond('sword', 2));
         push('me', 'extra', extra.dealt, '顺势追了一剑');
@@ -195,12 +218,18 @@ function simulate(me, foe, rng) {
       mine.hp += heal;
       push('me', 'heal', heal, '吞了一粒丹');
     }
+    if (!loser && me.regen && now % regenEvery === 0 && mine.hp < mine.max) {
+      const heal = Math.min(mine.max - mine.hp, Math.round(mine.max * me.regen));
+      mine.hp += heal;
+      push('me', 'heal', heal, '气血回转');
+    }
     if (!loser && now === theirs.next) {
       theirs.hits++;
       const hit = strike('foe', 'me', 1, false);
       push('foe', 'hit', hit.dealt, '');
-      if (school('body') && hit.dealt > 0 && mine.hp > 0) {
-        const back = hurt(theirs, hit.dealt * bodyThorns(school('body').power));
+      const thorns = (school('body') ? bodyThorns(school('body').power) : 0) + (me.thorns || 0);
+      if (thorns > 0 && hit.dealt > 0 && mine.hp > 0) {
+        const back = hurt(theirs, hit.dealt * thorns);
         push('me', 'thorns', back, '');
       }
       theirs.next = now + steps(foe.interval * (cursed('slow') ? TALISMAN_SLOW : 1));
@@ -210,7 +239,7 @@ function simulate(me, foe, rng) {
       if (cursed('seal') || (bond('talisman', 4) && rng() < TALISMAN_SEAL)) {
         push('foe', 'sealed', 0, foe.name + '的「' + foe.skill.name + '」被封住了');
       } else {
-        const hit = strike('foe', 'me', foe.skill.mult, false);
+        const hit = strike('foe', 'me', foe.skill.mult * (1 - (me.guard || 0)), false);
         push('foe', 'skill', hit.dealt, foe.name + '使出「' + foe.skill.name + '」');
         loser = down();
       }

@@ -308,6 +308,7 @@ test('装备：品级定词条数和装备分，阶越高、强化越高主属�
   assert.ok(gear.stats({ slot: 'armor', grade: 1, tier: 9, level: 0, affixes: [] }).hp > 0);
   const charm = gear.stats({ slot: 'charm', grade: 2, tier: 9, level: 0, affixes: [] });
   assert.ok(charm.atk > 0 && charm.hp > 0 && charm.crit === 0.06);
+  assert.strictEqual(gear.stats({ slot: 'weapon', grade: 6, tier: 9, level: 0, affixes: [] }).atk, Math.round(6.5 * 5));
   assert.ok(gear.rating(high) > gear.rating(low));
   // 强化的花费逐级涨，到顶之后是 0；分解退一半。
   assert.strictEqual(gear.enhanceCost(low), 1);
@@ -319,7 +320,7 @@ test('装备：品级定词条数和装备分，阶越高、强化越高主属�
 test('装备掉落：词条不重复，越往后好东西越多，首领掷两次取高', () => {
   const count = (tier, boss) => {
     const rng = battle.seeded(11);
-    const grades = [0, 0, 0, 0];
+    const grades = gear.GRADES.map(() => 0);
     for (let i = 0; i < 2000; i++) {
       const item = gear.roll(tier, rng, boss);
       assert.strictEqual(item.affixes.length, gear.GRADES[item.grade].affixes);
@@ -402,7 +403,9 @@ test('装备：换上、一键换好的、强化、分解，背包满了新掉�
   assert.strictEqual(game.gearEnhance(s, 'charm'), false);
 
   for (let i = 0; i < game.GEAR_PACK_MAX; i++) g.pack.push({ uid: 100 + i, slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] });
-  g.worn.charm = { uid: 200, slot: 'charm', grade: 0, tier: 1, level: 0, affixes: [] };
+  game.GEAR_SLOTS.forEach((slot) => {
+    if (!g.worn[slot.id]) g.worn[slot.id] = { uid: 200, slot: slot.id, grade: 0, tier: 1, level: 0, affixes: [] };
+  });
   s.run.battle.cleared = 4;
   const full = game.trainClear(s, 5, () => 0.5);
   assert.ok(full.drop.scrapped > 0);
@@ -430,7 +433,7 @@ test('储物袋攒装备：每 20 分钟一件，有上限，收取时按眼下�
 test('装备存档：不合法的装备丢掉，编号重排；装备和锻材不跨世', () => {
   const raw = { run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 3, loot: 99 }, gear: {
     worn: { weapon: { slot: 'weapon', grade: 2, tier: 8, level: 3, affixes: ['atk', 'atk', 'hp', 'crit', 'x'] }, armor: { slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] }, charm: { slot: 'charm', grade: 9, tier: 1, level: 0, affixes: [] } },
-    pack: [{ slot: 'armor', grade: 1, tier: 2, level: 0, affixes: ['hp'] }, { slot: 'ring', grade: 0, tier: 1, level: 0, affixes: [] }, null, { slot: 'charm', grade: 0, tier: 0, level: 0, affixes: [] }],
+    pack: [{ slot: 'armor', grade: 1, tier: 2, level: 0, affixes: ['hp'] }, { slot: 'cape', grade: 0, tier: 1, level: 0, affixes: [] }, null, { slot: 'charm', grade: 0, tier: 0, level: 0, affixes: [] }],
     forge: 500, dry: 50, seq: -3
   } } };
   const s = game.normalizeState(raw, 0, () => 0);
@@ -445,8 +448,75 @@ test('装备存档：不合法的装备丢掉，编号重排；装备和锻材�
   assert.strictEqual(g.dry, game.TRAIN_DROP_PITY);
   assert.strictEqual(s.run.battle.loot, game.trainBag(s).gearMax);
   const old = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1 } }, 0, () => 0);
-  assert.deepStrictEqual(old.run.gear, { worn: { weapon: null, armor: null, charm: null }, pack: [], forge: 0, seq: 0, dry: 0 });
+  assert.deepStrictEqual(old.run.gear, { worn: { weapon: null, armor: null, crown: null, boots: null, charm: null, ring: null }, pack: [], forge: 0, seq: 0, dry: 0 });
   game.retire(s);
   game.reincarnate(s, 0, () => 0);
   assert.deepStrictEqual(s.run.gear, old.run.gear);
+});
+
+test('装备扩充：六个槽位、七个品级、十三种词条，高品级要到后面的关才掉', () => {
+  assert.deepStrictEqual(gear.SLOTS.map((slot) => slot.name), ['兵', '衣', '冠', '靴', '佩', '戒']);
+  assert.deepStrictEqual(gear.GRADES.map((grade) => grade.name), ['凡', '灵', '玄', '天', '仙', '神', '道']);
+  assert.strictEqual(gear.AFFIXES.length, 13);
+  gear.SLOTS.forEach((slot) => assert.strictEqual(slot.names.length, gear.GRADES.length));
+  gear.GRADES.forEach((grade, i) => assert.strictEqual(grade.affixes, i));
+  // 每种词条都落在一项战斗加成上，并写得出说明。
+  gear.AFFIXES.forEach((affix) => {
+    const s = gear.stats({ slot: 'weapon', grade: 1, tier: 9, level: 0, affixes: [affix.id] });
+    assert.ok(s[affix.key] > 0, affix.id);
+    assert.ok(gear.statsText(s).split('，').length === 2, affix.id);
+  });
+  assert.ok(gear.stats({ slot: 'crown', grade: 2, tier: 9, level: 0, affixes: [] }).reduce > 0);
+  assert.ok(gear.stats({ slot: 'boots', grade: 2, tier: 9, level: 0, affixes: [] }).haste > 0);
+  assert.ok(gear.stats({ slot: 'ring', grade: 2, tier: 9, level: 0, affixes: [] }).critDmg > 0);
+  const top = (tier) => {
+    const rng = battle.seeded(5);
+    let best = 0;
+    const slots = new Set();
+    for (let i = 0; i < 4000; i++) {
+      const item = gear.roll(tier, rng, false);
+      best = Math.max(best, item.grade);
+      slots.add(item.slot);
+    }
+    assert.strictEqual(slots.size, gear.SLOTS.length);
+    return best;
+  };
+  assert.strictEqual(top(10), 3);
+  assert.strictEqual(top(30), 4);
+  assert.strictEqual(top(60), 5);
+  assert.strictEqual(top(120), 6);
+});
+
+test('新词条在战斗里生效：暴击伤害、吸血、反伤、回血、护盾、破甲、招式减伤、连击', () => {
+  const foe = dummy({ hp: 3000, atk: 30, interval: 1, reduce: 0.5, skill: { name: '重击', every: 4, mult: 3 } });
+  const run = (bonus, rng) => battle.simulate(player({ edge: 10, body: 30, mind: 0 }, {}, { gear: bonus }), foe, rng || (() => 0.5));
+  const base = run({});
+  const sum = (fight, kind) => kinds(fight, kind).reduce((total, entry) => total + entry.value, 0);
+  const myHits = (fight) => fight.timeline.filter((entry) => entry.who === 'me' && entry.kind === 'hit');
+  // 暴击伤害：随机数取 0 时每一下都暴击。
+  const critBase = run({}, () => 0);
+  const critUp = run({ critDmg: 0.5 }, () => 0);
+  assert.ok(kinds(critUp, 'crit')[0].value > kinds(critBase, 'crit')[0].value);
+  // 破甲：敌人 50% 减伤削掉 20 个点，伤害是原来的 1.4 倍。
+  assert.strictEqual(myHits(run({ pierce: 0.2 }))[0].value, Math.round(myHits(base)[0].value * 1.4));
+  // 吸血：同一场打赢的架，收场时剩的气血更多。
+  const soft = dummy({ hp: 300, atk: 12, interval: 1 });
+  const duel = (bonus) => battle.simulate(player({ edge: 10, body: 30, mind: 0 }, {}, { gear: bonus }), soft, () => 0.5);
+  assert.ok(duel({}).win);
+  assert.ok(duel({ leech: 0.2 }).me.hp > duel({}).me.hp);
+  assert.strictEqual(kinds(base, 'thorns').length, 0);
+  assert.ok(kinds(run({ thorns: 0.1 }), 'thorns').length > 0);
+  assert.strictEqual(kinds(base, 'heal').length, 0);
+  const regen = run({ regen: 0.02 });
+  assert.ok(kinds(regen, 'heal').length > 0);
+  assert.strictEqual(kinds(regen, 'heal')[0].t, 5);
+  const shield = run({ shield: 0.1 });
+  assert.strictEqual(shield.timeline[0].kind, 'shield');
+  assert.strictEqual(shield.timeline[0].value, Math.round(shield.me.max * 0.1));
+  assert.ok(sum(run({ guard: 0.5 }), 'skill') < sum(base, 'skill') * 0.7 * kinds(run({ guard: 0.5 }), 'skill').length / kinds(base, 'skill').length);
+  assert.strictEqual(kinds(base, 'extra').length, 0);
+  // 连击：随机数取 0 时每次出手都多打一下。
+  const combo = run({ combo: 0.05 }, () => 0);
+  const mains = combo.timeline.filter((entry) => entry.who === 'me' && entry.text === '连击').length;
+  assert.ok(mains > 0);
 });
