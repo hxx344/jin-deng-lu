@@ -165,6 +165,7 @@ const POLICIES = {
     replace(state) {
       return game.autoReplace(state);
     },
+    gear: true,
     afterDeath() {}
   },
 
@@ -245,6 +246,7 @@ const POLICIES = {
     replace(state) {
       return game.autoReplace(state);
     },
+    gear: true,
     afterDeath(state) {
       if (!game.canCarry(state)) return;
       const best = state.run.skills.filter((entry) => !game.skillInfo(entry.id).arcane).sort((a, b) => b.level - a.level)[0];
@@ -265,6 +267,40 @@ function buyLamps(state) {
   }
 }
 
+// 历练：场景里的战斗是自己打的，机器人也照打。seconds 是刚过去的现实时间，一场战斗占掉它自己的时长加上入场、倒下的间隔，
+// 败了再加调息；时间不够打下一场就留到下次。manage 为真时每过一关把更好的换上、用不上的分解、锻材拿去强化，并收储物袋。
+const TRAIN_GAP = 2;
+const TRAIN_REST = 4;
+function train(state, clock, seconds, manage) {
+  if (!game.trainStage(state)) {
+    clock.spare = 0;
+    return;
+  }
+  const tidy = () => {
+    game.gearEquipBest(state);
+    game.gearScrapSpare(state);
+    game.gearView(state).worn.forEach((slot) => {
+      while (game.gearEnhance(state, slot.slot)) { /* 强化到锻材不够为止 */ }
+    });
+  };
+  clock.spare += seconds;
+  while (clock.spare > 0) {
+    const stage = game.trainStage(state);
+    if (!stage) break;
+    let won = true;
+    for (let wave = 0; won && wave < game.trainWaves(stage); wave++) {
+      const fight = game.trainEncounter(state, wave, clock.trainRng);
+      clock.spare -= fight.seconds + TRAIN_GAP;
+      if (!fight.win) {
+        won = false;
+        clock.spare -= TRAIN_REST;
+      }
+    }
+    if (won && game.trainClear(state, stage, clock.trainRng) && manage) tidy();
+  }
+  if (manage && game.trainBag(state).gear >= 1 && game.trainCollect(state, clock.trainRng)) tidy();
+}
+
 // 跑完一世，返回这一世的记录。
 function playLife(state, policy, rng, config, clock) {
   const life = { tribs: [], capped: false };
@@ -272,12 +308,16 @@ function playLife(state, policy, rng, config, clock) {
   const tick = (seconds) => {
     clock.now += seconds * 1000;
     game.advance(state, clock.now);
+    if (state.run.phase === 'alive') train(state, clock, seconds, !!policy.gear);
   };
+  clock.spare = 0;
+  const tribRecord = (name, success) => ({ name: name, success: success, gear: game.gearScore(state), cleared: state.run.battle.cleared });
   const sim = {
     config: config,
     // 逐道雷的天劫一口气渡完：必接的雷按 method 走，借不起就硬接；余雷只有打法愿意时才引。
     tribulation(method) {
       let result = null;
+      const record = tribRecord('', false);
       for (;;) {
         const info = game.tribulationInfo(state);
         if (!info || !info.ready) break;
@@ -288,14 +328,15 @@ function playLife(state, policy, rng, config, clock) {
         result = next;
         if (next.done) break;
       }
-      if (result) life.tribs.push({ name: result.name, success: result.broke });
+      if (result) life.tribs.push(Object.assign(record, { name: result.name, success: result.broke }));
       return !!result;
     },
     yuanTrial(method, step) {
       const realm = state.run.realm;
+      const record = tribRecord(game.TRIBS[realm].name, false);
       const result = game.attemptYuanTrial(state, rng, method, step);
       // 元婴劫两关算一次天劫：失败一次记一次失败，问名关过了记一次成功。
-      if (result && (!result.success || result.advanced)) life.tribs.push({ name: game.TRIBS[realm].name, success: !!result.advanced });
+      if (result && (!result.success || result.advanced)) life.tribs.push(Object.assign(record, { success: !!result.advanced }));
       return !!result;
     }
   };
@@ -366,7 +407,8 @@ function playLife(state, policy, rng, config, clock) {
 function playSave(policyId, seed, config) {
   const policy = POLICIES[policyId];
   const rng = mulberry(seed);
-  const clock = { now: 0 };
+  // 历练用单独的随机数流，战斗打几场不影响机缘的随机序列。
+  const clock = { now: 0, spare: 0, trainRng: mulberry((seed ^ 0x5bd1e995) >>> 0) };
   const state = game.createState(0, rng);
   const lives = [];
   for (let i = 0; i < config.lives; i++) {
@@ -438,7 +480,8 @@ function summarize(saves, config) {
   const all = [].concat.apply([], saves);
   game.TRIBS.forEach((trib) => {
     const tries = [].concat.apply([], all.map((life) => life.tribs)).filter((item) => item.name === trib.name);
-    out.tribs[trib.name] = { perLife: round(tries.length / all.length, 2), success: tries.length ? share(tries, (item) => item.success) : null };
+    out.tribs[trib.name] = { perLife: round(tries.length / all.length, 2), success: tries.length ? share(tries, (item) => item.success) : null,
+      gear: tries.length ? median(tries.map((item) => item.gear)) : null, cleared: tries.length ? median(tries.map((item) => item.cleared)) : null };
   });
   out.capped = all.filter((life) => life.capped).length;
   return out;
@@ -496,6 +539,7 @@ function render(data) {
     '- **挂机玩**：见过的选项全交给游戏自带的“自动机缘”估分；道途选手里功法最多的一系；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨。',
     '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
+    '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
     '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽与灯油、散功保命、主动降重天。',
     ''
   ];
@@ -528,8 +572,11 @@ function render(data) {
       })), '');
     out.push('“活不死”的局数：' + result.capped + '。', '');
     out.push('**天劫**', '');
-    out.push(table(['天劫', '每世平均渡劫次数', '成功率'],
-      Object.keys(result.tribs).map((name) => [name, result.tribs[name].perLife, pct(result.tribs[name].success)])), '');
+    out.push(table(['天劫', '每世平均渡劫次数', '成功率', '渡劫时的装备分（中位数）', '渡劫时历练过了几关（中位数）'],
+      Object.keys(result.tribs).map((name) => {
+        const item = result.tribs[name];
+        return [name, item.perLife, pct(item.success), orDash(item.gear), orDash(item.cleared)];
+      })), '');
   });
   return out.join('\n');
 }

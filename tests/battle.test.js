@@ -454,6 +454,44 @@ test('装备存档：不合法的装备丢掉，编号重排；装备和锻材�
   assert.deepStrictEqual(s.run.gear, old.run.gear);
 });
 
+test('天劫要装备分：不够时成功率按差的比例扣，够了不扣；引气劫不设', () => {
+  const wear = (s, items) => {
+    items.forEach((item, i) => {
+      s.run.gear.worn[item.slot] = Object.assign({ uid: i + 1, tier: 5, level: 0, affixes: [] }, item);
+    });
+  };
+  const part = (info) => info.parts.filter((entry) => entry.label === '装备分不足')[0];
+  const s = cultivator(48, 48, 48);
+  s.run.qi = game.qiCap(s);
+  const bare = game.tribulationInfo(s);
+  assert.strictEqual(bare.name, '筑基劫');
+  assert.deepStrictEqual(bare.gear, { name: '筑基劫', need: 24, score: 0, short: true, penalty: game.GEAR_TRIB_MAX });
+  assert.strictEqual(part(bare).value, -game.GEAR_TRIB_MAX);
+  // 三件凡品 12 分，差一半，扣一半。
+  wear(s, [{ slot: 'weapon', grade: 0 }, { slot: 'armor', grade: 0 }, { slot: 'crown', grade: 0 }]);
+  const half = game.tribulationInfo(s);
+  assert.strictEqual(half.gear.score, 12);
+  assert.ok(Math.abs(part(half).value + game.GEAR_TRIB_MAX / 2) < 1e-9);
+  assert.ok(Math.abs(half.chance - bare.chance - game.GEAR_TRIB_MAX / 2) < 1e-9);
+  wear(s, [{ slot: 'boots', grade: 0 }, { slot: 'charm', grade: 0 }, { slot: 'ring', grade: 0 }]);
+  const full = game.tribulationInfo(s);
+  assert.strictEqual(full.gear.short, false);
+  assert.strictEqual(part(full), undefined);
+  assert.ok(Math.abs(full.chance - bare.chance - game.GEAR_TRIB_MAX) < 1e-9);
+  // 再多也不加。
+  wear(s, [{ slot: 'weapon', grade: 3 }]);
+  assert.strictEqual(game.tribulationInfo(s).chance, full.chance);
+  assert.strictEqual(game.gearView(s).trib.need, 24);
+  // 装备不改属性：换装前后锋躯神一样。
+  assert.deepStrictEqual(game.attrs(s), { edge: 48, body: 48, mind: 48 });
+  const mortal = game.createState(0, () => 0);
+  mortal.run.fate = '';
+  assert.ok(game.chooseRoot(mortal, 'talisman', 0, () => 0));
+  assert.strictEqual(game.tribGear(mortal).need, 0);
+  assert.strictEqual(game.tribGear(mortal).short, false);
+  assert.deepStrictEqual(game.TRIBS.map((trib) => trib.gear || 0), [0, 24, 50, 70]);
+});
+
 test('装备扩充：六个槽位、七个品级、十三种词条，高品级要到后面的关才掉', () => {
   assert.deepStrictEqual(gear.SLOTS.map((slot) => slot.name), ['兵', '衣', '冠', '靴', '佩', '戒']);
   assert.deepStrictEqual(gear.GRADES.map((grade) => grade.name), ['凡', '灵', '玄', '天', '仙', '神', '道']);

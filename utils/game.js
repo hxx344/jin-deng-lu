@@ -2272,6 +2272,8 @@ const TRAIN_DROP_PITY = 3;
 const TRAIN_LOOT_SEC = 1200;
 const TRAIN_LOOT_MAX = TRAIN_BAG_HOURS * 3600 / TRAIN_LOOT_SEC;
 const FORGE_MAX = 99;
+// 装备分不够时，渡劫成功率最多扣这么多。
+const GEAR_TRIB_MAX = 0.3;
 
 function trainFighter(state) {
   const run = state.run;
@@ -2567,6 +2569,7 @@ function gearView(state) {
     bonus: gear.statsText(gear.bonus(wornItems(run))),
     forge: g.forge,
     forgeMax: FORGE_MAX,
+    trib: tribGear(state),
     worn: worn,
     pack: pack,
     packMax: gear.PACK_MAX,
@@ -2779,6 +2782,15 @@ function retreatSea(state) {
 }
 
 // 渡劫成功率由哪几项加出来，按顺序列给玩家看；为零的项不列。
+// 这场天劫要多少装备分、身上有多少。不够时成功率按差的比例扣，一件不穿扣满 GEAR_TRIB_MAX。
+function tribGear(state) {
+  const trib = TRIBS[state.run.realm];
+  const need = (trib && trib.gear) || 0;
+  const score = gearScore(state);
+  const short = score < need;
+  return { name: trib ? trib.name : '', need: need, score: score, short: short, penalty: short ? GEAR_TRIB_MAX * (1 - score / need) : 0 };
+}
+
 function tribulationParts(state, ratio) {
   const run = state.run;
   return [
@@ -2788,7 +2800,8 @@ function tribulationParts(state, ratio) {
     ['灯纹「劫后余生」', 0.03 * lampLevel(state, 'm2')],
     ['功法', sumSkills(run, 'trib')],
     ['大机缘的雷', run.tribBoon],
-    ['重天', -HEAVEN_TRIB * run.heaven]
+    ['重天', -HEAVEN_TRIB * run.heaven],
+    ['装备分不足', -tribGear(state).penalty]
   ].filter((part) => Math.abs(part[1]) > 1e-9).map((part) => ({ label: part[0], value: part[1] }));
 }
 
@@ -2925,6 +2938,7 @@ function yuanTrialView(state) {
   const name = sea.saltPassed ? '问名关' : '盐骨关';
   return Object.assign(terms, {
     step: step, name: name,
+    gear: tribGear(state),
     ready: !run.event && !run.pending && isFull(state),
     text: sea.saltPassed ? '潮声把你叫过的每一个名字都念了一遍。你得认出，哪一个是自己的。' : '返潮把锚链一节节拽出海床。你要先越过乱潮，才能听清船底是谁在喊你的名字。',
     options: options
@@ -3004,6 +3018,7 @@ function tribulationInfo(state) {
     borrowCost: BORROW_CHANCE,
     scatterYears: SCATTER_YEARS,
     demonOk: demonOk,
+    gear: tribGear(state),
     parts: tribulationParts(state, ratio),
     // 逐道雷渡到一半时不再看灵气和魔修身份，否则这场劫既渡不完也退不出。
     ready: run.phase === 'alive' && !run.pending && (!!run.trib || ((run.mode !== 'demon' || demonOk) && tribQiReady(state)))
@@ -3692,6 +3707,8 @@ module.exports = {
   TRAIN_DROP_PITY,
   gearView,
   gearScore,
+  tribGear,
+  GEAR_TRIB_MAX,
   gearEquip,
   gearEquipBest,
   gearEnhance,

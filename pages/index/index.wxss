@@ -3887,6 +3887,10 @@ button.sheet-btn::after {
   color: #8c8275;
 }
 
+.gear-short {
+  color: #d98a6a;
+}
+
 .gear-head {
   display: flex;
   align-items: center;

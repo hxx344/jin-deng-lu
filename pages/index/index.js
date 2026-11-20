@@ -91,6 +91,8 @@ const FRAY_REST = 40;
 const FRAY_POPS = 5;
 const FRAY_MY_HITS = ['hit', 'crit', 'double', 'extra', 'execute', 'thorns'];
 const HIDDEN_BAR = { show: false };
+// 渡劫面板里提一句装备分不够扣了多少；够了就不提。
+const gearShortText = (g) => (g.short ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 −' + percent(g.penalty) + '%。' : '');
 const FIDGETS = ['yawn', 'look', 'doze', 'scratch'];
 const FIDGET_MIN_MS = 7000;
 const FIDGET_SPAN_MS = 8000;
@@ -954,11 +956,11 @@ Page({
       line = '魔修：灵气产出 ×' + (1 + game.MAX_DEMON * game.DEMON_QI_RATE) + '，不能渡劫。普通延寿无效，只能服散续命。';
     } else if (info) {
       line = info.name + (info.aspect ? '「' + info.aspect + '」' : '') + ' · 考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '各 ' : ' ') + info.req +
-        ' · 成功率 ' + percent(info.chance) + '%';
+        (info.gear.short ? ' · 装备分 ' + info.gear.score + '/' + info.gear.need : '') + ' · 成功率 ' + percent(info.chance) + '%';
     } else if (boarding) {
       line = '枯海沉舟 · 潮位 ' + run.sea.tide + ' / ' + game.SEA_TIDE_LIMIT;
     } else if (yuan) {
-      line = yuan.ready ? '元婴劫 · ' + yuan.name : (full ? '了结手中的机缘或功法，然后再渡元婴劫。' : '休养回满灵气，再渡元婴劫。');
+      line = yuan.ready ? '元婴劫 · ' + yuan.name + (yuan.gear.short ? ' · 装备分 ' + yuan.gear.score + '/' + yuan.gear.need : '') : (full ? '了结手中的机缘或功法，然后再渡元婴劫。' : '休养回满灵气，再渡元婴劫。');
     } else if (run.realm === game.SEA_REALM) {
       line = full ? (seaEntry ? '金丹圆满。烬灯照出一条通往枯海的航路。' : '金丹圆满。了结手中的机缘或功法，然后入枯海。') : '金丹后期灵气圆满后，可入枯海。';
     } else {
@@ -1160,7 +1162,8 @@ Page({
           '装备分兵、衣、冠、靴、佩、戒六个槽位：兵加攻击，衣加气血，冠加气血和减伤，靴加气血和出手速度，佩攻击气血都加一点并加暴击，戒加攻击和暴击伤害。',
           '品级有凡、灵、玄、天、仙、神、道七档，品级越高带的词条越多（道品 6 条）；仙品要过了 11 关才会掉，神品 34 关，道品 76 关。越靠后的关掉的装备“阶”越高，数值越大。',
           '词条有十三种：攻击、气血、暴击、暴击伤害、减伤、出手加快、吸血、反伤、回血、开场护盾、破甲、招式减伤、连击。',
-          '装备只在历练的战斗里起作用，不改锋躯神，也不影响渡劫；装备分会算进战力。',
+          '装备的数值只在历练的战斗里起作用，不改锋躯神；装备分会算进战力。',
+          '往后的天劫要装备分撑着：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '。不够的话成功率按差的比例往下扣，一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%；够了就不扣。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
           '在“装备”页换装、强化和分解。强化耗锻材，最高 +' + game.GEAR_MAX_LEVEL + '，不会失败；锻材靠分解用不上的装备得来。背包最多 ' + game.GEAR_PACK_MAX + ' 件，满了之后新掉的直接分解。',
           '装备和锻材只管这一世。'
         ]),
@@ -1448,6 +1451,8 @@ Page({
       score: v.score,
       bonus: v.bonus || '身上还没有装备',
       forge: v.forge + ' / ' + v.forgeMax,
+      need: v.trib.need ? v.trib.name + '要装备分 ' + v.trib.need + (v.trib.short ? '，还差 ' + (v.trib.need - v.trib.score) + '：渡劫成功率 −' + percent(v.trib.penalty) + '%' : '，已经够了') : '',
+      needShort: v.trib.short,
       worn: v.worn.map((entry) => ({
         slot: entry.slot,
         slotName: entry.slotName,
@@ -1582,7 +1587,7 @@ Page({
         step: yuan.step,
         title: yuan.name,
         text: yuan.text,
-        note: '先过盐骨关（锋或躯），再过问名关（神或事先准备）。' + penalty,
+        note: '先过盐骨关（锋或躯），再过问名关（神或事先准备）。' + penalty + gearShortText(yuan.gear),
         options: yuan.options.map((option) => ({
           ...option, rate: option.chance === 1 ? '必过' : percent(option.chance) + '%'
         }))
@@ -1594,7 +1599,7 @@ Page({
     return {
       kind: 'trib',
       title: info.name,
-      text: (info.aspect ? '这一世的劫相是「' + info.aspect + '」：' : '') + '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req + '。选一种渡法，选定即引下天雷。',
+      text: (info.aspect ? '这一世的劫相是「' + info.aspect + '」：' : '') + '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req + '。' + gearShortText(info.gear) + '选一种渡法，选定即引下天雷。',
       options: [
         {
           id: 'endure',

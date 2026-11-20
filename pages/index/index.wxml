@@ -284,7 +284,8 @@
           <text class="power-value">{{gear.score}}</text>
         </view>
         <view class="gear-bonus">{{gear.bonus}}</view>
-        <view class="gear-bonus gear-note">只在历练的战斗里起作用 · 锻材 {{gear.forge}}</view>
+        <view class="gear-bonus gear-note">数值只在历练的战斗里起作用 · 锻材 {{gear.forge}}</view>
+        <view wx:if="{{gear.need}}" class="gear-bonus gear-note {{gear.needShort ? 'gear-short' : ''}}">{{gear.need}}</view>
       </view>
       <view class="section">身上</view>
       <view wx:for="{{gear.worn}}" wx:key="slot" class="card">
