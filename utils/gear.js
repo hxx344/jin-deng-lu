@@ -48,6 +48,7 @@ const STAT_TEXT = {
 const MAX_LEVEL = 5;
 const LEVEL_BONUS = 0.1;
 const AFFIX_SCORE = 2;
+const TIER_SCORE = 0.05;
 const PACK_MAX = 30;
 // 主属性随掉落时的关数（阶）涨，和敌人攻击的增长率一致。
 const TIER_GROWTH = 1.1;
@@ -120,8 +121,9 @@ function bonus(items) {
   return out;
 }
 
+// 装备分：品级、强化和词条定底数，阶再往上乘，每高一阶多 TIER_SCORE。这样越靠后的关掉的装备分越高，装备分才跟得上实际战力。
 function score(item) {
-  return Math.round(GRADES[item.grade].score * (1 + LEVEL_BONUS * item.level) + AFFIX_SCORE * item.affixes.length);
+  return Math.round((GRADES[item.grade].score * (1 + LEVEL_BONUS * item.level) + AFFIX_SCORE * item.affixes.length) * (1 + TIER_SCORE * (item.tier - 1)));
 }
 
 // 比较两件同槽位装备谁更好用的粗略分数。

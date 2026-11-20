@@ -108,6 +108,9 @@ const ATTRS = ['edge', 'body', 'mind'];
 const ATTR_NAMES = { edge: '锋', body: '躯', mind: '神' };
 // 按“境界 × 3 + 小境界”取基础值；圆满奖励由各境界单独定义。
 const WICK_SCORE = [2, 3, 4, 8, 11, 14, 24, 30, 36, 60, 75, 90, 160, 190, 220];
+REALMS.forEach((realm) => {
+  if (realm.wick) realm.wick.forEach((score) => WICK_SCORE.push(score));
+});
 const SEA_REALM = TRIBS.findIndex((trial) => trial.seaTrial);
 const SEA_LAYER = REALMS[SEA_REALM + 1].layer;
 const SEA_TIDE_LIMIT = 3;
@@ -117,6 +120,11 @@ const UNITS = ['', '万', '亿', '兆', '京'];
 // 劫期：每个境界里可以从容做这么多次普通机缘；过期后每次机缘额外折寿，每再拖 OVERDUE_STEP 次加重一档。
 const TRIB_TERMS = [30, 36, 44, 52, 40];
 const OVERDUE_YEARS = [1, 1, 2, 4, 8];
+// 元婴之后的境界：劫期一律 40 次，过期后每次多折的寿元逐境界加四成。
+for (let i = TRIB_TERMS.length; i < REALMS.length; i++) {
+  TRIB_TERMS.push(40);
+  OVERDUE_YEARS.push(Math.round(OVERDUE_YEARS[4] * Math.pow(1.4, i - 4)));
+}
 const OVERDUE_STEP = 5;
 const MIN_TERM = 10;
 // 道途：主修一系的功法效果放大，被它克制的一系削弱。
@@ -501,7 +509,7 @@ function choosePath(state, id) {
 }
 
 function heavenText(level) {
-  return level ? '天劫要求 +' + pctText(HEAVEN_REQ * level) + '，渡劫成功率 -' + pctText(HEAVEN_TRIB * level) + '，劫期 -' + pctText(HEAVEN_TERM * level) + '，灯芯 +' + pctText(HEAVEN_WICK * level)
+  return level ? '天劫属性要求 +' + pctText(HEAVEN_REQ * level) + '，装备分要求 +' + pctText(GEAR_HEAVEN * level) + '，渡劫成功率 -' + pctText(HEAVEN_TRIB * level) + '，劫期 -' + pctText(HEAVEN_TERM * level) + '，灯芯 +' + pctText(HEAVEN_WICK * level)
     : '最初的天：没有刁难，也没有加成';
 }
 
@@ -1169,7 +1177,8 @@ function generateEvent(state, rng, forcedType, excludeId) {
     run.sudden = null;
   }
   const layer = REALMS[run.realm].layer;
-  const eligible = (e) => !e.trigger && e.layers.indexOf(layer) >= 0 && e.id !== excludeId && marksOk(run, e) &&
+  const wide = !!REALMS[run.realm].wide;
+  const eligible = (e) => !e.trigger && (wide || e.layers.indexOf(layer) >= 0) && e.id !== excludeId && marksOk(run, e) &&
     !seedsPendingKarma(run, e) && (e.type !== 'story' || run.seen.indexOf(e.id) < 0) &&
     (e.type !== 'rare' || run.slots < MAX_EXTRA_SLOTS);
   const stories = EVENTS.filter((e) => e.type === 'story' && eligible(e));
@@ -2274,6 +2283,8 @@ const TRAIN_LOOT_MAX = TRAIN_BAG_HOURS * 3600 / TRAIN_LOOT_SEC;
 const FORGE_MAX = 99;
 // 装备分不够时，渡劫成功率最多扣这么多。
 const GEAR_TRIB_MAX = 0.3;
+// 每高一重天，天劫要的装备分多这么多。
+const GEAR_HEAVEN = 0.05;
 
 function trainFighter(state) {
   const run = state.run;
@@ -2785,10 +2796,11 @@ function retreatSea(state) {
 // 这场天劫要多少装备分、身上有多少。不够时成功率按差的比例扣，一件不穿扣满 GEAR_TRIB_MAX。
 function tribGear(state) {
   const trib = TRIBS[state.run.realm];
-  const need = (trib && trib.gear) || 0;
+  const need = Math.round(((trib && trib.gear) || 0) * (1 + GEAR_HEAVEN * state.run.heaven));
   const score = gearScore(state);
   const short = score < need;
-  return { name: trib ? trib.name : '', need: need, score: score, short: short, penalty: short ? GEAR_TRIB_MAX * (1 - score / need) : 0 };
+  const cut = (trib && trib.gearCut) || GEAR_TRIB_MAX;
+  return { name: trib ? trib.name : '', need: need, score: score, short: short, cut: cut, penalty: short ? cut * (1 - score / need) : 0 };
 }
 
 function tribulationParts(state, ratio) {
@@ -2806,7 +2818,9 @@ function tribulationParts(state, ratio) {
 }
 
 function tribulationChance(state, ratio) {
-  return clamp(tribulationParts(state, ratio).reduce((sum, part) => sum + part.value, 0), 0.05, 0.98);
+  // 化神起的装备扣幅可以到 100%，不能再被通用的 5% 保底抬回来。
+  const min = tribGear(state).cut >= 1 ? 0 : 0.05;
+  return clamp(tribulationParts(state, ratio).reduce((sum, part) => sum + part.value, 0), min, 0.98);
 }
 
 function boltRewardText(tests, reward) {
@@ -3001,10 +3015,14 @@ function tribulationInfo(state) {
   ratio /= plan.tests.length;
   const demonOk = run.mode === 'demon' && mech(run, 'demonTrib') > 0;
   const again = mech(run, 'reTrib');
+  const gear = tribGear(state);
+  const minChance = gear.cut >= 1 ? 0 : 0.05;
+  // 化神起装备不足也削弱借势，避免零装备靠借势的固定加成绕过装备要求。
+  const borrowBonus = BORROW_TRIB * (gear.cut >= 1 ? 1 - gear.penalty : 1);
   // 魔修渡劫按比例打折；《无名一剑》把“失败后再判一次”折进显示的成功率里。
   const final = (p) => {
     if (demonOk) p *= mech(run, 'demonTrib');
-    return clamp(p + (1 - p) * p * again, 0.05, 0.98);
+    return clamp(p + (1 - p) * p * again, minChance, 0.98);
   };
   const baseChance = tribulationChance(state, ratio);
   const info = Object.assign(tribulationTerms(state, trib), {
@@ -3013,12 +3031,12 @@ function tribulationInfo(state) {
     tests: plan.tests,
     req: plan.req,
     chance: final(baseChance),
-    borrowChance: final(clamp(baseChance + BORROW_TRIB, 0.05, 0.98)),
+    borrowChance: final(clamp(baseChance + borrowBonus, minChance, 0.98)),
     borrowReady: run.chance >= BORROW_CHANCE,
     borrowCost: BORROW_CHANCE,
     scatterYears: SCATTER_YEARS,
     demonOk: demonOk,
-    gear: tribGear(state),
+    gear: gear,
     parts: tribulationParts(state, ratio),
     // 逐道雷渡到一半时不再看灵气和魔修身份，否则这场劫既渡不完也退不出。
     ready: run.phase === 'alive' && !run.pending && (!!run.trib || ((run.mode !== 'demon' || demonOk) && tribQiReady(state)))
@@ -3708,6 +3726,7 @@ module.exports = {
   gearView,
   gearScore,
   tribGear,
+  GEAR_HEAVEN,
   GEAR_TRIB_MAX,
   gearEquip,
   gearEquipBest,

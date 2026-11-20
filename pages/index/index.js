@@ -903,7 +903,8 @@ Page({
     view.layer = (yuan && this.tribOpen) || (act === 'thunder' && this.result && this.result.yuan)
       ? game.REALMS[game.SEA_REALM + 1].layer
       : (realm === run.realm ? game.layerIndex(run) : game.REALMS[realm].layer);
-    view.realm = realm;
+    // 衣着只画到元婴，之后的境界沿用元婴的样子。
+    view.realm = Math.min(realm, game.SEA_REALM + 1);
     view.action = act || (this.bracing ? 'brace' : (alive && run.event && this.eventOpen ? 'ponder' : 'idle'));
     view.old = alive && game.yearsLeft(s) <= 10;
     view.demon = run.demon >= 50;
@@ -964,7 +965,8 @@ Page({
     } else if (run.realm === game.SEA_REALM) {
       line = full ? (seaEntry ? '金丹圆满。烬灯照出一条通往枯海的航路。' : '金丹圆满。了结手中的机缘或功法，然后入枯海。') : '金丹后期灵气圆满后，可入枯海。';
     } else {
-      line = full ? '元婴圆满。可继续修行，或在轮回页坐化。' : '元婴已成，继续修行可达圆满。';
+      const top = game.REALMS[run.realm].name;
+      line = full ? top + '圆满，前面没有路了。可继续修行，或在轮回页坐化。' : top + '已成，继续修行可达圆满。';
     }
     const max = game.maxChance(s);
     const count = Math.floor(run.chance);
@@ -1120,11 +1122,12 @@ Page({
         ]),
         sec('境界与渡劫', [
           '凡胎、引气、筑基、金丹、元婴，各分前、中、后期。小境界灵气满了自动突破。',
+          '元婴不是头。往后是化神、婴变、问鼎，再是阴虚、阳实、窥涅、净涅、碎涅，再是空涅、空灵、空玄、空劫，最后是踏天，一共 ' + (game.REALMS.length - 1) + ' 个境界。这些境界的天劫照旧考锋、躯、神，但更看装备分，越往后越是这样。',
           '前三场天劫每一世的“劫相”都不同：有的考两项，有的只考一项但要求高出三成多。主界面和“功法”页会标出这一场考什么、需要多少。',
           '劫期：每个境界只能从容做一定次数的机缘（主界面写着还剩几次）。过了劫期，每次机缘都多折寿元，越拖越重。所以不能无限攒属性，要估着劫期决定什么时候渡劫。',
           '引气劫要一道雷一道雷地接。必接的雷有 3 道，一道比一道难，每道落下前可以硬接、耗 10 次机缘借势（这一道 +10%），或散功保命。一道没接住，整场就败。',
           '3 道全过后劫云不会马上散：可以收劫破境，也可以再引余雷淬体，最多 2 道。接住的余雷在收劫时兑成属性、寿元上限或灯芯；没接住照样破境，但淬体所得全丢，还要折寿、涨心魔。贪不贪由你。',
-          '筑基劫和金丹劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功保命（折寿 10 年，保住一半灵气）。',
+          '筑基劫、金丹劫和化神起的天劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功保命（折寿 10 年，保住一半灵气）。化神起装备不足也会削弱这 15% 的借势加成，零装备时硬抗和借势都不会成功。',
           '成功率低就先别渡，多翻几次机缘把被考的属性堆上去；寿元不够时也可以主动散功保命。'
         ]),
         sec('枯海与元婴劫', [
@@ -1163,7 +1166,8 @@ Page({
           '品级有凡、灵、玄、天、仙、神、道七档，品级越高带的词条越多（道品 6 条）；仙品要过了 11 关才会掉，神品 34 关，道品 76 关。越靠后的关掉的装备“阶”越高，数值越大。',
           '词条有十三种：攻击、气血、暴击、暴击伤害、减伤、出手加快、吸血、反伤、回血、开场护盾、破甲、招式减伤、连击。',
           '装备的数值只在历练的战斗里起作用，不改锋躯神；装备分会算进战力。',
-          '往后的天劫要装备分撑着：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '。不够的话成功率按差的比例往下扣，一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%；够了就不扣。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
+          '装备分看品级、强化、词条，也看阶：越靠后的关掉的装备，装备分越高。',
+          '往后的天劫要装备分撑着，前松后紧：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '，化神劫要 ' + game.TRIBS[4].gear + '，一路加到踏天劫的 ' + game.TRIBS[game.TRIBS.length - 1].gear + '；每高一重天再多 ' + Math.round(game.GEAR_HEAVEN * 100) + '%。不够的话成功率按差的比例往下扣：筑基劫一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%，金丹劫 ' + Math.round(game.TRIBS[2].gearCut * 100) + '%，元婴劫 ' + Math.round(game.TRIBS[3].gearCut * 100) + '%，化神劫起差多少扣多少；够了就不扣。所以后面的境界急不来，得先把历练的关往后推、把装备换上去。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
           '在“装备”页换装、强化和分解。强化耗锻材，最高 +' + game.GEAR_MAX_LEVEL + '，不会失败；锻材靠分解用不上的装备得来。背包最多 ' + game.GEAR_PACK_MAX + ' 件，满了之后新掉的直接分解。',
           '装备和锻材只管这一世。'
         ]),
@@ -1176,7 +1180,7 @@ Page({
           '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
           '寿元快到头又渡不过劫时，可以在“轮回”页主动坐化，直接结算。',
           '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。',
-          '重天：在已开的最高一重天修到元婴圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1。投胎时可以选去哪一重。'
+          '重天：在已开的最高一重天修到踏天圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1。投胎时可以选去哪一重。'
         ]),
         sec('角色在干什么', [
           '中间的小人是你这一世的肉身。衣服颜色跟境界走，腰带颜色是你主修的那一系。',
@@ -1610,7 +1614,7 @@ Page({
         {
           id: 'borrow',
           label: '借势 · 成功率 ' + percent(info.borrowChance) + '%',
-          desc: '先耗 ' + info.borrowCost + ' 次机缘，成功率 +15%；其余成败结果与硬抗相同。',
+          desc: '先耗 ' + info.borrowCost + ' 次机缘，成功率 +' + percent(Math.max(0, info.borrowChance - info.chance)) + '%（装备不足会压低借势）；其余成败结果与硬抗相同。',
           disabled: !info.borrowReady,
           note: info.borrowReady ? '当前机缘 ' + Math.floor(this.state.run.chance) + ' 次' : '机缘不足 ' + info.borrowCost + ' 次'
         },

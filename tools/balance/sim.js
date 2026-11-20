@@ -11,7 +11,7 @@ const DOC_FILE = path.join(__dirname, '..', '..', 'docs', '平衡基线.md');
 
 const CONFIG = {
   seed: 20261120,
-  saves: 200,
+  saves: 60,
   lives: 12,
   // 每做一次选择或操作花掉的现实时间。
   choiceSeconds: 5,
@@ -23,10 +23,12 @@ const CONFIG = {
   extraThreshold: 0.85,
   // 挂机玩：成功率过了这个数就渡。
   idleThreshold: 0.5,
+  // 装备分不够时每个境界最多肯停下来等几分钟。
+  gearPatience: { casual: 0, idle: 5, careful: 20 },
   reportLives: [1, 2, 4, 8, 12]
 };
 // 单元测试每次都跑的小样本：只用来发现“数值变了”，读数以全量结果为准。
-const CHECK = { saves: 30, lives: 6, reportLives: [1, 3, 6] };
+const CHECK = { saves: 12, lives: 5, reportLives: [1, 3, 5] };
 
 const POLICY_NAMES = { casual: '随手玩', idle: '挂机玩', careful: '认真玩' };
 // 一世最多走这么多步；走不完说明寿元越活越多，记为“活不死”并强制坐化。
@@ -271,6 +273,7 @@ function buyLamps(state) {
 // 败了再加调息；时间不够打下一场就留到下次。manage 为真时每过一关把更好的换上、用不上的分解、锻材拿去强化，并收储物袋。
 const TRAIN_GAP = 2;
 const TRAIN_REST = 4;
+const GEAR_STALL = 4;
 function train(state, clock, seconds, manage) {
   if (!game.trainStage(state)) {
     clock.spare = 0;
@@ -303,7 +306,7 @@ function train(state, clock, seconds, manage) {
 
 // 跑完一世，返回这一世的记录。
 function playLife(state, policy, rng, config, clock) {
-  const life = { tribs: [], capped: false };
+  const life = { tribs: [], capped: false, waited: game.REALMS.map(() => 0) };
   const start = clock.now;
   const tick = (seconds) => {
     clock.now += seconds * 1000;
@@ -331,6 +334,23 @@ function playLife(state, policy, rng, config, clock) {
       if (result) life.tribs.push(Object.assign(record, { name: result.name, success: result.broke }));
       return !!result;
     },
+    // 灵气满了、装备分还不够时停下来等：不翻机缘，只让历练接着打，一分钟看一次。等到够了、耐心用完，
+    // 或者连着 GEAR_STALL 分钟没涨（卡关了，再等也白等）就不等了，这个境界之后也不再等。
+    gearWait() {
+      const patience = config.gearPatience[policy.id] || 0;
+      const realm = state.run.realm;
+      let best = game.gearScore(state);
+      let stall = 0;
+      while (state.run.phase === 'alive' && state.run.realm === realm && life.waited[realm] < patience) {
+        if (!game.tribGear(state).short || !game.isFull(state) || !game.trainStage(state)) break;
+        tick(60);
+        life.waited[realm]++;
+        const score = game.gearScore(state);
+        stall = score > best ? 0 : stall + 1;
+        best = Math.max(best, score);
+        if (stall >= GEAR_STALL) life.waited[realm] = patience;
+      }
+    },
     yuanTrial(method, step) {
       const realm = state.run.realm;
       const record = tribRecord(game.TRIBS[realm].name, false);
@@ -354,6 +374,7 @@ function playLife(state, policy, rng, config, clock) {
       game.retire(state);
       break;
     }
+    if (policy.gear) sim.gearWait();
     if (policy.act(state, rng, sim)) {
       tick(config.choiceSeconds);
       continue;
@@ -405,7 +426,7 @@ function playLife(state, policy, rng, config, clock) {
 }
 
 function playSave(policyId, seed, config) {
-  const policy = POLICIES[policyId];
+  const policy = Object.assign({ id: policyId }, POLICIES[policyId]);
   const rng = mulberry(seed);
   // 历练用单独的随机数流，战斗打几场不影响机缘的随机序列。
   const clock = { now: 0, spare: 0, trainRng: mulberry((seed ^ 0x5bd1e995) >>> 0) };
@@ -524,13 +545,13 @@ function render(data) {
     '',
     '> 本文件由 `node tools/balance/sim.js --write` 生成，不要手改。数值来自 `tools/balance/baseline.json`。',
     '> 改了规则或内容后运行 `node --test`：`tests/balance.test.js` 用一组小样本（' + data.check.config.saves + ' 个存档 × ' + data.check.config.lives + ' 世）重跑模拟，结果与基线不一致就失败。',
-    '> 这时运行 `node tools/balance/sim.js` 看全量差异（约一分钟）。',
+    '> 这时运行 `node tools/balance/sim.js` 看全量差异（约五分钟）。',
     '> 确认变化符合预期后重新生成基线，并把本文件的差异一起提交。',
     '',
     '## 口径',
     '',
     '- 每种打法 ' + config.saves + ' 个存档，每个存档连续玩 ' + config.lives + ' 世，随机种子 ' + config.seed + ' 起逐档加一，结果可完全复现。',
-    '- 时间：一世之内不用等，灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐（每次耗 1 年寿元）；每次选择或操作算 ' + config.choiceSeconds + ' 秒，“时长”就是操作次数乘这个数。',
+    '- 时间：灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐（每次耗 1 年寿元）；每次选择或操作算 ' + config.choiceSeconds + ' 秒。“时长”是这些操作时间加上后文说的等装备时间。',
     '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。“灯纹全满”把随重天加深的等级也算在内。',
     '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '圆满，在最高一重做到就解锁下一重。',
     '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
@@ -540,6 +561,7 @@ function render(data) {
     '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
     '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
+    '- 等装备：灵气满了、装备分还不够这一场天劫的要求时，挂机玩最多停 ' + config.gearPatience.idle + ' 分钟、认真玩最多停 ' + config.gearPatience.careful + ' 分钟，只让历练接着打；连着 ' + GEAR_STALL + ' 分钟装备分没涨就不等了。等的时间算进时长。随手玩不等。',
     '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽与灯油、散功保命、主动降重天。',
     ''
   ];

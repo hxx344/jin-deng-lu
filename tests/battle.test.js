@@ -299,10 +299,13 @@ const gear = require('../utils/gear');
 test('装备：品级定词条数和装备分，阶越高、强化越高主属性越大', () => {
   const low = { slot: 'weapon', grade: 0, tier: 9, level: 0, affixes: [] };
   assert.strictEqual(gear.stats(low).atk, 7);
-  assert.strictEqual(gear.score(low), 4);
+  // 装备分随阶涨：第 9 阶是第 1 阶的 1.4 倍。
+  assert.strictEqual(gear.score(Object.assign({}, low, { tier: 1 })), 4);
+  assert.strictEqual(gear.score(low), Math.round(4 * 1.4));
+  assert.ok(gear.score(Object.assign({}, low, { tier: 60 })) > gear.score(low) * 2);
   const high = { slot: 'weapon', grade: 3, tier: 9, level: 5, affixes: ['atk', 'crit', 'haste'] };
   assert.strictEqual(gear.stats(high).atk, Math.round(6.5 * 2.5 * 1.5));
-  assert.strictEqual(gear.score(high), 22 * 1.5 + 6);
+  assert.strictEqual(gear.score(high), Math.round((22 * 1.5 + 6) * 1.4));
   assert.ok(Math.abs(gear.stats(high).atkPct - 0.06) < 1e-9);
   assert.ok(gear.stats({ slot: 'weapon', grade: 0, tier: 30, level: 0, affixes: [] }).atk > gear.stats(low).atk * 5);
   assert.ok(gear.stats({ slot: 'armor', grade: 1, tier: 9, level: 0, affixes: [] }).hp > 0);
@@ -457,7 +460,7 @@ test('装备存档：不合法的装备丢掉，编号重排；装备和锻材�
 test('天劫要装备分：不够时成功率按差的比例扣，够了不扣；引气劫不设', () => {
   const wear = (s, items) => {
     items.forEach((item, i) => {
-      s.run.gear.worn[item.slot] = Object.assign({ uid: i + 1, tier: 5, level: 0, affixes: [] }, item);
+      s.run.gear.worn[item.slot] = Object.assign({ uid: i + 1, tier: 1, level: 0, affixes: [] }, item);
     });
   };
   const part = (info) => info.parts.filter((entry) => entry.label === '装备分不足')[0];
@@ -465,15 +468,18 @@ test('天劫要装备分：不够时成功率按差的比例扣，够了不扣�
   s.run.qi = game.qiCap(s);
   const bare = game.tribulationInfo(s);
   assert.strictEqual(bare.name, '筑基劫');
-  assert.deepStrictEqual(bare.gear, { name: '筑基劫', need: 24, score: 0, short: true, penalty: game.GEAR_TRIB_MAX });
+  const need = game.TRIBS[1].gear;
+  assert.strictEqual(need, 20);
+  assert.deepStrictEqual(bare.gear, { name: '筑基劫', need: need, score: 0, short: true, cut: game.GEAR_TRIB_MAX, penalty: game.GEAR_TRIB_MAX });
   assert.strictEqual(part(bare).value, -game.GEAR_TRIB_MAX);
-  // 三件凡品 12 分，差一半，扣一半。
-  wear(s, [{ slot: 'weapon', grade: 0 }, { slot: 'armor', grade: 0 }, { slot: 'crown', grade: 0 }]);
+  // 一件凡品 4 分、一件 +5 的凡品 6 分，合计 10 分，差一半，扣一半。
+  wear(s, [{ slot: 'weapon', grade: 0 }, { slot: 'armor', grade: 0, level: 5 }]);
   const half = game.tribulationInfo(s);
-  assert.strictEqual(half.gear.score, 12);
+  assert.strictEqual(half.gear.score, 10);
   assert.ok(Math.abs(part(half).value + game.GEAR_TRIB_MAX / 2) < 1e-9);
   assert.ok(Math.abs(half.chance - bare.chance - game.GEAR_TRIB_MAX / 2) < 1e-9);
   wear(s, [{ slot: 'boots', grade: 0 }, { slot: 'charm', grade: 0 }, { slot: 'ring', grade: 0 }]);
+  assert.strictEqual(game.gearScore(s), 22);
   const full = game.tribulationInfo(s);
   assert.strictEqual(full.gear.short, false);
   assert.strictEqual(part(full), undefined);
@@ -481,7 +487,7 @@ test('天劫要装备分：不够时成功率按差的比例扣，够了不扣�
   // 再多也不加。
   wear(s, [{ slot: 'weapon', grade: 3 }]);
   assert.strictEqual(game.tribulationInfo(s).chance, full.chance);
-  assert.strictEqual(game.gearView(s).trib.need, 24);
+  assert.strictEqual(game.gearView(s).trib.need, need);
   // 装备不改属性：换装前后锋躯神一样。
   assert.deepStrictEqual(game.attrs(s), { edge: 48, body: 48, mind: 48 });
   const mortal = game.createState(0, () => 0);
@@ -489,7 +495,84 @@ test('天劫要装备分：不够时成功率按差的比例扣，够了不扣�
   assert.ok(game.chooseRoot(mortal, 'talisman', 0, () => 0));
   assert.strictEqual(game.tribGear(mortal).need, 0);
   assert.strictEqual(game.tribGear(mortal).short, false);
-  assert.deepStrictEqual(game.TRIBS.map((trib) => trib.gear || 0), [0, 24, 50, 70]);
+  // 前松后紧：要求一场比一场高，扣幅从三成加到十成；每高一重天要求再多 5%。
+  const needs = game.TRIBS.map((trib) => trib.gear || 0);
+  const cuts = game.TRIBS.map((trib) => trib.gearCut || game.GEAR_TRIB_MAX);
+  assert.strictEqual(needs[0], 0);
+  for (let i = 1; i < needs.length; i++) {
+    assert.ok(needs[i] > needs[i - 1], game.TRIBS[i].name);
+    assert.ok(cuts[i] >= cuts[i - 1], game.TRIBS[i].name);
+  }
+  assert.strictEqual(cuts[1], 0.3);
+  assert.strictEqual(cuts[cuts.length - 1], 1);
+  s.run.heaven = 2;
+  assert.strictEqual(game.tribGear(s).need, Math.round(need * (1 + 2 * game.GEAR_HEAVEN)));
+});
+
+test('元婴之后的境界：十三个新境界接在元婴后面，各有天劫，破境后丹田、寿元、灯芯都往上涨', () => {
+  const names = game.REALMS.map((realm) => realm.name);
+  assert.deepStrictEqual(names.slice(0, 5), ['凡胎', '引气', '筑基', '金丹', '元婴']);
+  assert.deepStrictEqual(names.slice(5), ['化神', '婴变', '问鼎', '阴虚', '阳实', '窥涅', '净涅', '碎涅', '空涅', '空灵', '空玄', '空劫', '踏天']);
+  assert.strictEqual(game.TRIBS.length, game.REALMS.length - 1);
+  for (let i = 5; i < game.REALMS.length; i++) {
+    const realm = game.REALMS[i];
+    const before = game.REALMS[i - 1];
+    const trib = game.TRIBS[i - 1];
+    assert.ok(realm.cap > before.cap && realm.rate > before.rate && realm.power.base > before.power.base && realm.power.softCap > before.power.softCap, realm.name);
+    assert.ok(realm.fullWick > realm.wick[2] && realm.wick[0] > before.fullWick, realm.name);
+    assert.ok(trib.req > game.TRIBS[i - 2].req && trib.life > 0 && trib.failYears > 0 && !trib.bolts && !trib.seaTrial, trib.name);
+  }
+  // 元婴圆满后接着渡化神劫。零装备时硬抗和借势都是 0%，不能靠 5% 保底或反复借势绕过。
+  const s = cultivator(400, 400, 400);
+  s.run.realm = 4;
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  const bare = game.tribulationInfo(s);
+  assert.strictEqual(bare.name, '化神劫');
+  assert.ok(bare.ready && bare.tests.length > 0 && bare.gear.need > 0 && bare.gear.cut === 1);
+  assert.strictEqual(bare.chance, 0);
+  assert.strictEqual(bare.borrowChance, 0);
+  const blocked = game.attemptTribulation(s, () => 0, 'endure');
+  assert.strictEqual(blocked.success, false);
+  assert.strictEqual(s.run.realm, 4);
+  // 两件 20 阶道品合计 226 分，达到化神劫的 220 后才能破境。
+  ['weapon', 'armor'].forEach((slot, i) => {
+    s.run.gear.worn[slot] = { uid: i + 1, slot: slot, grade: 6, tier: 20, level: 0, affixes: [] };
+  });
+  s.run.qi = game.qiCap(s);
+  const info = game.tribulationInfo(s);
+  assert.strictEqual(info.gear.short, false);
+  assert.ok(info.chance > 0 && info.borrowChance > info.chance);
+  const life = game.maxLife(s);
+  const result = game.attemptTribulation(s, () => 0, 'endure');
+  assert.ok(result.success);
+  assert.strictEqual(game.realmText(s.run), '化神前期');
+  assert.strictEqual(game.maxLife(s), life + info.lifeBonus);
+  assert.strictEqual(game.layerName(s.run), '枯海');
+  assert.ok(game.tribTerm(s).term > 0);
+  // 新境界没有自己的墟层，机缘从三个墟层里一起抽。
+  const layers = new Set();
+  const rng = battle.seeded(3);
+  for (let i = 0; i < 300; i++) {
+    s.run.event = null;
+    s.run.chance = 10;
+    assert.ok(game.drawEvent(s, rng));
+    const ev = s.run.event;
+    if (ev.kind === 'event') game.EVENTS.filter((entry) => entry.id === ev.id)[0].layers.forEach((layer) => layers.add(layer));
+  }
+  assert.strictEqual(layers.size, 3);
+  s.run.event = null;
+  // 走到头：踏天后期没有天劫，圆满的灯芯比后期多。
+  s.run.realm = game.REALMS.length - 1;
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = 0;
+  assert.strictEqual(game.tribulationInfo(s), null);
+  assert.strictEqual(game.realmText(s.run), '踏天后期');
+  const late = game.wickGain(s, 'retire');
+  s.run.qi = game.qiCap(s);
+  assert.ok(game.wickGain(s, 'retire') > late);
+  const saved = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  assert.strictEqual(saved.run.realm, game.REALMS.length - 1);
 });
 
 test('装备扩充：六个槽位、七个品级、十三种词条，高品级要到后面的关才掉', () => {

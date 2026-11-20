@@ -40,7 +40,8 @@ test('名次分：best 为 0 不能被当成缺失值', () => {
 
 test('名次分：越界与脏数据都被夹住', () => {
   const high = scoreOf(aliveState(99, 99, { totalWick: 1e18, lives: -3 }));
-  assert.strictEqual(high.realm_index, 14);
+  const content = require('../utils/content');
+  assert.strictEqual(high.realm_index, content.REALMS.length * content.STAGES.length - 1);
   assert.strictEqual(high.total_wick, 9000000000000000);
   assert.strictEqual(high.lives, 0);
   const dirty = scoreOf({ run: { phase: 'alive', realm: 'x', stage: null }, best: NaN, totalWick: 'bad', lives: 2.7 });

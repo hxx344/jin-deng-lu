@@ -183,6 +183,40 @@ const STAGES = [
   { name: '后期', cap: 2.5, power: 1.4 }
 ];
 
+// 元婴之后的境界：化神、婴变、问鼎是第一步的后半段，阴虚到碎涅是第二步，空涅到空劫是第三步，踏天是第四步。
+// 每行是 [境界名, 进这个境界的天劫名, 天劫考的属性值, 天劫要的装备分, 破境加的寿元]。
+// 这些境界都在枯海之外，没有自己的墟层：场景沿用枯海，机缘从三个墟层里一起抽（wide）。
+const HIGH_REALMS = [
+  ['化神', '化神劫', 230, 220, 300],
+  ['婴变', '婴变劫', 280, 270, 360],
+  ['问鼎', '问鼎劫', 330, 300, 420],
+  ['阴虚', '阴虚劫', 390, 330, 500],
+  ['阳实', '阳实劫', 450, 360, 580],
+  ['窥涅', '窥涅劫', 520, 390, 660],
+  ['净涅', '净涅劫', 590, 420, 760],
+  ['碎涅', '碎涅劫', 670, 450, 860],
+  ['空涅', '空涅劫', 750, 480, 960],
+  ['空灵', '空灵劫', 840, 510, 1080],
+  ['空玄', '空玄劫', 930, 540, 1200],
+  ['空劫', '空劫', 1030, 580, 1350],
+  ['踏天', '踏天劫', 1140, 620, 1500]
+];
+const HIGH_WICK = 320;
+const HIGH_WICK_GROWTH = 1.3;
+HIGH_REALMS.forEach((row, i) => {
+  const step = i + 1;
+  const wick = HIGH_WICK * Math.pow(HIGH_WICK_GROWTH, i);
+  REALMS.push({
+    name: row[0], cap: 1000 * Math.pow(5, step), rate: 45 * Math.pow(4, step), layer: 2, wide: true,
+    wick: [Math.round(wick), Math.round(wick * 1.1), Math.round(wick * 1.2)], fullWick: Math.round(wick * 1.27),
+    power: {
+      // 战力基数每个境界 ×1.45，比后期相对前期的 1.4 倍略高，破境时战力不会往下掉。
+      base: Math.round(220 * Math.pow(1.45, step)), softCap: Math.round(row[2] * 2.2 / 10) * 10,
+      opponentAttribute: Math.round(row[2] * 0.65), opponentMastery: 72 + 6 * step, opponentBonds: 14
+    }
+  });
+});
+
 // TRIBS[i] 是从第 i 个境界突破到下一个境界的天劫。
 // 带 bolts 的天劫逐道雷渡：整场成功率 P 按权重拆给每道必接的雷（第 i 道是 P 的 bolts[i] 次方，权重合计为 1，全部硬接时合起来仍是 P）。
 // gear 是这场天劫要的装备分：身上的装备分不到这个数，成功率按差的比例往下扣。引气劫之前还没有历练，不设。
@@ -190,10 +224,15 @@ const STAGES = [
 const TRIBS = [
   { name: '引气劫', tests: ['body', 'mind'], req: 16, life: 30, failYears: 15, bolts: [0.2, 0.3, 0.5],
     extra: [{ pow: 0.6, cap: 0.9, attr: 2, life: 5 }, { pow: 0.9, cap: 0.8, attr: 3, wick: 2 }] },
-  { name: '筑基劫', tests: ['edge', 'body'], req: 48, life: 60, failYears: 25, gear: 24 },
-  { name: '金丹劫', tests: ['edge', 'mind'], req: 140, life: 150, failYears: 50, gear: 50 },
-  { name: '元婴劫', tests: ['edge', 'body', 'mind'], req: 180, life: 300, failYears: 24, gear: 70, seaTrial: true }
+  { name: '筑基劫', tests: ['edge', 'body'], req: 48, life: 60, failYears: 25, gear: 20 },
+  { name: '金丹劫', tests: ['edge', 'mind'], req: 140, life: 150, failYears: 50, gear: 90, gearCut: 0.4 },
+  { name: '元婴劫', tests: ['edge', 'body', 'mind'], req: 180, life: 300, failYears: 24, gear: 170, gearCut: 0.5, seaTrial: true }
 ];
+
+// 元婴之后的天劫不分关、不逐道雷，按劫相考属性；失败折的寿元跟着破境加的寿元走。
+HIGH_REALMS.forEach((row) => {
+  TRIBS.push({ name: row[1], tests: ['edge', 'body', 'mind'], req: row[2], life: row[4], failYears: Math.round(row[4] / 8), gear: row[3], gearCut: 1 });
+});
 
 // 价格 = cost × 2^已有等级。
 const AUTO_LAMP = { id: 'y5', branch: '缘', name: '自动机缘', desc: '永久解锁主界面的自动机缘开关', cost: 100, max: 1 };

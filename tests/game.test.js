@@ -996,16 +996,16 @@ test('存档校验：逐字段修正越界和非法的值', () => {
   assert.strictEqual(s.wick, 0);
   assert.strictEqual(s.totalWick, 0);
   assert.strictEqual(s.lives, 2);
-  assert.strictEqual(s.best, 14);
+  assert.strictEqual(s.best, game.REALMS.length * game.STAGES.length - 1);
   assert.strictEqual(s.lastTime, 7000);
   assert.deepStrictEqual(s.lamps, { r1: 3, m3: 2 });
   assert.deepStrictEqual(s.epitaphs, ['a', 'b']);
   assert.strictEqual(s.carry, '');
   const run = s.run;
   assert.strictEqual(run.phase, 'alive');
-  assert.strictEqual(run.realm, 4);
+  assert.strictEqual(run.realm, 9);
   assert.strictEqual(run.stage, 0);
-  assert.strictEqual(run.qi, 100000);
+  assert.strictEqual(run.qi, game.qiCap(s));
   assert.strictEqual(run.age, 0);
   assert.strictEqual(run.lifeFlat, 0);
   assert.strictEqual(run.demon, 55);
@@ -2090,7 +2090,18 @@ test('竞技场估算全境界逐阶段递增，同档构筑可公平切磋，�
       if (stage === 0) assert.ok(info.chance >= 0.4 && info.chance <= 0.6, '同档胜率 ' + info.chance);
     });
   });
-  assert.strictEqual(game.arenaInfo(s, { realmIndex: 999 }).power, previous);
+  // 元婴之后的境界：同一个小境界逐个大境界往上涨，一个大境界里前、中、后期往上涨；越界的名次按最高境界算。
+  const stages = game.STAGES.length;
+  const powerAt = (realmIndex) => game.arenaInfo(s, { realmIndex, totalWick: 0 }).power;
+  for (let realmIndex = builds.length * stages; realmIndex < game.REALMS.length * stages; realmIndex++) {
+    assert.ok(powerAt(realmIndex) > powerAt(realmIndex - stages), '名次 ' + realmIndex);
+    if (realmIndex % stages) assert.ok(powerAt(realmIndex) > powerAt(realmIndex - 1), '名次 ' + realmIndex);
+  }
+  assert.strictEqual(powerAt(999), powerAt(game.REALMS.length * stages - 1));
+  // 自己破境时战力不往下掉。
+  for (let realm = 1; realm < game.REALMS.length; realm++) {
+    assert.ok(game.REALMS[realm].power.base >= game.REALMS[realm - 1].power.base * game.STAGES[stages - 1].power, game.REALMS[realm].name);
+  }
   assert.strictEqual(game.arenaInfo(s, { realmIndex: null }).power, 8);
 });
 
@@ -3036,7 +3047,7 @@ test('道途：换算后寿元撑不住的一系选不了', () => {
   assert.strictEqual(s.run.path, '');
 });
 
-test('重天：在最高一重天元婴圆满后身死开出下一重，灯芯更多、天劫更难、深层灯纹上限 +1', () => {
+test('重天：在最高一重天修到最高境界圆满后身死开出下一重，灯芯更多、天劫更难、深层灯纹上限 +1', () => {
   const s = born();
   s.run.realm = game.REALMS.length - 1;
   s.run.stage = game.STAGES.length - 1;
