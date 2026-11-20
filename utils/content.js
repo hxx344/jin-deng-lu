@@ -1109,23 +1109,26 @@ const TRIB_ASPECTS = [
   { id: 'm', name: '失名', tests: ['mind'], req: 1.35 }
 ];
 
-// 历练的关卡，按顺序一关一关打。layer 是所在墟层；hp、atk 是气血和攻击，interval 是出手间隔（秒），
-// reduce 是减伤，resist 是抗异常；skill 是每 every 秒放一次的招式，伤害是普通出手的 mult 倍。
-const TRAIN_STAGES = [
-  { id: 'd1', layer: 0, sprite: 'dog', mob: '野狗', name: '偷灯油的野狗', text: '它不图别的，就图你那盏灯亮。', hp: 130, atk: 9, interval: 1.8 },
-  { id: 'd2', layer: 0, sprite: 'scarecrow', mob: '草人', name: '拦路的稻草人', text: '田里早就没有庄稼了，它拦的是路。', hp: 230, atk: 13, interval: 2, reduce: 0.1 },
-  { id: 'd3', layer: 0, sprite: 'debt', mob: '欠条', name: '逃出来的“欠”字', text: '从无字城一路爬到尘壤，见人就往身上贴。', hp: 380, atk: 20, interval: 1.6, resist: 0.3,
+// 历练里来犯的东西。关卡不限数量，每一关的气血和攻击由 game.js 按关数算，这里只定各自的打法：
+// interval 是出手间隔（秒），reduce 是减伤，resist 是抗异常，skill 是当首领时每隔 every 秒放一次、伤害为攻击 mult 倍的招式。
+// mob 是当小怪时的名字，name 和 text 是当首领时的名字和一句话。
+const TRAIN_FOES = [
+  { id: 'dog', sprite: 'dog', mob: '野狗', name: '偷灯油的野狗', text: '它不图别的，就图你那盏灯亮。', interval: 1.5,
+    skill: { name: '叼了就跑', every: 6, mult: 1.8 } },
+  { id: 'scarecrow', sprite: 'scarecrow', mob: '草人', name: '拦路的稻草人', text: '田里早就没有庄稼了，它拦的是路。', interval: 2, reduce: 0.15,
+    skill: { name: '此路不通', every: 7, mult: 2 } },
+  { id: 'debt', sprite: 'debt', mob: '欠条', name: '逃出来的“欠”字', text: '从无字城一路爬到尘壤，见人就往身上贴。', interval: 1.6, resist: 0.3,
     skill: { name: '利滚利', every: 6, mult: 2 } },
-  { id: 'd4', layer: 0, sprite: 'waiter', mob: '食仙教徒', name: '食仙教的传菜人', text: '端着一盘不知道是谁的东西，嫌你挡道。', hp: 620, atk: 30, interval: 1.8, reduce: 0.15,
+  { id: 'waiter', sprite: 'waiter', mob: '食仙教徒', name: '食仙教的传菜人', text: '端着一盘不知道是谁的东西，嫌你挡道。', interval: 1.8, reduce: 0.1,
     skill: { name: '上菜', every: 7, mult: 2.2 } },
-  { id: 'd5', layer: 0, sprite: 'scavenger', mob: '拾荒人', name: '拾荒人的头儿', text: '他说这片破烂归他管，包括你。', hp: 900, atk: 42, interval: 1.5, reduce: 0.2, resist: 0.4,
+  { id: 'scavenger', sprite: 'scavenger', mob: '拾荒人', name: '拾荒人的头儿', text: '他说这片破烂归他管，包括你。', interval: 1.6, reduce: 0.1, resist: 0.4,
     skill: { name: '这也是我的', every: 5, mult: 2 } }
 ];
 // 道途的克制：主修左边一系时，右边一系的功法效果减半。
 const PATH_COUNTER = { sword: 'talisman', talisman: 'body', body: 'luck', luck: 'pill', pill: 'sword' };
 
 module.exports = {
-  TRAIN_STAGES,
+  TRAIN_FOES,
   TRIB_ASPECTS,
   PATH_COUNTER,
   SCHOOL_IDS,

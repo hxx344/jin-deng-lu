@@ -226,6 +226,7 @@ Page({
     hero: {},
     actor: {},
     bar: HIDDEN_BAR,
+    bag: { text: '', full: false },
     tip: { at: '', text: '', next: '' },
     tab: 'skill',
     alive: false,
@@ -1147,10 +1148,11 @@ Page({
           '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
         ]),
         sec('历练', [
-          '引气之后，会有东西冲着灯找上门，他坐在灯前自己打，战况就在场景里：左上角是他的气血和这一关的进度，右上角是眼前这只的气血。',
-          '历练不耗寿元和机缘，也不算进劫期。每关先来 ' + game.TRAIN_MOBS + ' 只小的，再是守关的；打赢守关的才算过关，这一世头一回过关得一笔灵气。败了调息一阵，从这一关的头一只重来。',
+          '引气之后，会有东西冲着灯找上门，他坐在灯前自己打，战况就在场景里：左上角是他的气血和打到第几关，右上角是眼前这只的气血。',
+          '历练不耗寿元和机缘，也不算进劫期。关卡没有尽头，越往后越硬：寻常的关连打 ' + game.TRAIN_MOBS + ' 只小的，每 ' + game.TRAIN_BOSS_EVERY + ' 关是一个首领。败了调息一阵，从这一关的头一只重来。',
+          '每过一关，储物袋攒灵气就快一档，过首领关涨得更多。储物袋跟着现实时间攒，关掉游戏也在攒，最多存 ' + game.TRAIN_BAG_HOURS + ' 小时的量；点场景上方的“储物袋”把灵气收进丹田。',
           '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
-          '点左上角的进度可以看各关的胜率。这一世过了几关只管这一世，换一世从头打。'
+          '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
         ]),
         sec('身死与轮回', [
           '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
@@ -1261,31 +1263,35 @@ Page({
     this.afterAction();
   },
 
-  // 历练面板：打到第几关、各关的胜率。胜率要跑几十场模拟，结果缓存到下一次状态变化。
+  // 历练面板：眼前这一关和下一个首领的胜率、储物袋。胜率要跑几十场模拟，结果缓存到下一次状态变化。
   trainSheet() {
     const s = this.state;
     if (!this.trainCache) this.trainCache = game.trainView(s);
     const v = this.trainCache;
     const me = v.me;
+    const bag = game.trainBag(s);
     const stages = v.stages.map((stage) => ({
-      index: stage.index,
-      no: stage.index + 1,
+      stage: stage.stage,
       name: stage.name,
-      cleared: stage.cleared,
-      now: stage.index === v.stage,
+      tag: stage.boss ? '首领' : '连打 ' + stage.waves + ' 只',
+      now: stage.now,
       text: stage.text,
-      sub: '气血 ' + game.formatNumber(stage.hp) + (stage.skill ? ' · 会使「' + stage.skill + '」' : '') + (stage.qi ? ' · 过关灵气 +' + game.formatNumber(stage.qi) : ''),
+      sub: '气血 ' + game.formatNumber(stage.hp) + ' · 攻击 ' + game.formatNumber(stage.atk) + (stage.skill ? ' · 会使「' + stage.skill + '」' : ''),
       pct: percent(stage.chance)
-    })).reverse();
+    }));
     return {
       kind: 'train',
-      title: '历练 · 已过 ' + v.cleared + ' / ' + v.total + ' 关',
+      title: v.open ? '历练 · 第 ' + v.stage + ' 关' : '历练',
       text: v.open
-        ? '他坐在灯前自己打，不耗寿元和机缘。每关先来 ' + v.mobs + ' 只小的，再是守关的；打赢守关的才算过关。败了调息一阵，从这一关的头一只重来。'
+        ? '他坐在灯前自己打，不耗寿元和机缘。关卡没有尽头，每 ' + v.bossEvery + ' 关一个首领；败了调息一阵，从这一关的头一只重来。这一世已过 ' + v.cleared + ' 关，历来最远 ' + v.best + ' 关。'
         : v.reason,
       me: me ? '气血 ' + game.formatNumber(me.hp) + ' · 攻击 ' + game.formatNumber(me.atk) + ' · 每 ' + me.interval.toFixed(2) + ' 秒出手 · 减伤 ' + percent(me.reduce) + '% · 暴击 ' + percent(me.crit) + '%' : '',
-      stages: stages,
-      note: v.cleared >= v.total ? '这一带的关都过了，他还在跟最后一关的过招。再往后的还没露面。' : ''
+      bagTitle: '储物袋 · 灵气 ' + game.formatNumber(bag.qi) + ' / ' + game.formatNumber(bag.max),
+      bagText: bag.perHour
+        ? '每小时攒 ' + game.formatNumber(bag.perHour) + '，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时 ' + game.formatNumber(v.nextPerHour) + '。'
+        : '过了第 1 关才开始攒。每过一关攒得更快，过首领关涨得更多。',
+      bagOff: bag.qi < 1,
+      stages: stages
     };
   },
 
@@ -1312,7 +1318,7 @@ Page({
   // 场景里的历练。规则层一次算完一场，这里按时间轴演出来；渡劫的雷落完之前先停着。
   frayTick() {
     const stage = game.trainStage(this.state);
-    if (stage < 0 || this.act === 'thunder') {
+    if (!stage || this.act === 'thunder') {
       if (this.fray || this.data.bar.show) {
         this.fray = null;
         this.setData({ bar: HIDDEN_BAR });
@@ -1323,7 +1329,7 @@ Page({
     let dirty = false;
     if (!f || f.stage !== stage) {
       f = this.fray = {
-        stage: stage, wave: 0, phase: 'gap', wait: FRAY_GAP, fight: null, next: 0, step: 0,
+        stage: stage, wave: 0, waves: game.trainWaves(stage), phase: 'gap', wait: FRAY_GAP, fight: null, next: 0, step: 0,
         me: 1, max: 1, foe: 0, shield: 0, pops: [], key: 0, meHit: 0, foeHit: 0, foeAct: 0, shot: 0, shotKind: 'hit'
       };
       dirty = true;
@@ -1352,7 +1358,7 @@ Page({
         dirty = true;
         if (f.phase === 'enter') {
           f.phase = 'fight';
-        } else if (f.phase === 'fall' && f.fight.boss) {
+        } else if (f.phase === 'fall' && f.fight.last) {
           this.frayClear(f);
           return;
         } else if (f.phase === 'gap') {
@@ -1387,14 +1393,29 @@ Page({
     f.wait = FRAY_ENTER;
   },
 
-  // 守关的倒下了：记过关，下一拍换下一关。
+  // 这一关最后一个倒下了：记过关，下一拍换下一关。只有首领关出横幅，寻常的关太密了。
   frayClear(f) {
     const r = game.trainClear(this.state, f.stage);
     this.fray = null;
-    if (!r || !r.first) return;
-    audio.play('good');
-    this.showBanner('过关：' + r.name + (r.qi ? ' · 灵气 +' + game.formatNumber(r.qi) : ''));
-    if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
+    if (!r) return;
+    if (r.boss) {
+      audio.play('good');
+      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
+      if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
+    }
+    this.afterAction();
+  },
+
+  onBag() {
+    const r = game.trainCollect(this.state);
+    if (!r) {
+      audio.play('tap');
+      this.showBanner(game.trainBag(this.state).perHour ? '储物袋还是空的，等它攒一会儿' : '过了第 1 关，储物袋才开始攒灵气');
+      return;
+    }
+    this.showBanner('收了储物袋：' + r.lines.join('，'));
+    if (!this.act) this.play(actionForTags(r.tags));
+    else audio.play('qi');
     this.afterAction();
   },
 
@@ -1440,15 +1461,15 @@ Page({
   barView(f) {
     const fight = f.fight;
     const pct = (value, max) => Math.max(0, Math.min(100, Math.round(100 * value / max)));
-    const total = game.TRAIN_STAGES.length;
+    const boss = f.waves === 1;
     const pips = [];
-    for (let i = 0; i <= game.TRAIN_MOBS; i += 1) {
-      pips.push({ key: i, on: i < f.wave || (i === f.wave && f.phase === 'fall'), now: i === f.wave && f.phase !== 'fall', boss: i === game.TRAIN_MOBS });
+    for (let i = 0; i < f.waves; i += 1) {
+      pips.push({ key: i, on: i < f.wave || (i === f.wave && f.phase === 'fall'), now: i === f.wave && f.phase !== 'fall', boss: boss });
     }
     const rest = f.phase === 'rest';
     return {
       show: true,
-      title: '历练 ' + (f.stage + 1) + ' / ' + total,
+      title: '第 ' + f.stage + ' 关',
       pips: pips,
       rest: rest,
       mePct: rest ? 100 : pct(f.me, f.max),
@@ -1867,7 +1888,9 @@ Page({
     const tab = this.data.tab;
     const a = run.phase !== 'root' || tab === 'skill' ? game.attrs(s) : null;
     const power = game.combatPowerDetails(s, a);
+    const pouch = run.phase === 'alive' ? game.trainBag(s) : null;
     const patch = {
+      bag: { text: pouch && pouch.perHour ? '储物袋 ' + game.formatNumber(pouch.qi) : '储物袋', full: !!(pouch && pouch.full) },
       hud: this.hudView(power.total),
       hero: this.heroView(),
       actor: this.actorView(),

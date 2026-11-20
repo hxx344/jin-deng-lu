@@ -51,7 +51,7 @@ test('战斗属性由锋躯神换算，心魔同时抬高攻击和受到的伤�
 
 test('同一个随机序列算出同一场战斗，时间轴里的气血与结果对得上', () => {
   const me = player({ edge: 14, body: 12, mind: 14 }, { sword: { count: 2, power: 3 }, luck: { count: 1, power: 1 } });
-  const foe = battle.foeFighter(game.TRAIN_STAGES[2], 1);
+  const foe = game.trainFoe(cultivator(1, 1, 1), 5);
   const a = battle.simulate(me, foe, battle.seeded(7));
   const b = battle.simulate(me, foe, battle.seeded(7));
   assert.deepStrictEqual(a, b);
@@ -69,9 +69,10 @@ test('久战不下算败，重天的倍率同时放大敌人的气血和攻击',
   assert.strictEqual(fight.win, false);
   assert.strictEqual(fight.timeout, true);
   assert.strictEqual(fight.seconds, battle.MAX_SECONDS);
-  const foe = battle.foeFighter(game.TRAIN_STAGES[0], 1.5);
-  assert.strictEqual(foe.hp, Math.round(game.TRAIN_STAGES[0].hp * 1.5));
-  assert.strictEqual(foe.atk, game.TRAIN_STAGES[0].atk * 1.5);
+  const def = { name: '木桩', hp: 130, atk: 9, interval: 1.8 };
+  const foe = battle.foeFighter(def, 1.5);
+  assert.strictEqual(foe.hp, 195);
+  assert.strictEqual(foe.atk, 13.5);
 });
 
 test('剑系每三次出手追一剑，两门必暴击，四门斩杀残血', () => {
@@ -115,114 +116,179 @@ test('符系开场贴一张符：封招期间敌人的招式放不出来，也�
   assert.strictEqual(resisted.timeline[0].kind, 'resist');
 });
 
-test('历练：引气后自己打，不耗寿元、机缘和劫期；小怪打完才轮到守关的', () => {
+test('历练：引气后自己打，不耗寿元、机缘和劫期；关卡不限数量，每五关一个首领', () => {
   const mortal = game.createState(0, () => 0);
   game.chooseRoot(mortal, 'talisman', 0, () => 0);
   assert.strictEqual(game.trainView(mortal).open, false);
   assert.ok(game.trainReason(mortal));
-  assert.strictEqual(game.trainStage(mortal), -1);
+  assert.strictEqual(game.trainStage(mortal), 0);
   assert.strictEqual(game.trainEncounter(mortal, 0, () => 0.5), null);
 
   const s = cultivator(30, 30, 30);
-  const view = game.trainView(s);
-  assert.strictEqual(view.open, true);
-  assert.strictEqual(view.stage, 0);
-  assert.strictEqual(view.stages.length, 1);
-  assert.strictEqual(view.stages[0].chance, 1);
+  assert.strictEqual(game.trainStage(s), 1);
   const saved = JSON.stringify(s);
-  const mob = game.trainEncounter(s, 0, () => 0.5);
-  const boss = game.trainEncounter(s, game.TRAIN_MOBS, () => 0.5);
+  const first = game.trainEncounter(s, 0, () => 0.5);
   // 只算不改状态。
   assert.strictEqual(JSON.stringify(s), saved);
-  assert.strictEqual(mob.boss, false);
-  assert.strictEqual(mob.foe.name, game.TRAIN_STAGES[0].mob);
-  assert.strictEqual(mob.sprite, game.TRAIN_STAGES[0].sprite);
+  assert.strictEqual(first.stage, 1);
+  assert.strictEqual(first.boss, false);
+  assert.strictEqual(first.waves, game.TRAIN_MOBS);
+  assert.strictEqual(first.last, false);
+  assert.strictEqual(game.trainEncounter(s, game.TRAIN_MOBS - 1, () => 0.5).last, true);
+  // 越界的场次收回到这一关的最后一场。
+  assert.strictEqual(game.trainEncounter(s, 99, () => 0.5).wave, game.TRAIN_MOBS - 1);
+  assert.ok(first.win);
+
+  s.run.battle.cleared = game.TRAIN_BOSS_EVERY - 1;
+  const boss = game.trainEncounter(s, 0, () => 0.5);
+  assert.strictEqual(boss.stage, game.TRAIN_BOSS_EVERY);
   assert.strictEqual(boss.boss, true);
-  assert.strictEqual(boss.foe.name, game.TRAIN_STAGES[0].name);
-  assert.strictEqual(boss.foe.max, game.TRAIN_STAGES[0].hp);
-  assert.ok(mob.foe.max < boss.foe.max);
-  assert.ok(mob.win && boss.win);
-  assert.ok(mob.seconds < boss.seconds);
-  // 越界的场次收回到守关的。
-  assert.strictEqual(game.trainEncounter(s, 99, () => 0.5).boss, true);
+  assert.strictEqual(boss.waves, 1);
+  assert.strictEqual(boss.last, true);
+  assert.strictEqual(game.trainWaves(game.TRAIN_BOSS_EVERY * 7), 1);
+  assert.strictEqual(game.trainWaves(game.TRAIN_BOSS_EVERY * 7 + 1), game.TRAIN_MOBS);
+
+  // 越往后越硬，首领比同一带的小怪硬得多；几百关之后照样有敌人。
+  const hp = (stage) => game.trainFoe(s, stage).hp;
+  const atk = (stage) => game.trainFoe(s, stage).atk;
+  for (let stage = 2; stage <= 60; stage++) {
+    if (stage % game.TRAIN_BOSS_EVERY > 1) {
+      assert.ok(hp(stage) > hp(stage - 1), '第 ' + stage + ' 关气血');
+      assert.ok(atk(stage) > atk(stage - 1), '第 ' + stage + ' 关攻击');
+    }
+  }
+  assert.ok(hp(5) > hp(6) && hp(5) > 3 * hp(4));
+  assert.ok(game.trainFoe(s, 5).skill);
+  assert.strictEqual(game.trainFoe(s, 4).skill, null);
+  assert.ok(Number.isFinite(hp(500)) && hp(500) > hp(60));
+  assert.notStrictEqual(game.trainFoe(s, 5).name, game.trainFoe(s, 10).name);
 });
 
-test('历练：打赢守关的才过关，头一回过关得灵气并记一条见闻', () => {
+test('历练：按顺序过关，过关不耗东西，储物袋攒得更快，首领关涨得更多', () => {
   const s = cultivator(30, 30, 30);
   const age = s.run.age;
   const chance = s.run.chance;
   const used = s.run.realmChoices;
   const qi = s.run.qi;
-  assert.strictEqual(game.trainClear(s, 1), null);
-  const r = game.trainClear(s, 0);
-  assert.strictEqual(r.first, true);
-  assert.ok(r.qi > 0);
-  assert.strictEqual(s.run.qi, qi + r.qi);
+  assert.strictEqual(game.trainRate(s), 0);
+  assert.strictEqual(game.trainClear(s, 2), null);
+  const r = game.trainClear(s, 1);
+  assert.strictEqual(r.stage, 1);
+  assert.strictEqual(r.boss, false);
+  assert.ok(r.perHour > 0);
   assert.strictEqual(s.run.battle.cleared, 1);
   assert.strictEqual(s.trainBest, 1);
   assert.strictEqual(s.run.age, age);
   assert.strictEqual(s.run.chance, chance);
   assert.strictEqual(s.run.realmChoices, used);
-  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '历练');
-  assert.strictEqual(game.trainStage(s), 1);
-  assert.strictEqual(game.trainClear(s, 0), null);
-  assert.deepStrictEqual(game.trainView(s).stages.map((stage) => stage.cleared), [true, false]);
-
-  // 全过了就留在最后一关，重打不再给东西。
-  s.run.battle.cleared = game.TRAIN_STAGES.length;
-  const last = game.TRAIN_STAGES.length - 1;
-  assert.strictEqual(game.trainStage(s), last);
+  assert.strictEqual(s.run.qi, qi);
+  assert.strictEqual(game.trainStage(s), 2);
+  assert.strictEqual(game.trainClear(s, 1), null);
   const logs = s.run.log.length;
-  const again = game.trainClear(s, last);
-  assert.strictEqual(again.first, false);
-  assert.strictEqual(again.qi, 0);
-  assert.strictEqual(s.run.log.length, logs);
-  assert.strictEqual(game.trainView(s).stages[last].qi, 0);
+  let rate = game.trainRate(s);
+  const steps = [];
+  for (let stage = 2; stage <= 6; stage++) {
+    assert.ok(game.trainClear(s, stage));
+    steps.push(game.trainRate(s) - rate);
+    rate = game.trainRate(s);
+  }
+  // 第 5 关是首领：涨幅是寻常关的三倍，并记一条见闻。
+  assert.ok(Math.abs(steps[3] - 3 * steps[0]) < 1e-9);
+  assert.ok(Math.abs(steps[4] - steps[0]) < 1e-9);
+  assert.strictEqual(s.run.log.length, logs + 1);
+  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '历练');
 });
 
-test('历练：身死或人在枯海时停下，重天放大敌人', () => {
+test('储物袋：随现实时间攒灵气，有上限，收取后进丹田', () => {
+  const s = cultivator(30, 30, 30);
+  s.run.qi = 0;
+  game.advance(s, 3600 * 1000);
+  assert.strictEqual(s.run.battle.bag, 0);
+  assert.strictEqual(game.trainCollect(s), null);
+  assert.strictEqual(game.trainBag(s).full, false);
+
+  for (let stage = 1; stage <= 5; stage++) game.trainClear(s, stage);
+  const rate = game.trainRate(s);
+  const t0 = s.lastTime;
+  game.advance(s, t0 + 1800 * 1000);
+  assert.ok(Math.abs(s.run.battle.bag - rate / 2) < 1e-9);
+  let bag = game.trainBag(s);
+  assert.strictEqual(bag.qi, Math.round(game.qiCap(s) * rate / 2));
+  assert.strictEqual(bag.perHour, Math.round(game.qiCap(s) * rate));
+  assert.strictEqual(bag.full, false);
+  // 放再久也只存 TRAIN_BAG_HOURS 小时的量。
+  game.advance(s, t0 + 100 * 3600 * 1000);
+  bag = game.trainBag(s);
+  assert.ok(Math.abs(s.run.battle.bag - rate * game.TRAIN_BAG_HOURS) < 1e-9);
+  assert.strictEqual(bag.full, true);
+  assert.strictEqual(bag.qi, bag.max);
+
+  const age = s.run.age;
+  const r = game.trainCollect(s);
+  assert.strictEqual(r.qi, bag.max);
+  assert.strictEqual(s.run.qi, bag.max);
+  assert.strictEqual(s.run.battle.bag, 0);
+  assert.strictEqual(s.run.age, age);
+  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '历练');
+  assert.strictEqual(game.trainCollect(s), null);
+});
+
+test('历练：身死后停下，储物袋不再攒；重天放大敌人', () => {
   const dead = cultivator(30, 30, 30);
+  game.trainClear(dead, 1);
   game.retire(dead);
-  assert.strictEqual(game.trainStage(dead), -1);
-  assert.strictEqual(game.trainClear(dead, 0), null);
+  assert.strictEqual(game.trainStage(dead), 0);
+  assert.strictEqual(game.trainClear(dead, 2), null);
+  const bag = dead.run.battle.bag;
+  game.advance(dead, dead.lastTime + 3600 * 1000);
+  assert.strictEqual(dead.run.battle.bag, bag);
+  assert.strictEqual(game.trainCollect(dead), null);
 
   const high = cultivator(30, 30, 30);
-  const base = game.trainEncounter(high, game.TRAIN_MOBS, () => 0.5).foe.max;
+  const base = game.trainFoe(high, 3).hp;
   high.run.heaven = 2;
-  assert.ok(game.trainEncounter(high, game.TRAIN_MOBS, () => 0.5).foe.max > base);
+  assert.ok(game.trainFoe(high, 3).hp > base);
 });
 
-test('历练：旧存档里没结算的那一场直接丢掉；过关纪录跨世保留，进度不跨世', () => {
+test('历练存档：旧档缺字段按空值读，储物袋不超过上限；关卡和储物袋不跨世，最远纪录跨世保留', () => {
   const old = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1 } }, 0, () => 0);
-  assert.deepStrictEqual(old.run.battle, { cleared: 0 });
+  assert.deepStrictEqual(old.run.battle, { cleared: 0, bag: 0 });
   assert.strictEqual(old.trainBest, 0);
-  const legacy = game.normalizeState({ trainBest: 99, run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 2, pending: { stage: 2, win: true, lines: ['耗 1 次机缘'] } } } }, 0, () => 0);
-  assert.deepStrictEqual(legacy.run.battle, { cleared: 2 });
-  assert.strictEqual(legacy.trainBest, game.TRAIN_STAGES.length);
-  assert.strictEqual(game.canDraw(legacy), legacy.run.chance >= 1);
+  const legacy = game.normalizeState({ trainBest: 3, run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 12, bag: 99, pending: { stage: 2, win: true } } } }, 0, () => 0);
+  assert.strictEqual(legacy.run.battle.cleared, 12);
+  assert.ok(Math.abs(legacy.run.battle.bag - game.trainRate(legacy) * game.TRAIN_BAG_HOURS) < 1e-9);
+  assert.deepStrictEqual(Object.keys(legacy.run.battle).sort(), ['bag', 'cleared']);
+  assert.strictEqual(legacy.trainBest, 12);
+  const broken = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: -4, bag: 'x' } } }, 0, () => 0);
+  assert.deepStrictEqual(broken.run.battle, { cleared: 0, bag: 0 });
 
   const s = cultivator(30, 30, 30);
-  game.trainClear(s, 0);
-  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  game.trainClear(s, 1);
+  game.advance(s, s.lastTime + 600 * 1000);
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0);
   assert.strictEqual(loaded.run.battle.cleared, 1);
+  assert.ok(loaded.run.battle.bag > 0);
   game.retire(loaded);
   game.reincarnate(loaded, 0, () => 0);
-  assert.strictEqual(loaded.run.battle.cleared, 0);
+  assert.deepStrictEqual(loaded.run.battle, { cleared: 0, bag: 0 });
   assert.strictEqual(loaded.trainBest, 1);
 });
 
-test('历练数值：小怪比守关的好打；引气中期的寻常修士稳过前两关，最后一关要靠后面的成长', () => {
-  const state = cultivator(13, 13, 13);
-  const me = game.trainFighter(state);
-  const rate = (index) => battle.estimate(me, battle.foeFighter(game.TRAIN_STAGES[index], 1), 200);
-  assert.ok(rate(0) >= 0.9, '第一关 ' + rate(0));
-  assert.ok(rate(1) >= 0.8, '第二关 ' + rate(1));
-  assert.ok(rate(4) <= 0.2, '第五关 ' + rate(4));
-  state.run.battle.cleared = 2;
-  let mobWins = 0;
-  const rng = battle.seeded(3);
-  for (let i = 0; i < 50; i++) mobWins += game.trainEncounter(state, 0, rng).win ? 1 : 0;
-  assert.ok(mobWins >= 45, '第三关小怪 ' + mobWins);
-  const grown = game.trainFighter(cultivator(45, 45, 30));
-  assert.ok(battle.estimate(grown, battle.foeFighter(game.TRAIN_STAGES[4], 1), 200) >= 0.7);
+test('历练数值：引气中期的寻常修士能过头一个首领，越强走得越远', () => {
+  const reach = (edge, body, mind) => {
+    const s = cultivator(edge, body, mind);
+    const me = game.trainFighter(s);
+    let stage = 1;
+    while (stage < 200 && battle.estimate(me, game.trainFoe(s, stage), 100) >= 0.5) stage++;
+    return stage - 1;
+  };
+  const novice = reach(13, 13, 13);
+  const grown = reach(45, 45, 30);
+  assert.ok(novice >= 5 && novice < 15, '引气中期 ' + novice);
+  assert.ok(grown >= novice + 8 && grown < 40, '引气圆满 ' + grown);
+  assert.ok(reach(200, 200, 150) > grown);
+  // 小怪一场十来秒内打完，不会拖成久战。
+  const s = cultivator(13, 13, 13);
+  s.run.battle.cleared = 3;
+  assert.ok(game.trainEncounter(s, 0, battle.seeded(5)).seconds < 20);
 });

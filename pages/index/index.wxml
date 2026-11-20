@@ -149,9 +149,10 @@
           </view>
           <view wx:if="{{bar.rest}}" class="fray-note">败了一阵 · 调息中</view>
         </view>
+        <view class="fray-bag {{bag.full ? 'fray-bag-full' : ''}}" hover-class="opt-hover" bindtap="onBag">{{bag.text}}{{bag.full ? ' · 满' : ''}}</view>
         <view wx:if="{{bar.foe && bar.foe.state !== 'away'}}" class="fray-side fray-side-foe">
           <view class="fray-title">
-            <text wx:if="{{bar.foe.boss}}" class="fray-boss-tag">守关</text>
+            <text wx:if="{{bar.foe.boss}}" class="fray-boss-tag">首领</text>
             <text class="fray-foe-name">{{bar.foe.name}}</text>
           </view>
           <view class="fray-hp">
@@ -703,17 +704,25 @@
         <view class="sheet-text">{{sheet.text}}</view>
         <view wx:if="{{sheet.me}}" class="train-me">{{sheet.me}}</view>
         <scroll-view scroll-y class="sheet-body cloud-body">
-          <view wx:if="{{sheet.note}}" class="empty">{{sheet.note}}</view>
-          <view wx:for="{{sheet.stages}}" wx:key="index" class="rank-row">
-            <text class="rank-no">{{item.no}}</text>
+          <view class="rank-row">
             <view class="rank-info">
-              <text class="rank-name">{{item.name}}{{item.cleared ? ' · 已过' : (item.now ? ' · 正在打' : '')}}</text>
-              <text class="rank-realm">{{item.text}}</text>
+              <text class="rank-name">{{sheet.bagTitle}}</text>
+              <text class="rank-realm">{{sheet.bagText}}</text>
+            </view>
+            <view class="arena-btn {{sheet.bagOff ? 'arena-btn-off' : ''}}" bindtap="onBag">
+              <text class="arena-btn-title">收取</text>
+            </view>
+          </view>
+          <view wx:for="{{sheet.stages}}" wx:key="stage" class="rank-row">
+            <text class="rank-no">{{item.stage}}</text>
+            <view class="rank-info">
+              <text class="rank-name">{{item.name}} · {{item.tag}}{{item.now ? ' · 正在打' : ''}}</text>
+              <text wx:if="{{item.text}}" class="rank-realm">{{item.text}}</text>
               <text class="rank-realm">{{item.sub}}</text>
             </view>
             <view class="train-rate">
               <text class="train-rate-num">{{item.pct}}%</text>
-              <text class="train-rate-label">守关胜率</text>
+              <text class="train-rate-label">每场胜率</text>
             </view>
           </view>
         </scroll-view>

@@ -32,7 +32,7 @@ const TRIB_ASPECTS = content.TRIB_ASPECTS;
 const PATH_COUNTER = content.PATH_COUNTER;
 const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
-const TRAIN_STAGES = content.TRAIN_STAGES;
+const TRAIN_FOES = content.TRAIN_FOES;
 
 const BASE_QI_CAP = 100;
 const BASE_LIFE = 60;
@@ -300,8 +300,8 @@ function newRun(state, rng) {
     revived: false,
     wards: 0,
     sures: 0,
-    // 历练：cleared 是这一世已经过了几关。
-    battle: { cleared: 0 },
+    // 历练：cleared 是这一世已经过了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记）。
+    battle: { cleared: 0, bag: 0 },
     death: null
   };
 }
@@ -878,13 +878,14 @@ function gainQi(state, amount) {
   return { gained: gained, ups: ups };
 }
 
-// 结算从 lastTime 到 now 的现实时间：只攒竞技场次数和灯油。一世之内的灵气、机缘和寿元都不随现实时间变。
+// 结算从 lastTime 到 now 的现实时间：攒竞技场次数、灯油和历练的储物袋。一世之内的灵气、机缘和寿元都不随现实时间变。
 function advance(state, now) {
   const elapsed = Math.max(0, (now - state.lastTime) / 1000);
   state.lastTime = now;
   const before = Math.floor(state.oil);
   state.arena = Math.min(ARENA_MAX, state.arena + elapsed / ARENA_INTERVAL_SEC);
   state.oil = Math.min(OIL_MAX, state.oil + elapsed / OIL_INTERVAL_SEC);
+  fillBag(state, elapsed);
   return { elapsed: elapsed, oil: Math.floor(state.oil) - before };
 }
 
@@ -2243,14 +2244,24 @@ function arenaFight(state, row, rng, times) {
   return { title: '竞技场', label: label, win: wins > 0, wins: wins, losses: losses, fights: fights, lines: lines, tags: tags, dead: dead };
 }
 // 历练：引气后角色在场景里自己打，不耗寿元和机缘，也不计入劫期。战斗由 battle.js 一次算完，页面只负责播放。
-// 每关先来 TRAIN_MOBS 只小怪，再是守关的；打赢守关的才算过关。败了从这一关的头一只重来，没有别的代价。
+// 关卡不限数量：寻常的关连打 TRAIN_MOBS 只小怪，每 TRAIN_BOSS_EVERY 关是一个首领。败了从这一关的头一只重来，没有别的代价。
+// 每过一关，储物袋攒灵气的速度就高一档；储物袋随现实时间攒，离线也攒，最多存 TRAIN_BAG_HOURS 小时的量。
 const TRAIN_REALM = 1;
 const TRAIN_MOBS = 3;
-// 小怪的气血和攻击，相对守关的比例。
-const TRAIN_MOB_HP = 0.4;
-const TRAIN_MOB_ATK = 0.7;
-// 这一世头一回过关得的灵气，占丹田容量的比例。
-const TRAIN_QI = 0.15;
+const TRAIN_BOSS_EVERY = 5;
+const TRAIN_MAX = 9999;
+// 第 1 关小怪的气血和攻击，之后每关各乘一次增长率。
+const TRAIN_HP = 44;
+const TRAIN_ATK = 5;
+const TRAIN_HP_GROWTH = 1.13;
+const TRAIN_ATK_GROWTH = 1.1;
+// 首领的气血和攻击，相对同一关小怪的倍率。
+const TRAIN_BOSS_HP = 3.5;
+const TRAIN_BOSS_ATK = 1.4;
+// 储物袋：每过一关每小时多攒丹田容量的这么多；过一个首领关另算 TRAIN_BOSS_BONUS 关。
+const TRAIN_RATE = 0.015;
+const TRAIN_BOSS_BONUS = 2;
+const TRAIN_BAG_HOURS = 2;
 
 function trainFighter(state) {
   const run = state.run;
@@ -2275,18 +2286,33 @@ function trainFighter(state) {
   });
 }
 
-// wave 小于 TRAIN_MOBS 是小怪，否则是守关的。
-function trainFoe(state, index, wave) {
-  const stage = TRAIN_STAGES[index];
+function trainBoss(stage) {
+  return stage % TRAIN_BOSS_EVERY === 0;
+}
+
+// 这一关要连赢几场。
+function trainWaves(stage) {
+  return trainBoss(stage) ? 1 : TRAIN_MOBS;
+}
+
+// 第 stage 关（从 1 起）来的是谁。每五关换一轮：前四关各是一种小怪，第五关的首领轮着当。
+function trainFoeDef(stage) {
+  const round = Math.floor((stage - 1) / TRAIN_BOSS_EVERY);
+  return TRAIN_FOES[((stage - 1) % TRAIN_BOSS_EVERY + round) % TRAIN_FOES.length];
+}
+
+function trainFoe(state, stage) {
+  const def = trainFoeDef(stage);
+  const boss = trainBoss(stage);
   const scale = 1 + HEAVEN_REQ * state.run.heaven;
-  if (wave >= TRAIN_MOBS) return battle.foeFighter(stage, scale);
   return battle.foeFighter({
-    name: stage.mob,
-    hp: stage.hp * TRAIN_MOB_HP,
-    atk: stage.atk * TRAIN_MOB_ATK,
-    interval: stage.interval,
-    reduce: stage.reduce,
-    resist: stage.resist
+    name: boss ? def.name : def.mob,
+    hp: TRAIN_HP * Math.pow(TRAIN_HP_GROWTH, stage - 1) * (boss ? TRAIN_BOSS_HP : 1),
+    atk: TRAIN_ATK * Math.pow(TRAIN_ATK_GROWTH, stage - 1) * (boss ? TRAIN_BOSS_ATK : 1),
+    interval: def.interval,
+    reduce: def.reduce,
+    resist: def.resist,
+    skill: boss ? def.skill : null
   }, scale);
 }
 
@@ -2299,27 +2325,25 @@ function trainReason(state) {
   return '';
 }
 
-// 正在打第几关：没过的头一关；全过了就留在最后一关。不在历练时返回 -1。
+// 正在打第几关（从 1 起）；不在历练时返回 0。
 function trainStage(state) {
-  if (trainReason(state)) return -1;
-  const run = state.run;
-  let index = Math.min(run.battle.cleared, TRAIN_STAGES.length - 1);
-  while (index > 0 && TRAIN_STAGES[index].layer > layerIndex(run)) index--;
-  return TRAIN_STAGES[index].layer > layerIndex(run) ? -1 : index;
+  return trainReason(state) ? 0 : Math.min(TRAIN_MAX, state.run.battle.cleared + 1);
 }
 
-// 算出当前这一关的第 wave 场。只算不改状态；守关的打赢后由页面调 trainClear 记过关。
+// 算出当前这一关的第 wave 场。只算不改状态；这一关最后一场打赢后由页面调 trainClear 记过关。
 function trainEncounter(state, wave, rng) {
-  const index = trainStage(state);
-  if (index < 0) return null;
-  const stage = TRAIN_STAGES[index];
-  const at = Math.max(0, Math.min(TRAIN_MOBS, Math.floor(wave) || 0));
-  const fight = battle.simulate(trainFighter(state), trainFoe(state, index, at), rng);
+  const stage = trainStage(state);
+  if (!stage) return null;
+  const waves = trainWaves(stage);
+  const at = Math.max(0, Math.min(waves - 1, Math.floor(wave) || 0));
+  const fight = battle.simulate(trainFighter(state), trainFoe(state, stage), rng);
   return {
-    stage: index,
+    stage: stage,
     wave: at,
-    boss: at >= TRAIN_MOBS,
-    sprite: stage.sprite,
+    waves: waves,
+    last: at === waves - 1,
+    boss: trainBoss(stage),
+    sprite: trainFoeDef(stage).sprite,
     win: fight.win,
     seconds: fight.seconds,
     timeline: fight.timeline,
@@ -2328,54 +2352,101 @@ function trainEncounter(state, wave, rng) {
   };
 }
 
-// 打赢了第 index 关守关的。这一世头一回过才有灵气和见闻；已经过了的关重打不给东西。
-function trainClear(state, index) {
+// 过了 cleared 关时储物袋每小时攒多少，按丹田容量的比例计。
+function trainRate(state, cleared) {
+  const count = cleared === undefined ? state.run.battle.cleared : cleared;
+  return TRAIN_RATE * (count + TRAIN_BOSS_BONUS * Math.floor(count / TRAIN_BOSS_EVERY));
+}
+
+function fillBag(state, seconds) {
   const run = state.run;
-  if (trainStage(state) !== index) return null;
-  const stage = TRAIN_STAGES[index];
-  if (index < run.battle.cleared) return { first: false, name: stage.name, qi: 0, lines: [] };
+  if (run.phase !== 'alive' || !(seconds > 0)) return;
+  const rate = trainRate(state);
+  run.battle.bag = Math.min(rate * TRAIN_BAG_HOURS, run.battle.bag + rate * seconds / 3600);
+}
+
+// 过了第 stage 关：储物袋攒得更快。只有首领关记一条见闻，免得刷屏。
+function trainClear(state, stage) {
+  const run = state.run;
+  if (!stage || trainStage(state) !== stage || run.battle.cleared >= TRAIN_MAX) return null;
+  const boss = trainBoss(stage);
+  const name = boss ? trainFoeDef(stage).name : trainFoeDef(stage).mob;
+  run.battle.cleared = stage;
+  state.trainBest = Math.max(state.trainBest, stage);
+  const perHour = qiRewardAmount(state, trainRate(state));
+  if (boss) {
+    run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
+    run.log = run.log.slice(-MAX_LOG);
+  }
+  return { stage: stage, boss: boss, name: name, perHour: perHour };
+}
+
+// 储物袋眼下的样子：攒了多少、每小时攒多少、装满是多少。
+function trainBag(state) {
+  const run = state.run;
+  const rate = trainRate(state);
+  const max = rate * TRAIN_BAG_HOURS;
+  return {
+    qi: qiRewardAmount(state, run.battle.bag),
+    perHour: qiRewardAmount(state, rate),
+    max: qiRewardAmount(state, max),
+    full: max > 0 && run.battle.bag >= max,
+    hours: TRAIN_BAG_HOURS
+  };
+}
+
+// 把储物袋里的灵气收进丹田。袋里不足 1 点灵气时返回 null。
+function trainCollect(state) {
+  const run = state.run;
+  if (run.phase !== 'alive') return null;
+  const amount = qiRewardAmount(state, run.battle.bag);
+  if (amount < 1) return null;
   const before = snapshot(state);
   const qi = run.qi;
   const lines = [];
-  run.battle.cleared = index + 1;
-  state.trainBest = Math.max(state.trainBest, run.battle.cleared);
-  addQiWithLines(state, qiRewardAmount(state, TRAIN_QI), lines, []);
-  run.log.push({ age: run.age, title: '历练', text: '打赢了' + stage.name + (lines.length ? '：' + lines.join('，') : ''), detail: changeText(before, snapshot(state)) });
+  const tags = [];
+  run.battle.bag = 0;
+  addQiWithLines(state, amount, lines, tags);
+  run.log.push({ age: run.age, title: '历练', text: '收了储物袋：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
-  return { first: true, name: stage.name, qi: Math.max(0, Math.floor(run.qi - qi)), lines: lines };
+  return { title: '历练', label: '收了储物袋', qi: amount, gained: Math.max(0, Math.floor(run.qi - qi)), lines: lines, tags: tags };
 }
 
-// 历练面板：打到第几关、各关的敌人和预估胜率。只列到正在打的这一关为止，后面的关不提前露底。
+// 历练面板：打到第几关、眼前这一关和下一个首领的胜率、储物袋。
 function trainView(state) {
   const run = state.run;
-  const current = trainStage(state);
-  const open = current >= 0;
-  const me = open ? trainFighter(state) : null;
+  const stage = trainStage(state);
+  const me = stage ? trainFighter(state) : null;
   const stages = [];
-  TRAIN_STAGES.forEach((stage, index) => {
-    if (!open || index > current) return;
-    const foe = trainFoe(state, index, TRAIN_MOBS);
-    stages.push({
-      index: index,
-      name: stage.name,
-      mob: stage.mob,
-      text: stage.text,
-      layer: LAYERS[stage.layer],
-      cleared: index < run.battle.cleared,
-      hp: foe.hp,
-      skill: stage.skill ? stage.skill.name : '',
-      chance: battle.estimate(me, foe),
-      qi: index < run.battle.cleared ? 0 : qiRewardAmount(state, TRAIN_QI)
+  if (stage) {
+    const boss = Math.ceil(stage / TRAIN_BOSS_EVERY) * TRAIN_BOSS_EVERY;
+    (boss === stage ? [stage] : [stage, boss]).forEach((no) => {
+      const foe = trainFoe(state, no);
+      const def = trainFoeDef(no);
+      stages.push({
+        stage: no,
+        now: no === stage,
+        boss: trainBoss(no),
+        name: foe.name,
+        text: trainBoss(no) ? def.text : '',
+        waves: trainWaves(no),
+        hp: foe.hp,
+        atk: Math.round(foe.atk),
+        skill: foe.skill ? foe.skill.name : '',
+        chance: battle.estimate(me, foe)
+      });
     });
-  });
+  }
   return {
-    open: open,
+    open: !!stage,
     reason: trainReason(state),
-    stage: current,
+    stage: stage,
     cleared: run.battle.cleared,
-    total: TRAIN_STAGES.length,
     best: state.trainBest,
     mobs: TRAIN_MOBS,
+    bossEvery: TRAIN_BOSS_EVERY,
+    bag: trainBag(state),
+    nextPerHour: qiRewardAmount(state, trainRate(state, run.battle.cleared + 1)),
     me: me ? { hp: me.hp, atk: Math.round(me.atk), interval: me.interval, reduce: me.reduce, crit: me.crit } : null,
     stages: stages
   };
@@ -3213,7 +3284,8 @@ function normalizeRun(state, raw, rng) {
   }
   run.sea = normalizeSea(run, raw.sea);
   const saved = raw.battle && typeof raw.battle === 'object' ? raw.battle : {};
-  run.battle.cleared = toCount(saved.cleared, TRAIN_STAGES.length);
+  run.battle.cleared = toCount(saved.cleared, TRAIN_MAX);
+  run.battle.bag = clamp(toNumber(saved.bag), 0, trainRate(state, run.battle.cleared) * TRAIN_BAG_HOURS);
   return run;
 }
 
@@ -3256,7 +3328,7 @@ function normalizeState(raw, now, rng) {
   state.oil = clamp(toNumber(raw.oil), 0, OIL_MAX);
   state.arenaPoints = toCount(raw.arenaPoints);
   state.run = normalizeRun(state, raw.run, rng);
-  state.trainBest = Math.max(toCount(raw.trainBest, TRAIN_STAGES.length), state.run.battle.cleared);
+  state.trainBest = Math.max(toCount(raw.trainBest, TRAIN_MAX), state.run.battle.cleared);
   // 挑好的前世功法在身死后、投胎选灵根前都要保留。
   const phase = state.run.phase;
   const carried = phase === 'dead' ? !!skillEntry(state.run, raw.carry) && !!findById(SKILLS, raw.carry) : phase === 'root' && !!findById(SKILLS, raw.carry);
@@ -3414,14 +3486,20 @@ module.exports = {
   arenaWait,
   arenaStanding,
   ARENA_MAX,
-  TRAIN_STAGES,
   TRAIN_MOBS,
+  TRAIN_BOSS_EVERY,
+  TRAIN_BAG_HOURS,
   trainFighter,
+  trainFoe,
   trainView,
   trainReason,
   trainStage,
+  trainWaves,
   trainEncounter,
   trainClear,
+  trainRate,
+  trainBag,
+  trainCollect,
   SEA_REALM,
   SEA_TIDE_LIMIT,
   seaView,

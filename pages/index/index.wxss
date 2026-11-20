@@ -3946,6 +3946,31 @@ button.sheet-btn::after {
   width: 230rpx;
 }
 
+.fray-bag {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  padding: 0 18rpx;
+  border: 2rpx solid rgba(255, 207, 138, 0.28);
+  border-radius: 999rpx;
+  background: rgba(20, 14, 10, 0.55);
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 40rpx;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #e8cf9f;
+  pointer-events: auto;
+}
+
+.fray-bag-full {
+  border-color: #ffcf8a;
+  background: rgba(255, 178, 74, 0.25);
+  color: #ffe2b0;
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
 .fray-title {
   display: flex;
   align-items: center;
