@@ -41,6 +41,10 @@ const BASE_LIFE = 60;
 const YEAR_SECONDS = 12;
 const CHANCE_INTERVAL_SEC = 60;
 const BASE_MAX_CHANCE = 60;
+// 投胎时只带上限的这么多机缘，其余靠年岁攒。
+const START_CHANCE_SHARE = 1 / 3;
+// 每高一个大境界，攒一次机缘要过的年数乘这么多，和破境加的寿元一起涨。
+const CHANCE_REALM_GROWTH = 1.15;
 // 灯油按现实时间积攒，离线也攒，跨世保留；一滴换一次机缘重抽。
 const OIL_INTERVAL_SEC = 900;
 const OIL_MAX = 6;
@@ -124,6 +128,7 @@ const SALT_ANCHOR_BONUS = 60;
 const DEATH_MULT = { age: 1, retire: 1, trib: 1.2, demon: 1.5 };
 const UNITS = ['', '万', '亿', '兆', '京'];
 // 劫期：每个境界里可以从容做这么多次普通机缘；过期后每次机缘额外折寿，每再拖 OVERDUE_STEP 次加重一档。
+// 多折的这些年和天劫失败折的寿一样是白折的，不涨灵气也不攒机缘。
 const TRIB_TERMS = [30, 36, 44, 52, 40];
 const OVERDUE_YEARS = [1, 1, 2, 4, 8];
 // 元婴之后的境界：劫期一律 40 次，过期后每次多折的寿元逐境界加四成。
@@ -838,7 +843,7 @@ function maxChance(state) {
 function chanceInterval(state) {
   const run = state.run;
   const slow = run.aftermath && run.aftermath.id === 'fortune' ? 1.5 : 1;
-  return CHANCE_INTERVAL_SEC / (1 + 0.15 * lampLevel(state, 'y4')) / (hasSet(run, 'luck', 4) ? 1.25 : 1) /
+  return CHANCE_INTERVAL_SEC * Math.pow(CHANCE_REALM_GROWTH, run.realm) / (1 + 0.15 * lampLevel(state, 'y4')) / (hasSet(run, 'luck', 4) ? 1.25 : 1) /
     (1 + sumSkills(run, 'speed')) / (1 + run.speed + (fateInfo(run).speed || 0)) * slow;
 }
 
@@ -1243,8 +1248,13 @@ function canMeditate(state) {
   return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance < 1;
 }
 
+// 坐到下一次机缘回来为止，至少一年。
+function meditateWait(state) {
+  return Math.max(1, Math.ceil((1 - state.run.chance) * chanceYears(state) - 1e-9));
+}
+
 function meditateYears(state) {
-  return 1 + tribTerm(state).years;
+  return meditateWait(state) + tribTerm(state).years;
 }
 
 function meditate(state) {
@@ -1252,10 +1262,11 @@ function meditate(state) {
   const run = state.run;
   const before = snapshot(state);
   const years = meditateYears(state);
+  const wait = meditateWait(state);
   run.age += years;
   const lines = ['耗 ' + years + ' 年寿元'];
   const tags = ['seclude'];
-  const got = passTime(state, years * YEAR_SECONDS);
+  const got = passTime(state, wait * YEAR_SECONDS);
   if (got.qi >= 1) lines.push('灵气 +' + formatNumber(Math.round(got.qi)));
   if (got.ups) {
     lines.push('突破至' + realmText(run));
@@ -1838,7 +1849,7 @@ function choose(state, index, rng) {
     wake = 'rest';
     const years = fallbackYears(state);
     run.age += years;
-    passYears(state, years, lines, tags);
+    passYears(state, years - overdue, lines, tags);
     tags.push('seclude');
     addQiWithLines(state, qiRewardAmount(state, fallbackQi(state)), lines, tags);
   } else {
@@ -1856,7 +1867,7 @@ function choose(state, index, rng) {
       run.qi -= cost;
       lines.push('灵气 -' + formatNumber(cost));
     }
-    passYears(state, years, lines, tags);
+    passYears(state, years - overdue, lines, tags);
     if (opt.learn) {
       gainSkill(state, opt.learn.id, opt.learn.level, lines, tags);
       const others = run.event.offers.filter((o) => o.id !== opt.learn.id && !skillEntry(run, o.id));
@@ -2849,19 +2860,26 @@ function tribGear(state) {
   return { name: trib ? trib.name : '', need: need, score: score, short: short, cut: cut, penalty: short ? cut * (1 - score / need) : 0, bonus: bonus };
 }
 
+// 羁绊、灯纹、功法、大机缘和装备富余这些加成，按考核属性的达标程度打折：属性只到要求的四成，加成也只算四成。
 function tribulationParts(state, ratio) {
   const run = state.run;
-  return [
-    ['属性', 0.15 + 0.7 * ratio],
-    ['心魔', mech(run, 'demonFuel') ? 0 : -0.03 * Math.floor(run.demon / 10)],
+  const gear = tribGear(state);
+  const boosts = [
     ['剑系羁绊', hasSet(run, 'sword', 2) ? 0.1 : 0],
     ['灯纹「劫后余生」', 0.03 * lampLevel(state, 'm2')],
     ['功法', sumSkills(run, 'trib')],
     ['大机缘的雷', run.tribBoon],
+    ['装备分富余', gear.bonus]
+  ];
+  const boost = boosts.reduce((sum, part) => sum + Math.max(0, part[1]), 0);
+  return [
+    ['属性', 0.15 + 0.7 * ratio],
+    ['心魔', mech(run, 'demonFuel') ? 0 : -0.03 * Math.floor(run.demon / 10)]
+  ].concat(boosts, [
+    ['属性未达标，加成打折', -boost * (1 - clamp(ratio, 0, 1))],
     ['重天', -HEAVEN_TRIB * run.heaven],
-    ['装备分不足', -tribGear(state).penalty],
-    ['装备分富余', tribGear(state).bonus]
-  ].filter((part) => Math.abs(part[1]) > 1e-9).map((part) => ({ label: part[0], value: part[1] }));
+    ['装备分不足', -gear.penalty]
+  ]).filter((part) => Math.abs(part[1]) > 1e-9).map((part) => ({ label: part[0], value: part[1] }));
 }
 
 function tribulationChance(state, ratio) {
@@ -3275,7 +3293,7 @@ function chooseRoot(state, id, now, rng) {
     const pool = SKILLS.filter((s) => root.schools.indexOf(s.school) >= 0 && !skillEntry(run, s.id));
     gainSkill(state, pick(pool, rng).id, 1, lines, []);
   }
-  run.chance = maxChance(state);
+  run.chance = Math.floor(maxChance(state) * START_CHANCE_SHARE);
   state.lastTime = now;
   return true;
 }
@@ -3702,6 +3720,8 @@ module.exports = {
   DEMON_YEARS,
   DEMON_QI_RATE,
   CHANCE_INTERVAL_SEC,
+  START_CHANCE_SHARE,
+  CHANCE_REALM_GROWTH,
   BIG_EVERY,
   createState,
   normalizeState,

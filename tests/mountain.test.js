@@ -291,6 +291,8 @@ test('寒潮按门规、弟子修为和所学结算，双线达标且两次机�
   state = reload(state);
   act(state, 'sect', 'shelter-ya');
   const oldMaterials = state.run.materials;
+  // 存满后不再随年岁攒，只看奖励的 8 次
+  state.run.chance = game.maxChance(state);
   const chances = state.run.chance;
   act(state, 'sect', 'master-shelter');
   assert.equal(state.run.sect.quest.outcome, 'both');

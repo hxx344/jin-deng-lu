@@ -189,7 +189,11 @@ const POLICIES = {
     },
     threshold(state, sim) {
       if (game.yearsLeft(state) <= sim.config.lastDitchYears) return 0;
-      return game.tribTerm(state).overdue ? sim.config.overdueThreshold : sim.config.tribThreshold;
+      const term = game.tribTerm(state);
+      if (!term.overdue) return sim.config.tribThreshold;
+      // 再拖一次机缘多折的寿元已经不比渡劫失败折的少，等下去不如搏一把。
+      const trib = game.tribulationInfo(state);
+      return trib && term.years >= trib.failYears ? 0 : sim.config.overdueThreshold;
     },
     act(state, rng, sim) {
       const run = state.run;
@@ -552,14 +556,14 @@ function render(data) {
     '## 口径',
     '',
     '- 每种打法 ' + config.saves + ' 个存档，每个存档连续玩 ' + config.lives + ' 世，随机种子 ' + config.seed + ' 起逐档加一，结果可完全复现。',
-    '- 时间：灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐（每次耗 1 年寿元）；每次选择或操作算 ' + config.choiceSeconds + ' 秒。“时长”是这些操作时间加上后文说的等装备时间。',
+    '- 时间：灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐到下一次机缘回来；每次选择或操作算 ' + config.choiceSeconds + ' 秒。“时长”是这些操作时间加上后文说的等装备时间。',
     '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。“灯纹全满”把随重天加深的等级也算在内。',
     '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '圆满，在最高一重做到就解锁下一重。',
     '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
     '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',
     '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍和道途随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
     '- **挂机玩**：见过的选项全交给游戏自带的“自动机缘”估分；道途选手里功法最多的一系；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨。',
-    '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
+    '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，再拖一次机缘多折的寿元不比渡劫失败折的少时不再等，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
     '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒并退回 ' + game.TRAIN_RETREAT + ' 关。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
     '- 等装备：灵气满了、装备分还不够这一场天劫的要求时，挂机玩最多停 ' + config.gearPatience.idle + ' 分钟、认真玩最多停 ' + config.gearPatience.careful + ' 分钟，只让历练接着打；连着 ' + GEAR_STALL + ' 分钟装备分没涨就不等了。等的时间算进时长。随手玩不等。',

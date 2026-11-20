@@ -61,7 +61,7 @@ function crossTrib(s, rng, method) {
   } while (!r.done);
   return Object.assign({}, r, { lines: lines });
 }
-test('新存档先投胎：三选一灵根，选定后开局机缘是满的', () => {
+test('新存档先投胎：三选一灵根，选定后开局带三分之一的机缘', () => {
   const s = game.createState(1000, () => 0);
   assert.strictEqual(s.run.phase, 'root');
   assert.deepStrictEqual(s.run.rootChoices, ['sword', 'pill', 'talisman']);
@@ -72,7 +72,7 @@ test('新存档先投胎：三选一灵根，选定后开局机缘是满的', ()
   assert.strictEqual(game.chooseRoot(s, 'sword', 1000, () => 0), true);
   assert.strictEqual(s.run.phase, 'alive');
   assert.deepStrictEqual(game.attrs(s), { edge: 2, body: 0, mind: 0 });
-  assert.strictEqual(s.run.chance, 60);
+  assert.strictEqual(s.run.chance, 20);
   assert.strictEqual(game.maxLife(s), 60);
   assert.strictEqual(game.realmText(s.run), '凡胎前期');
   assert.strictEqual(game.chooseRoot(s, 'pill', 1000, () => 0), false);
@@ -90,7 +90,7 @@ test('灵根特性：药体加产出，石身加寿元，歪运加机缘上限',
   assert.strictEqual(game.attrs(s).body, 2);
   game.chooseRoot(luck, 'luck', 0, () => 0);
   assert.strictEqual(game.maxChance(luck), 72);
-  assert.strictEqual(luck.run.chance, 72);
+  assert.strictEqual(luck.run.chance, 24);
 });
 
 test('根骨组合：2 到 5 种根骨的加成相加，稀有度依次升高，id 不规范的不认', () => {
@@ -334,20 +334,25 @@ test('现实时间只攒灯油和竞技场次数：灯油不超过上限，跨�
   assert.strictEqual(s.oil, game.OIL_MAX);
 });
 
-test('静坐：机缘不足一次、没有未决事务时才能坐，耗 1 年并随年岁涨灵气和机缘', () => {
+test('静坐：机缘不足一次、没有未决事务时才能坐，一直坐到下一次机缘回来', () => {
   const s = born();
   assert.strictEqual(game.canMeditate(s), false);
   assert.strictEqual(game.meditate(s), null);
   s.run.chance = 0.5;
   assert.strictEqual(game.canMeditate(s), true);
   assert.strictEqual(game.canDraw(s), false);
-  assert.strictEqual(game.meditateYears(s), 1);
-  const gain = game.qiRate(s) * game.YEAR_SECONDS;
+  // 还差半次机缘，凡胎 5 年攒一次：要坐 3 年
+  assert.strictEqual(game.meditateYears(s), 3);
+  const gain = game.qiRate(s) * game.YEAR_SECONDS * 3;
   const r = game.meditate(s);
-  assert.deepStrictEqual(r, { title: '静坐', label: '机缘未至，静坐了一阵', lines: ['耗 1 年寿元', '灵气 +' + Math.round(gain)], tags: ['seclude'], dead: false });
-  assert.strictEqual(s.run.age, 1);
+  assert.deepStrictEqual(r, { title: '静坐', label: '机缘未至，静坐了一阵', lines: ['耗 3 年寿元', '灵气 +' + Math.round(gain)], tags: ['seclude'], dead: false });
+  assert.strictEqual(s.run.age, 3);
   near(s.run.qi, gain);
-  near(s.run.chance, 0.5 + 1 / game.chanceYears(s));
+  near(s.run.chance, 0.5 + 3 / game.chanceYears(s));
+  assert.strictEqual(game.canDraw(s), true);
+  // 只差一点点也至少坐 1 年
+  s.run.chance = 0.99;
+  assert.strictEqual(game.meditateYears(s), 1);
   const log = s.run.log[s.run.log.length - 1];
   assert.strictEqual(log.title, '静坐');
   assert.ok(log.text.indexOf('机缘未至') === 0);
@@ -379,13 +384,22 @@ test('静坐：劫期逾期照样多折寿，寿尽时坐死', () => {
   s.run.realmChoices = game.tribTerm(s).term + 10;
   const over = game.tribTerm(s).years;
   assert.ok(over > 0);
-  assert.strictEqual(game.meditateYears(s), 1 + over);
+  assert.strictEqual(game.meditateYears(s), 5 + over);
   setEvent(s, 'i_dog');
-  assert.strictEqual(game.eventView(s).fallback.years, game.meditateYears(s));
+  assert.strictEqual(game.eventView(s).fallback.years, 1 + over);
   s.run.event = null;
   const r = game.meditate(s);
-  assert.strictEqual(r.lines[0], '耗 ' + (1 + over) + ' 年寿元');
-  assert.strictEqual(s.run.age, 1 + over);
+  assert.strictEqual(r.lines[0], '耗 ' + (5 + over) + ' 年寿元');
+  assert.strictEqual(s.run.age, 5 + over);
+  // 逾期多折的寿元是白折的：只有坐着的 5 年涨灵气、攒机缘
+  near(s.run.chance, 1);
+  near(s.run.qi, game.qiRate(s) * game.YEAR_SECONDS * 5);
+  // 机缘里的选择也一样：闭关不理耗 1 年再多折几年，机缘只按那 1 年攒
+  setEvent(s, 'i_dog');
+  const stock = s.run.chance;
+  assert.ok(game.eventView(s).fallback.years > 1);
+  game.choose(s, -1, () => 0);
+  near(s.run.chance, stock + 1 / game.chanceYears(s));
 
   const old = born();
   old.run.chance = 0;
@@ -396,13 +410,25 @@ test('静坐：劫期逾期照样多折寿，寿尽时坐死', () => {
   assert.strictEqual(old.run.death.cause, 'age');
   assert.strictEqual(game.canMeditate(old), false);
 });
+test('机缘收紧：投胎只带上限的三分之一，境界越高攒得越慢', () => {
+  const s = born();
+  assert.strictEqual(game.maxChance(s), 60);
+  assert.strictEqual(s.run.chance, 20);
+  near(game.chanceYears(s), 5);
+  s.run.realm = 4;
+  near(game.chanceInterval(s), 60 * Math.pow(game.CHANCE_REALM_GROWTH, 4));
+  s.run.chance = 0;
+  // 元婴攒一次要 8.7 年，静坐一次坐满 9 年
+  assert.strictEqual(game.meditateYears(s), 9);
+});
+
 test('翻开机缘消耗一次机缘，没有机缘或已有未决事件时不能再翻', () => {
   const s = born();
   assert.strictEqual(game.drawEvent(s, mulberry(1)), true);
-  assert.strictEqual(s.run.chance, 59);
+  assert.strictEqual(s.run.chance, 19);
   assert.ok(game.eventView(s));
   assert.strictEqual(game.drawEvent(s, mulberry(1)), false);
-  assert.strictEqual(s.run.chance, 59);
+  assert.strictEqual(s.run.chance, 19);
   s.run.event = null;
   s.run.chance = 0.9;
   assert.strictEqual(game.canDraw(s), false);
@@ -575,7 +601,7 @@ test('符系羁绊：2 门可重抽一次，4 门传承多一个选项', () => {
   assert.notStrictEqual(JSON.stringify(s.run.event), first);
   assert.strictEqual(game.eventView(s).rerolls, 0);
   assert.strictEqual(game.rerollEvent(s, rng), false);
-  assert.strictEqual(s.run.chance, 59);
+  assert.strictEqual(s.run.chance, 19);
 
   s.run.event = null;
   s.run.forceLegacy = true;
@@ -619,7 +645,7 @@ test('灯油重抽：事件自带和本世免费次数用完后才扣灯油，�
   assert.strictEqual(v.oil, 0);
   assert.strictEqual(game.rerollEvent(s, rng), false);
   near(s.oil, 0.5);
-  assert.strictEqual(s.run.chance, 59);
+  assert.strictEqual(s.run.chance, 19);
 
   s.oil = 3.25;
   assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0).oil, 3.25);
@@ -675,6 +701,12 @@ test('渡劫：灵气圆满才能渡，成功率由考核属性、心魔和羁�
   near(game.tribulationInfo(s).chance, 0.79);
   give(s, ['sw3', 'sw6']);
   near(game.tribulationInfo(s).chance, 0.89);
+  // 属性只到要求的一半：剑系羁绊的 10% 也只算一半，心魔的扣减不打折
+  s.run.stats.body = 8;
+  s.run.stats.mind = 8;
+  near(game.tribulationInfo(s).chance, 0.15 + 0.35 - 0.06 + 0.05);
+  const cut = game.tribulationInfo(s).parts.find((part) => part.label === '属性未达标，加成打折');
+  near(cut.value, -0.05);
   s.run.stats.body = 999;
   s.run.stats.mind = 999;
   s.run.demon = 0;
@@ -919,7 +951,8 @@ test('灯纹效果：产出、机缘、渡劫、心魔、闭关和开局加成',
   near(game.qiRate(s), 1.4);
   assert.strictEqual(game.maxChance(s), 84);
   near(game.chanceInterval(s), 60 / 1.3);
-  near(game.tribulationInfo(s).chance, 0.15 + 0.7 * 0.0625 + 0.09);
+  // 属性只到要求的 6.25%，灯纹的 9% 也按这个比例算
+  near(game.tribulationInfo(s).chance, 0.15 + 0.7 * 0.0625 + 0.09 * 0.0625);
   setEvent(s, 'a_feast');
   assert.strictEqual(game.eventView(s).options[0].desc, '躯 +5，心魔 +11，记下【尝过仙肉】');
   assert.strictEqual(game.eventView(s).fallback.desc, '灵气 +20');
@@ -1172,6 +1205,8 @@ test('随机游玩 300 世：不会卡死，数值始终合法，存档读回后
       game.drawEvent(s, rng);
     } else if (!game.tribulationInfo(s) && game.isFull(s) && rng() < 0.2) {
       game.retire(s);
+    } else if (game.canMeditate(s)) {
+      game.meditate(s);
     } else {
       now += 20000;
       game.advance(s, now);
@@ -1328,7 +1363,8 @@ test('大机缘：每件事各有各的效果，用不上的不进池子', () =>
   s = make();
   const base = game.tribulationInfo(s).chance;
   assert.deepStrictEqual(bigFor(s, 'thunder').lines, ['下一场天劫成功率 +20%，渡过或失败后用掉']);
-  near(game.tribulationInfo(s).chance, base + 0.2);
+  // 这 20% 同样按属性达标程度（这里是 6.25%）打折
+  near(game.tribulationInfo(s).chance, base + 0.2 * 0.0625);
   assert.ok(ids(s).indexOf('thunder') < 0);
   assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0).run.tribBoon, 0.2);
   s.run.stage = 2;
@@ -1408,8 +1444,8 @@ test('大机缘：每件事各有各的效果，用不上的不进池子', () =>
   assert.ok(ids(s).indexOf('possess') < 0);
 
   s = make();
-  assert.deepStrictEqual(bigFor(s, 'scavenge').lines, ['机缘 -30']);
-  assert.strictEqual(s.run.chance, 30);
+  assert.deepStrictEqual(bigFor(s, 'scavenge').lines, ['机缘 -10']);
+  assert.strictEqual(s.run.chance, 10);
 
   s = make();
   assert.deepStrictEqual(bigFor(s, 'debt').lines, ['种下因果【丹盟的欠条】']);
@@ -1558,7 +1594,7 @@ test('特殊功法：传承耗寿、闭关、产出、机缘、渡劫和灯芯�
   s.run.qi = 250;
   const info = game.tribulationInfo(s);
   // 定字符、替身符各带神 +2、+1，正好补回被清掉的 2 点神
-  near(info.chance, base.chance + 0.7 * (1 / 16) / 2 + 0.03);
+  near(info.chance, base.chance + 0.7 * (1 / 16) / 2 + 0.03 * (3 / 16) / 2);
   assert.strictEqual(info.lifeBonus, 35);
   assert.strictEqual(info.failYears, 13);
   assert.strictEqual(info.keepText, '灵气只保住 60%');
@@ -1862,12 +1898,12 @@ test('自动机缘：大机缘优先，没有机缘时代为静坐，身死后�
   assert.ok(step.result.tags.indexOf('big') >= 0);
   assert.strictEqual(s.run.event, null);
   assert.strictEqual(s.big, 0);
-  assert.strictEqual(s.run.chance, 60);
+  assert.strictEqual(s.run.chance, 20);
   assert.strictEqual(s.run.skills.length, 1);
   s.run.chance = 0.5;
   const age = s.run.age;
   assert.strictEqual(game.autoStep(s, mulberry(7)).result.title, '静坐');
-  assert.strictEqual(s.run.age, age + 1);
+  assert.strictEqual(s.run.age, age + 3);
   assert.strictEqual(s.run.event, null);
   game.retire(s);
   assert.strictEqual(game.autoStep(s, mulberry(7)), null);
@@ -1879,7 +1915,7 @@ test('自动机缘：翻不了机缘时代为静坐，静坐会寿尽时不坐�
   const step = game.autoStep(s, mulberry(7));
   assert.strictEqual(step.result.title, '静坐');
   assert.strictEqual(step.stuck, false);
-  assert.strictEqual(s.run.age, 1);
+  assert.strictEqual(s.run.age, 5);
   s.run.chance = 0;
   s.run.age = game.maxLife(s) - game.meditateYears(s);
   const before = JSON.stringify(s);
@@ -2937,6 +2973,7 @@ test('突发余波：概率、秘法、机缘速度、属性和负机缘都按�
   const backlash = born();
   backlash.run.realm = 2;
   backlash.run.skills = [{ id: 'arc_sw1_sw2', level: 1 }];
+  backlash.run.chance = 60;
   assert.strictEqual(game.attrs(backlash).edge, 49);
   near(game.qiRate(backlash), 6 * 1.48);
   backlash.run.aftermath = { id: 'backlash', remaining: 3 };
