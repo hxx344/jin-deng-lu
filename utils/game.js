@@ -92,6 +92,9 @@ const BORROW_TRIB = 0.15;
 const BOLT_BORROW_CHANCE = 10;
 const BOLT_BORROW_TRIB = 0.1;
 const SCATTER_YEARS = 10;
+// 散功淬体：被考的每项属性加天劫要求值的这个比例（至少 1），每个大境界最多淬这么多次。
+const SCATTER_ATTR = 0.08;
+const SCATTER_MAX = 2;
 const MAX_LOG = 30;
 const MAX_EPITAPHS = 10;
 const RECENT_EVENTS = 8;
@@ -273,6 +276,7 @@ function newRun(state, rng) {
     heaven: state.heaven || 0,
     path: '',
     realmChoices: 0,
+    scatters: 0,
     rootRolls: ROOT_REROLLS,
     root: '',
     realm: 0,
@@ -2951,6 +2955,7 @@ function enterNextRealm(state, info, lines) {
   const run = state.run;
   run.realm++;
   run.realmChoices = 0;
+  run.scatters = 0;
   run.stage = 0;
   run.qi = 0;
   if (hasSet(run, 'sword', 4)) run.forceLegacy = true;
@@ -3091,6 +3096,7 @@ function tribulationInfo(state) {
     return clamp(p + (1 - p) * p * again, minChance, 0.98);
   };
   const baseChance = tribulationChance(state, ratio);
+  const scatterAttr = run.scatters < SCATTER_MAX ? Math.max(1, Math.round(plan.req * SCATTER_ATTR)) : 0;
   const info = Object.assign(tribulationTerms(state, trib), {
     name: trib.name,
     aspect: plan.aspect,
@@ -3101,6 +3107,9 @@ function tribulationInfo(state) {
     borrowReady: run.chance >= BORROW_CHANCE,
     borrowCost: BORROW_CHANCE,
     scatterYears: SCATTER_YEARS,
+    scatterAttr: scatterAttr,
+    scatterLeft: SCATTER_MAX - run.scatters,
+    scatterText: scatterAttr ? boltRewardText(plan.tests, { attr: scatterAttr }) : '',
     demonOk: demonOk,
     gear: gear,
     parts: tribulationParts(state, ratio),
@@ -3116,6 +3125,19 @@ function tribulationInfo(state) {
     info.borrowCost = BOLT_BORROW_CHANCE;
   }
   return info;
+}
+
+// 散功：必败但不死。散去的修为淬进这场天劫考的属性里，每个大境界只淬前 SCATTER_MAX 次，之后再散功只剩保命。
+function scatterQi(state, info, lines) {
+  const run = state.run;
+  run.age += SCATTER_YEARS;
+  run.qi = qiCap(state) * 0.5;
+  run.age = Math.min(run.age, maxLife(state) - 1);
+  lines.push('散功：折寿 ' + SCATTER_YEARS + ' 年，不会身死', '灵气散去一半');
+  if (!info.scatterAttr) return;
+  info.tests.forEach((k) => { run.stats[k] += info.scatterAttr; });
+  run.scatters++;
+  lines.push('散功淬体：' + info.scatterText);
 }
 
 // 逐道雷：必接的雷用 endure 硬接或 borrow 借势，一道没接住整场就败；也可以 scatter 散功。
@@ -3141,10 +3163,7 @@ function attemptBolt(state, rng, method, info) {
   };
   if (method === 'scatter') {
     run.lastTrib = { name: info.name, chance: 0, method: method };
-    run.age += SCATTER_YEARS;
-    run.qi = qiCap(state) * 0.5;
-    run.age = Math.min(run.age, maxLife(state) - 1);
-    lines.push('散功：折寿 ' + SCATTER_YEARS + ' 年，不会身死', '灵气散去一半');
+    scatterQi(state, info, lines);
   } else if (method === 'settle') {
     out.success = true;
     settle(bolts.gains);
@@ -3202,7 +3221,7 @@ function attemptBolt(state, rng, method, info) {
   return out;
 }
 
-// method：endure 硬抗（默认），borrow 耗机缘借势，scatter 散功保命。
+// method：endure 硬抗（默认），borrow 耗机缘借势，scatter 散功淬体。
 function attemptTribulation(state, rng, method) {
   const run = state.run;
   const info = tribulationInfo(state);
@@ -3221,11 +3240,7 @@ function attemptTribulation(state, rng, method) {
   }
   let success = false;
   if (method === 'scatter') {
-    run.age += SCATTER_YEARS;
-    run.qi = qiCap(state) * 0.5;
-    run.age = Math.min(run.age, maxLife(state) - 1);
-    lines.push('散功：折寿 ' + SCATTER_YEARS + ' 年，不会身死');
-    lines.push('灵气散去一半');
+    scatterQi(state, info, lines);
   } else {
     success = rng() < chance;
     if (success) {
@@ -3477,6 +3492,7 @@ function normalizeRun(state, raw, rng) {
   }
   run.choices = toCount(raw.choices);
   run.realmChoices = toCount(raw.realmChoices, run.choices);
+  run.scatters = toCount(raw.scatters, SCATTER_MAX);
   // 更新前已经开始的这一世沿用原来的考核，不补抽劫相。
   run.tribs = validAspects(raw.tribs) || TRIB_ASPECTS.slice(0, SEA_REALM).map((aspect) => aspect.id);
   run.heaven = toCount(raw.heaven, state.heavenMax);
@@ -3846,6 +3862,9 @@ module.exports = {
   TRIB_ASPECTS,
   PATH_COUNTER,
   HEAVEN_MAX,
+  SCATTER_YEARS,
+  SCATTER_ATTR,
+  SCATTER_MAX,
   tribulationChance,
   PATH_MAIN,
   PATH_WEAK,

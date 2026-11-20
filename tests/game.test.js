@@ -2484,6 +2484,46 @@ test('渡劫三法：整场渡的天劫借势扣三十次机缘并加成功率�
   assert.strictEqual(scattered.run.lastTrib.method, 'scatter');
 });
 
+test('散功淬体：被考属性各加要求值的 8%，每个大境界只淬两次，破境后重新计数', () => {
+  const full = (s) => { s.run.stage = 2; s.run.qi = game.qiCap(s); return s; };
+  const s = born();
+  s.run.realm = 1;
+  s.run.stats = { edge: 30, body: 30, mind: 30 };
+  full(s);
+  let info = game.tribulationInfo(s);
+  const gain = Math.max(1, Math.round(info.req * 0.08));
+  assert.strictEqual(info.scatterAttr, gain);
+  assert.strictEqual(info.scatterLeft, 2);
+  const untested = ['edge', 'body', 'mind'].filter((k) => info.tests.indexOf(k) < 0);
+  const chance = info.chance;
+  const r = game.attemptTribulation(s, () => 0, 'scatter');
+  assert.strictEqual(r.lines[r.lines.length - 1], '散功淬体：' + info.scatterText);
+  info.tests.forEach((k) => assert.strictEqual(s.run.stats[k], 30 + gain));
+  untested.forEach((k) => assert.strictEqual(s.run.stats[k], 30));
+  assert.strictEqual(s.run.realm, 1);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0).run.scatters, 1);
+  full(s);
+  assert.ok(game.tribulationInfo(s).chance > chance);
+
+  game.attemptTribulation(s, () => 0, 'scatter');
+  info.tests.forEach((k) => assert.strictEqual(s.run.stats[k], 30 + gain * 2));
+  full(s);
+  info = game.tribulationInfo(s);
+  assert.strictEqual(info.scatterAttr, 0);
+  assert.strictEqual(info.scatterLeft, 0);
+  const third = game.attemptTribulation(s, () => 0, 'scatter');
+  assert.deepStrictEqual(third.lines, ['散功：折寿 10 年，不会身死', '灵气散去一半']);
+  info.tests.forEach((k) => assert.strictEqual(s.run.stats[k], 30 + gain * 2));
+
+  full(s);
+  assert.strictEqual(game.attemptTribulation(s, () => 0, 'endure').broke, true);
+  assert.strictEqual(s.run.scatters, 0);
+
+  // 引气劫要求低，按 8% 不足 1 点时保底 +1
+  const low = lateStage(born());
+  assert.strictEqual(game.tribulationInfo(low).scatterAttr, 1);
+});
+
 // 引气劫必接的雷全用随机数 0 接住，停在余雷阶段。
 function toExtra(s) {
   for (let i = 0; i < game.TRIBS[0].bolts.length; i++) {
@@ -2599,7 +2639,7 @@ test('引气劫逐道雷：渡到一半可以散功，必接阶段不能收劫�
   const cap = game.qiCap(s);
   const r = game.attemptTribulation(s, () => 0, 'scatter');
   assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, dead: r.dead }, { success: false, done: true, broke: false, dead: false });
-  assert.deepStrictEqual(r.lines, ['散功：折寿 10 年，不会身死', '灵气散去一半']);
+  assert.deepStrictEqual(r.lines, ['散功：折寿 10 年，不会身死', '灵气散去一半', '散功淬体：躯、神各 +1']);
   assert.strictEqual(s.run.trib, null);
   assert.strictEqual(s.run.tribBoon, 0);
   assert.strictEqual(s.run.age, 10);
