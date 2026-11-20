@@ -98,6 +98,8 @@ function friendlyError(error) {
   if (code === '23505') return '成绩已存在，稍后会自动覆盖';
   if (code === 'PGRST301') return '登录已过期，请重新登录';
   if (code === '401' || code === '403') return '登录状态失效，请重新登录';
+  // wx.request 在连接层失败时只有一串底层报错，玩家看不懂也处理不了。
+  if (/wx\.request failed|request:fail|net::ERR_/i.test(String(error.message || ''))) return '网络不稳，暂时连不上云端，请稍后再试';
   return error.message || '云端暂时不可用';
 }
 

@@ -6,6 +6,7 @@ const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, pickSave, fri
 const SAVE_KEY = 'jindeng_save_v1';
 const SAVE_META_KEY = 'jindeng_save_meta_v1';
 const DAO_NAME_KEY = 'jindeng_dao_name_v1';
+const BOARD_KEY = 'jindeng_board_v1';
 const CLOUD_PUSH_INTERVAL_MS = 30000;
 const TICK_MS = 250;
 const SAVE_INTERVAL_MS = 10000;
@@ -343,6 +344,15 @@ Page({
       daoName = '';
     }
     this.daoName = String(daoName).slice(0, 12);
+    // 上次读到的榜单留在本机：云端一时连不上，竞技场也还有对手可打。
+    let board = null;
+    try {
+      board = wx.getStorageSync(BOARD_KEY);
+    } catch (e) {
+      board = null;
+    }
+    this.boardData = Array.isArray(board) ? board.filter((row) => row && typeof row === 'object') : [];
+    if (this.boardData.length) this.patchCloud({ rows: this.boardRows(this.boardData) });
     let muted = false;
     try {
       muted = !!wx.getStorageSync(MUTE_KEY);
@@ -493,7 +503,8 @@ Page({
       daoName: name || '未设置',
       nameDraft: name,
       editing: false,
-      myRank: 0
+      myRank: 0,
+      rows: this.boardRows(this.boardData)
     });
   },
 
@@ -714,10 +725,32 @@ Page({
       board = { data: [], error: e };
     }
     if (board.error) {
-      this.patchCloud({ boardLoading: false, boardError: friendlyError(board.error), rows: [] });
+      // 读不到新榜单时留着上次的，不清空。
+      this.patchCloud({
+        boardLoading: false,
+        boardError: friendlyError(board.error) + (this.boardData.length ? '。下面是上次读到的榜单' : '')
+      });
       return;
     }
-    const rows = board.data.map((row, i) => ({
+    this.boardData = board.data;
+    try {
+      wx.setStorageSync(BOARD_KEY, board.data);
+    } catch (e) {
+      console.error('保存榜单失败', e);
+    }
+    this.patchCloud({ rows: this.boardRows(board.data), boardLoading: false });
+    if (!this.cloudUid) return;
+    let rank;
+    try {
+      rank = await cloudSync.fetchMyRank(scoreOf(this.state));
+    } catch (e) {
+      return;
+    }
+    if (!rank.error) this.patchCloud({ myRank: rank.data || 0 });
+  },
+
+  boardRows(data) {
+    return data.map((row, i) => ({
       id: String(row.owner_id),
       rank: i + 1,
       name: row.dao_name || '无名',
@@ -727,15 +760,6 @@ Page({
       totalWick: Number(row.total_wick) || 0,
       mine: !!this.cloudUid && row.owner_id === this.cloudUid
     }));
-    this.patchCloud({ rows: rows, boardLoading: false });
-    if (!this.cloudUid) return;
-    let rank;
-    try {
-      rank = await cloudSync.fetchMyRank(scoreOf(this.state));
-    } catch (e) {
-      return;
-    }
-    if (!rank.error) this.patchCloud({ myRank: rank.data || 0 });
   },
 
   showBanner(text) {

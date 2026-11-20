@@ -3,6 +3,7 @@
 // 页面会明确显示「当前环境不支持云服务」，不会假装同步成功。
 const publicConfig = require('./cloud-config');
 const { createDiagnosticWx } = require('./workbuddy-cloud-diagnostics');
+const { createRetryWx } = require('./cloud-retry');
 
 let cloud = null;
 let unavailableReason = '';
@@ -15,7 +16,7 @@ if (typeof wx === 'undefined' || typeof wx.request !== 'function') {
     cloud = createMiniProgramWorkBuddyCloud({
       endpoint: publicConfig.endpoint,
       publishableKey: publicConfig.publishableKey,
-      wx: createDiagnosticWx(wx)
+      wx: createDiagnosticWx(createRetryWx(wx))
     });
   } catch (e) {
     unavailableReason = '云 SDK 初始化失败：' + (e && e.message ? e.message : '未知错误');

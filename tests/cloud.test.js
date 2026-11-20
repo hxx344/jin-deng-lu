@@ -1,6 +1,7 @@
 const assert = require('node:assert');
 const test = require('node:test');
 const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, pickSave, friendlyError } = require('../utils/cloud-score');
+const { createRetryWx, canRetry } = require('../utils/cloud-retry');
 
 // 只造 scoreOf 真正会读的字段，避免把规则层整份状态搬进测试。
 function aliveState(realm, stage, extra) {
@@ -108,4 +109,105 @@ test('错误文案：常见错误码翻成人话，未知错误保留原消息',
   assert.strictEqual(friendlyError({ code: 'PGRST301' }), '登录已过期，请重新登录');
   assert.strictEqual(friendlyError({ message: '网络超时' }), '网络超时');
   assert.strictEqual(friendlyError(null), '云端暂时不可用');
+});
+
+test('错误文案：断网、连接被关闭这类网络错误不把原始报错甩给玩家', () => {
+  const text = '网络不稳，暂时连不上云端，请稍后再试';
+  assert.strictEqual(friendlyError({ message: 'Error: wx.request failed: request:fail errcode:-100 cronet_error_code:-100 error_msg:net::ERR_CONNECTION_CLOSED' }), text);
+  assert.strictEqual(friendlyError({ code: 'CLIENT_EXCEPTION', message: 'wx.request failed: request:fail timeout' }), text);
+  assert.strictEqual(friendlyError(new Error('wx.request failed: request:fail -109:net::ERR_ADDRESS_UNREACHABLE')), text);
+});
+
+// 假的 wx.request：按脚本依次回成功或失败，记录每次发出的请求。
+function fakeWx(script) {
+  const sent = [];
+  return {
+    sent: sent,
+    request(req) {
+      sent.push(req);
+      const step = script[sent.length - 1];
+      const task = { aborted: false, abort() { task.aborted = true; req.fail({ errMsg: 'request:fail abort' }); } };
+      if (step === 'hang') return task;
+      if (step === 'ok') req.success({ statusCode: 200, data: '[]', header: {} });
+      else req.fail({ errMsg: step });
+      return task;
+    },
+    getStorageSync: (key) => 'value-of-' + key
+  };
+}
+
+const CLOSED = 'request:fail errcode:-100 cronet_error_code:-100 error_msg:net::ERR_CONNECTION_CLOSED';
+// 不真的等：把重试间隔记下来，由测试手动放行。
+function manualTimers() {
+  const pending = [];
+  return {
+    pending: pending,
+    setTimeout: (fn, ms) => { pending.push({ fn: fn, ms: ms }); return pending.length; },
+    clearTimeout: (id) => { pending[id - 1] = null; },
+    run() { const next = pending.shift(); if (next) next.fn(); }
+  };
+}
+
+test('断线重试：回写中途断开会自动重发，成功后只回调一次', () => {
+  const wx = fakeWx([CLOSED, CLOSED, 'ok']);
+  const timers = manualTimers();
+  const results = [];
+  createRetryWx(wx, timers).request({ url: 'u', method: 'PATCH', success: (r) => results.push(r.statusCode), fail: (r) => results.push(r.errMsg) });
+  assert.strictEqual(wx.sent.length, 1);
+  assert.strictEqual(wx.sent[0].timeout, 10000);
+  assert.deepStrictEqual(results, []);
+  timers.run();
+  timers.run();
+  assert.strictEqual(wx.sent.length, 3);
+  assert.deepStrictEqual(results, [200]);
+});
+
+test('断线重试：一直连不上时重发两次后把最后的错误交回去', () => {
+  const wx = fakeWx([CLOSED, CLOSED, CLOSED, CLOSED]);
+  const timers = manualTimers();
+  const results = [];
+  createRetryWx(wx, timers).request({ url: 'u', method: 'PATCH', success: () => results.push('ok'), fail: (r) => results.push(r.errMsg) });
+  timers.run();
+  timers.run();
+  timers.run();
+  assert.strictEqual(wx.sent.length, 3);
+  assert.deepStrictEqual(results, [CLOSED]);
+});
+
+test('断线重试：新建类请求、SDK 自己会重试的读请求、超时和流式请求不重发', () => {
+  assert.strictEqual(canRetry('POST', CLOSED), false);
+  assert.strictEqual(canRetry('GET', CLOSED), false);
+  assert.strictEqual(canRetry(undefined, CLOSED), false);
+  assert.strictEqual(canRetry('patch', CLOSED), true);
+  assert.strictEqual(canRetry('PATCH', 'request:fail timeout'), false);
+  assert.strictEqual(canRetry('PATCH', 'request:fail abort'), false);
+  const wx = fakeWx([CLOSED, CLOSED]);
+  const timers = manualTimers();
+  const results = [];
+  const retry = createRetryWx(wx, timers);
+  retry.request({ url: 'u', method: 'POST', fail: (r) => results.push(r.errMsg) });
+  const chunked = { url: 'u', method: 'PATCH', enableChunked: true, fail: (r) => results.push(r.errMsg) };
+  retry.request(chunked);
+  assert.strictEqual(timers.pending.length, 0);
+  assert.strictEqual(wx.sent[1], chunked);
+  assert.deepStrictEqual(results, [CLOSED, CLOSED]);
+});
+
+test('断线重试：等待重发期间取消就不再发，进行中的请求照常取消；存储接口原样透传', () => {
+  const timers = manualTimers();
+  const waiting = fakeWx([CLOSED, 'ok']);
+  const results = [];
+  const task = createRetryWx(waiting, timers).request({ url: 'u', method: 'PATCH', fail: (r) => results.push(r.errMsg) });
+  task.abort();
+  timers.run();
+  assert.strictEqual(waiting.sent.length, 1);
+  assert.deepStrictEqual(results, ['request:fail abort']);
+
+  const flying = fakeWx(['hang']);
+  const retry = createRetryWx(flying, timers);
+  const flyingResults = [];
+  retry.request({ url: 'u', fail: (r) => flyingResults.push(r.errMsg) }).abort();
+  assert.strictEqual(flying.sent.length, 1);
+  assert.deepStrictEqual(flyingResults, ['request:fail abort']);
+  assert.strictEqual(retry.getStorageSync('k'), 'value-of-k');
 });
