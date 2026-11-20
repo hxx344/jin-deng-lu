@@ -158,6 +158,10 @@
       <text class="main-sub">{{hero.powderSub}}</text>
     </view>
   </view>
+  <view wx:if="{{hero.train}}" class="mountain-entry" hover-class="opt-hover" bindtap="onTrain">
+    <text class="mountain-entry-title">{{hero.train}}</text>
+    <text class="mountain-entry-sub">{{hero.trainSub}}</text>
+  </view>
   <view wx:if="{{hero.mountainTitle}}" class="mountain-entry" hover-class="opt-hover" bindtap="onMountain">
     <text class="mountain-entry-title">{{hero.mountainTitle}}</text>
     <text class="mountain-entry-sub">{{hero.mountainSub}}</text>
@@ -639,6 +643,80 @@
             </view>
           </view>
         </scroll-view>
+      </block>
+
+      <block wx:elif="{{sheet.kind === 'train'}}">
+        <view class="sheet-top">
+          <view class="sheet-type">历练</view>
+          <view class="sheet-close" bindtap="onTrainClose">关闭</view>
+        </view>
+        <view class="sheet-title">{{sheet.title}}</view>
+        <view class="sheet-text">{{sheet.text}}</view>
+        <view wx:if="{{sheet.me}}" class="train-me">{{sheet.me}}</view>
+        <scroll-view scroll-y class="sheet-body cloud-body">
+          <view wx:if="{{sheet.note}}" class="empty">{{sheet.note}}</view>
+          <view wx:for="{{sheet.stages}}" wx:key="index" class="rank-row">
+            <text class="rank-no">{{item.no}}</text>
+            <view class="rank-info">
+              <text class="rank-name">{{item.name}}{{item.cleared ? ' · 已过' : ''}}</text>
+              <text class="rank-realm">{{item.text}}</text>
+              <text class="rank-realm">{{item.sub}}</text>
+              <text wx:if="{{item.reason}}" class="rank-realm train-reason">{{item.reason}}</text>
+            </view>
+            <view class="arena-btn {{item.off ? 'arena-btn-off' : ''}}" data-index="{{item.index}}" bindtap="onTrainFight">
+              <text class="arena-btn-title">{{item.cleared ? '再打' : '开打'}}</text>
+              <text class="arena-btn-sub">胜率 {{item.pct}}%</text>
+            </view>
+          </view>
+        </scroll-view>
+      </block>
+
+      <block wx:elif="{{sheet.kind === 'battle'}}">
+        <view class="sheet-top">
+          <view class="sheet-type">历练 · {{sheet.over ? '分出胜负' : '战斗中'}}</view>
+          <view class="bt-time">{{sheet.time}}</view>
+        </view>
+        <view class="bt-bars">
+          <view class="bt-side">
+            <view class="bt-name">{{sheet.me.name}}</view>
+            <view class="bt-bar">
+              <view class="bt-fill bt-fill-me" style="width: {{sheet.me.pct}}%"></view>
+              <view wx:if="{{sheet.me.shield}}" class="bt-shield" style="width: {{sheet.me.shield}}%"></view>
+            </view>
+            <view class="bt-hp">{{sheet.me.hp}} / {{sheet.me.max}}</view>
+          </view>
+          <view class="bt-vs">对</view>
+          <view class="bt-side bt-side-foe">
+            <view class="bt-name">{{sheet.foe.name}}</view>
+            <view class="bt-bar">
+              <view class="bt-fill bt-fill-foe" style="width: {{sheet.foe.pct}}%"></view>
+            </view>
+            <view class="bt-hp">{{sheet.foe.hp}} / {{sheet.foe.max}}</view>
+          </view>
+        </view>
+        <view class="bt-field">
+          <view class="bt-fig bt-fig-me {{sheet.meAct ? 'bt-lunge-r' + sheet.meAct : ''}}">
+            <view class="bt-fig-in {{sheet.meHit ? 'bt-shake' + sheet.meHit : ''}} {{sheet.me.hp ? '' : 'bt-down'}}">
+              <view class="bt-head"></view>
+              <view class="bt-body"></view>
+            </view>
+          </view>
+          <view class="bt-fig bt-fig-foe {{sheet.foeAct ? 'bt-lunge-l' + sheet.foeAct : ''}}">
+            <view class="bt-fig-in {{sheet.foeHit ? 'bt-shake' + sheet.foeHit : ''}} {{sheet.foe.hp ? '' : 'bt-down'}}">
+              <view class="bt-head"></view>
+              <view class="bt-body"></view>
+            </view>
+          </view>
+          <text wx:for="{{sheet.pops}}" wx:key="key" class="bt-pop bt-pop-{{item.side}} bt-pop-{{item.tone}}">{{item.text}}</text>
+        </view>
+        <view class="bt-log">
+          <view wx:for="{{sheet.lines}}" wx:key="key" class="bt-line">{{item.text}}</view>
+        </view>
+        <view class="sheet-actions">
+          <view class="sheet-btn sheet-btn-plain {{sheet.over ? 'bt-btn-off' : ''}}" bindtap="onBattleRetreat">撤</view>
+          <view class="sheet-btn sheet-btn-plain {{sheet.fast ? 'bt-btn-on' : ''}}" bindtap="onBattleSpeed">两倍速</view>
+          <view class="sheet-btn" bindtap="onBattleSkip">跳过</view>
+        </view>
       </block>
 
       <block wx:elif="{{sheet.kind === 'cloud'}}">

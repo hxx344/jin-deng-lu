@@ -82,6 +82,12 @@ const SOUNDS = {
 const STORM_HIT_MS = 2800;
 // 逐道雷：点下“接”到揭晓之间停这么久。
 const BOLT_FALL_MS = 700;
+// 战斗播放：每隔这么久推进 0.1 秒战斗时间（两倍速一次推进两步）；打完后停一小会儿再结算。
+const BATTLE_STEP_MS = 100;
+const BATTLE_LINGER_MS = 700;
+const BATTLE_LOG_LINES = 3;
+const BATTLE_POPS = 4;
+const BATTLE_MY_HITS = ['hit', 'crit', 'double', 'extra', 'execute', 'thorns'];
 const FIDGETS = ['yawn', 'look', 'doze', 'scratch'];
 const FIDGET_MIN_MS = 7000;
 const FIDGET_SPAN_MS = 8000;
@@ -299,6 +305,11 @@ Page({
     this.deadOpen = this.state.run.phase === 'dead';
     this.cloudOpen = false;
     this.arenaOpen = false;
+    this.trainOpen = false;
+    this.trainCache = null;
+    this.battle = null;
+    this.battleTimer = null;
+    this.battleSpeed = 1;
     this.cloudSyncing = false;
     this.cloudLoggingIn = false;
     this.cloudUid = null;
@@ -376,6 +387,7 @@ Page({
     audio.pauseBgm();
     this.stopLoop();
     this.stopAct();
+    this.stopBattle();
     this.save();
   },
 
@@ -788,7 +800,7 @@ Page({
       this.autoStuck = false;
       return;
     }
-    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
+    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.trainOpen || this.battle || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
     // 没有稳妥选项的机缘留给玩家，等他处理完再接着走。
     if (this.autoStuck && run.event) return;
     this.autoStuck = false;
@@ -1004,7 +1016,9 @@ Page({
       mountainSub: mountain ? (mountainNotice || '灵材 ' + run.materials + (run.sect ? ' · 管理宗门' : (run.cave ? ' · 修建设施' : ' · 开辟洞府'))) : '',
       powder: powder.visible ? '服散续命' : '',
       powderSub: powder.visible ? (powder.left ? '耗 ' + game.formatNumber(powder.cost) + ' 灵气，燃寿 +' + powder.years + ' 年，还能服 ' + powder.left + ' 次' : '这一世已经服不动了') : '',
-      powderOff: !powder.ready
+      powderOff: !powder.ready,
+      train: !boarding && run.realm >= 1 ? '下山历练' : '',
+      trainSub: '已过 ' + run.battle.cleared + ' / ' + game.TRAIN_STAGES.length + ' 关 · 每场耗 1 次机缘、1 年寿元'
     };
   },
 
@@ -1129,6 +1143,12 @@ Page({
           '胜了积累论道积分，解锁竞技场称号。对手越强，积分越多。败了折损 3 年寿元。',
           '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
         ]),
+        sec('历练', [
+          '引气之后，主按钮下面多出“下山历练”。关卡一关一关打，每场耗 1 次机缘、1 年寿元，也算进劫期。',
+          '战斗是他自己打的：锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
+          '开打前能看到胜率。打的时候可以两倍速、跳过，或者中途撤走：撤走按败算，但只折 1 年寿元；打到底败了折 2 年。赢了得一笔灵气，头一回过关给得多。',
+          '这一世过了几关只管这一世，换一世从头打。'
+        ]),
         sec('身死与轮回', [
           '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
           '灯芯用来点亮“灯纹”页里永久生效的加成，然后重新投胎，挑一副根骨。',
@@ -1238,6 +1258,174 @@ Page({
     this.afterAction();
   },
 
+  // 历练：关卡列表。胜率要跑几十场模拟，结果缓存到下一次状态变化。
+  trainSheet() {
+    const s = this.state;
+    if (!this.trainCache) this.trainCache = game.trainView(s);
+    const v = this.trainCache;
+    const me = v.me;
+    const stages = v.stages.map((stage) => ({
+      index: stage.index,
+      no: stage.index + 1,
+      name: stage.name,
+      cleared: stage.cleared,
+      text: stage.text,
+      sub: stage.layer + ' · 气血 ' + game.formatNumber(stage.hp) + (stage.skill ? ' · 会使「' + stage.skill + '」' : '') + ' · 胜：灵气 +' + game.formatNumber(stage.qi),
+      pct: percent(stage.chance),
+      reason: stage.reason,
+      off: !!stage.reason
+    })).reverse();
+    return {
+      kind: 'train',
+      title: '下山历练 · 已过 ' + v.cleared + ' / ' + v.total + ' 关',
+      text: '每场耗 1 次机缘、' + v.years + ' 年寿元，计入劫期。他自己打，你只管看：可以两倍速、跳过，或者中途撤走。败了折寿 ' + v.loseYears + ' 年，撤走折 ' + v.retreatYears + ' 年。',
+      me: me ? '气血 ' + game.formatNumber(me.hp) + ' · 攻击 ' + game.formatNumber(me.atk) + ' · 每 ' + me.interval.toFixed(2) + ' 秒出手 · 减伤 ' + percent(me.reduce) + '% · 暴击 ' + percent(me.crit) + '%' : '',
+      stages: stages,
+      note: v.cleared >= v.total ? '这一带的关都过了。守关的还没露面。' : ''
+    };
+  },
+
+  onTrain() {
+    const run = this.state.run;
+    if (this.act === 'thunder' || run.phase !== 'alive' || this.battle) return;
+    audio.play('tap');
+    this.guideOpen = false;
+    this.cloudOpen = false;
+    this.arenaOpen = false;
+    this.tribOpen = false;
+    this.mergeOpen = false;
+    this.trainCache = null;
+    this.trainOpen = true;
+    this.refresh();
+  },
+
+  onTrainClose() {
+    audio.play('tap');
+    this.trainOpen = false;
+    this.refresh();
+  },
+
+  onTrainFight(e) {
+    if (this.battle) return;
+    const index = Number(e.currentTarget.dataset.index);
+    const reason = game.trainReason(this.state, index);
+    if (reason) {
+      audio.play('bad');
+      this.showBanner(reason);
+      return;
+    }
+    const fight = game.trainStart(this.state, index, Math.random);
+    if (!fight) return;
+    this.trainOpen = false;
+    this.battle = {
+      fight: fight, next: 0, step: 0, speed: this.battleSpeed || 1, over: false,
+      me: fight.me.max, foe: fight.foe.max, shield: 0,
+      lines: [], pops: [], key: 0, meHit: 0, foeHit: 0, meAct: 0, foeAct: 0
+    };
+    audio.play('pick');
+    this.save();
+    this.refresh();
+    this.battleTimer = setInterval(() => this.battleTick(), BATTLE_STEP_MS);
+  },
+
+  battleView() {
+    const b = this.battle;
+    const fight = b.fight;
+    const pct = (value, max) => Math.max(0, Math.min(100, Math.round(100 * value / max)));
+    return {
+      kind: 'battle',
+      time: (b.step / 10).toFixed(1) + ' 秒',
+      fast: b.speed > 1,
+      over: b.over,
+      me: { name: fight.me.name, hp: b.me, max: fight.me.max, pct: pct(b.me, fight.me.max), shield: pct(b.shield, fight.me.max) },
+      foe: { name: fight.foe.name, hp: b.foe, max: fight.foe.max, pct: pct(b.foe, fight.foe.max) },
+      lines: b.lines,
+      pops: b.pops,
+      meHit: b.meHit,
+      foeHit: b.foeHit,
+      meAct: b.meAct,
+      foeAct: b.foeAct
+    };
+  },
+
+  // 把时间轴上的一件事演出来：改气血、记一行战报、飘一个数字。
+  battleEvent(b, e) {
+    const foe = b.fight.foe.name;
+    const flip = (value) => (value === 1 ? 2 : 1);
+    const pop = (side, text, tone) => {
+      b.pops = b.pops.concat({ key: ++b.key, side: side, text: text, tone: tone }).slice(-BATTLE_POPS);
+    };
+    let text = e.text;
+    if (e.who === 'me' && BATTLE_MY_HITS.indexOf(e.kind) >= 0) {
+      b.foeHit = flip(b.foeHit);
+      if (e.kind !== 'thorns') b.meAct = flip(b.meAct);
+      pop('foe', '-' + e.value, e.kind === 'crit' || e.kind === 'execute' ? 'crit' : 'hit');
+      const lead = { hit: '你出手', crit: '暴击', thorns: '反震' }[e.kind] || e.text;
+      text = lead + ' · ' + foe + ' -' + e.value;
+      audio.play(e.kind === 'crit' || e.kind === 'execute' ? 'coin' : 'tap');
+    } else if (e.who === 'foe' && (e.kind === 'hit' || e.kind === 'skill')) {
+      b.meHit = flip(b.meHit);
+      b.foeAct = flip(b.foeAct);
+      pop('me', '-' + e.value, e.kind === 'skill' ? 'crit' : 'hit');
+      text = (e.kind === 'skill' ? e.text : foe + '出手') + ' · 你 -' + e.value;
+      if (e.kind === 'skill') wx.vibrateShort({ type: 'light' });
+    } else if (e.kind === 'heal' || e.kind === 'revive') {
+      pop('me', '+' + e.value, 'heal');
+      text = e.text + ' · 气血 +' + e.value;
+    } else if (e.kind === 'shield') {
+      pop('me', '盾 ' + e.value, 'heal');
+    }
+    b.me = e.me;
+    b.foe = e.foe;
+    b.shield = e.shield;
+    if (text) b.lines = b.lines.concat({ key: ++b.key, text: text }).slice(-BATTLE_LOG_LINES);
+  },
+
+  battleTick() {
+    const b = this.battle;
+    if (!b || b.over) return;
+    const timeline = b.fight.timeline;
+    b.step += b.speed;
+    while (b.next < timeline.length && timeline[b.next].t * 10 <= b.step + 1e-6) this.battleEvent(b, timeline[b.next++]);
+    if (b.next >= timeline.length) {
+      // 最后一下留一小会儿再结算，让人看清是怎么收场的。
+      b.over = true;
+      clearInterval(this.battleTimer);
+      this.battleTimer = setTimeout(() => this.endBattle(false), BATTLE_LINGER_MS);
+    }
+    this.setData({ sheet: this.battleView() });
+  },
+
+  stopBattle() {
+    clearInterval(this.battleTimer);
+    clearTimeout(this.battleTimer);
+    this.battleTimer = null;
+  },
+
+  endBattle(retreat) {
+    if (!this.battle) return;
+    this.stopBattle();
+    this.battle = null;
+    this.finishChoice(game.trainFinish(this.state, retreat), { train: true });
+  },
+
+  onBattleSpeed() {
+    const b = this.battle;
+    if (!b) return;
+    audio.play('tap');
+    b.speed = b.speed > 1 ? 1 : 2;
+    this.battleSpeed = b.speed;
+    this.setData({ sheet: this.battleView() });
+  },
+
+  onBattleSkip() {
+    this.endBattle(false);
+  },
+
+  // 已经分出胜负就不算撤了。
+  onBattleRetreat() {
+    if (this.battle && !this.battle.over) this.endBattle(true);
+  },
   tribulationView() {
     const yuan = game.yuanTrialView(this.state);
     if (yuan) {
@@ -1513,6 +1701,7 @@ Page({
   sheetView(power) {
     const s = this.state;
     const run = s.run;
+    if (this.battle) return this.battleView();
     if (this.cloudOpen) return { kind: 'cloud' };
     if (this.guideOpen) return this.guideView();
     if (this.chronicleOpen && run.phase === 'dead') return this.chronicleView();
@@ -1548,6 +1737,7 @@ Page({
       let nextText = '';
       if (!r.dead) {
         if (r.nextTrib) nextText = r.nextTrib;
+        else if (r.train) nextText = '再去历练';
         else if (r.nextMountain && !run.pending && game.mountainReady(s)) nextText = '返回山门';
         else if (r.voyage && game.atSea(run)) nextText = '继续探索';
         else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
@@ -1564,6 +1754,7 @@ Page({
       };
     }
     if (this.arenaOpen && run.phase === 'alive') return this.arenaView(power);
+    if (this.trainOpen && run.phase === 'alive') return this.trainSheet();
     if (this.seaOpen) {
       const sea = game.seaView(s);
       if (sea) return Object.assign({ kind: 'sea' }, sea);
@@ -1737,6 +1928,7 @@ Page({
   },
 
   afterAction() {
+    this.trainCache = null;
     this.refresh();
     this.save();
   },
@@ -1943,6 +2135,7 @@ Page({
       audio.play('tap');
       this.refresh();
     } else if (result && result.nextTrib) this.onTrib();
+    else if (result && result.train) this.onTrain();
     else this.onMain();
   },
 

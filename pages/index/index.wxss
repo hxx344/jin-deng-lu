@@ -3803,3 +3803,263 @@ button.sheet-btn::after {
   from { opacity: 0; transform: translateY(10rpx); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* 历练与战斗播放 */
+.train-me {
+  margin-top: 12rpx;
+  padding: 12rpx 20rpx;
+  border-radius: 18rpx;
+  background: rgba(127, 224, 168, 0.1);
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #bfe6cf;
+}
+
+.train-reason {
+  color: #e39a7a;
+}
+
+.bt-time {
+  font-size: 24rpx;
+  color: #8c8275;
+}
+
+.bt-bars {
+  display: flex;
+  align-items: flex-end;
+  margin-top: 20rpx;
+}
+
+.bt-side {
+  flex: 1;
+  min-width: 0;
+}
+
+.bt-side-foe {
+  text-align: right;
+}
+
+.bt-vs {
+  margin: 0 18rpx 34rpx;
+  font-size: 22rpx;
+  color: #8c8275;
+}
+
+.bt-name {
+  overflow: hidden;
+  font-size: 28rpx;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #f6e7c8;
+}
+
+.bt-bar {
+  position: relative;
+  height: 18rpx;
+  margin-top: 8rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.bt-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999rpx;
+  transition: width 0.2s ease-out;
+}
+
+.bt-fill-me {
+  left: 0;
+  background: linear-gradient(90deg, #7fe0a8, #1f8f66);
+}
+
+.bt-fill-foe {
+  right: 0;
+  background: linear-gradient(90deg, #c9532f, #ff9a7a);
+}
+
+.bt-shield {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 999rpx;
+  background: rgba(170, 215, 255, 0.6);
+  transition: width 0.2s ease-out;
+}
+
+.bt-hp {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #a99e8e;
+}
+
+.bt-field {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 190rpx;
+  margin-top: 8rpx;
+  padding: 0 110rpx;
+  border-bottom: 2rpx solid rgba(255, 200, 130, 0.18);
+}
+
+.bt-fig-in {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: 50% 100%;
+  transition: transform 0.4s ease-in, opacity 0.4s ease-in;
+}
+
+.bt-head {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #f1d9b5;
+}
+
+.bt-body {
+  width: 72rpx;
+  height: 84rpx;
+  margin-top: 4rpx;
+  border-radius: 28rpx 28rpx 10rpx 10rpx;
+  background: linear-gradient(180deg, #6fa8dc, #3d6fd6);
+}
+
+.bt-fig-foe .bt-head {
+  background: #b9a9a0;
+}
+
+.bt-fig-foe .bt-body {
+  width: 84rpx;
+  background: linear-gradient(180deg, #a8574a, #5c2a24);
+}
+
+.bt-down {
+  opacity: 0.35;
+  transform: rotate(80deg) translateY(10rpx);
+}
+
+.bt-fig-foe .bt-down {
+  transform: rotate(-80deg) translateY(10rpx);
+}
+
+/* 同一个动作连着触发时在两个同样的动画名之间来回切，才能重新播放。 */
+.bt-lunge-r1 {
+  animation: bt-lunge-ra 0.3s ease-out;
+}
+
+.bt-lunge-r2 {
+  animation: bt-lunge-rb 0.3s ease-out;
+}
+
+.bt-lunge-l1 {
+  animation: bt-lunge-la 0.3s ease-out;
+}
+
+.bt-lunge-l2 {
+  animation: bt-lunge-lb 0.3s ease-out;
+}
+
+.bt-shake1 {
+  animation: bt-shake-a 0.3s ease-out;
+}
+
+.bt-shake2 {
+  animation: bt-shake-b 0.3s ease-out;
+}
+
+@keyframes bt-lunge-ra {
+  35% { transform: translateX(90rpx); }
+}
+
+@keyframes bt-lunge-rb {
+  35% { transform: translateX(90rpx); }
+}
+
+@keyframes bt-lunge-la {
+  35% { transform: translateX(-90rpx); }
+}
+
+@keyframes bt-lunge-lb {
+  35% { transform: translateX(-90rpx); }
+}
+
+@keyframes bt-shake-a {
+  20% { transform: translateX(-10rpx); filter: brightness(2.2); }
+  50% { transform: translateX(8rpx); }
+  80% { transform: translateX(-4rpx); }
+}
+
+@keyframes bt-shake-b {
+  20% { transform: translateX(-10rpx); filter: brightness(2.2); }
+  50% { transform: translateX(8rpx); }
+  80% { transform: translateX(-4rpx); }
+}
+
+.bt-pop {
+  position: absolute;
+  top: 30rpx;
+  font-size: 30rpx;
+  font-weight: 800;
+  color: #ffe2b8;
+  opacity: 0;
+  animation: bt-pop 0.8s ease-out;
+  pointer-events: none;
+}
+
+.bt-pop-me {
+  left: 120rpx;
+}
+
+.bt-pop-foe {
+  right: 120rpx;
+}
+
+.bt-pop-crit {
+  font-size: 40rpx;
+  color: #ffb24a;
+}
+
+.bt-pop-heal {
+  color: #8fe6b0;
+}
+
+@keyframes bt-pop {
+  0% { opacity: 0; transform: translateY(20rpx); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-50rpx); }
+}
+
+.bt-log {
+  height: 132rpx;
+  margin-top: 14rpx;
+  overflow: hidden;
+}
+
+.bt-line {
+  overflow: hidden;
+  font-size: 24rpx;
+  line-height: 44rpx;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #cfc4b3;
+}
+
+.bt-line:last-child {
+  color: #f6e7c8;
+}
+
+.bt-btn-on {
+  background: rgba(255, 190, 100, 0.3);
+  color: #ffd9a0;
+}
+
+.bt-btn-off {
+  opacity: 0.4;
+}

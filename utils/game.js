@@ -2,6 +2,7 @@
 const content = require('./content');
 const combatPower = require('./combat-power');
 const mountain = require('./mountain');
+const battle = require('./battle');
 
 const SCHOOL_IDS = content.SCHOOL_IDS;
 const SCHOOLS = content.SCHOOLS;
@@ -31,6 +32,7 @@ const TRIB_ASPECTS = content.TRIB_ASPECTS;
 const PATH_COUNTER = content.PATH_COUNTER;
 const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
+const TRAIN_STAGES = content.TRAIN_STAGES;
 
 const BASE_QI_CAP = 100;
 const BASE_LIFE = 60;
@@ -298,6 +300,8 @@ function newRun(state, rng) {
     revived: false,
     wards: 0,
     sures: 0,
+    // 历练：cleared 是这一世已经过了几关，pending 是算完了、还没结算的那一场。
+    battle: { cleared: 0, pending: null },
     death: null
   };
 }
@@ -327,6 +331,8 @@ function createState(now, rng) {
     heavenMax: 0,
     // 见闻：每个事件里选过哪些选项，按选项下标记成位。
     known: {},
+    // 历练过到第几关的最高纪录，跨世保留。
+    trainBest: 0,
     run: null
   };
   state.run = newRun(state, rng || Math.random);
@@ -1207,13 +1213,13 @@ function generateEvent(state, rng, forcedType, excludeId) {
 
 function canDraw(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance >= 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.battle.pending && run.chance >= 1;
 }
 
 // 机缘用尽时只能静坐：耗 1 年寿元（劫期过了照样多折），让灵气和机缘跟着年岁涨。
 function canMeditate(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance < 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.battle.pending && run.chance < 1;
 }
 
 function meditateYears(state) {
@@ -1442,7 +1448,7 @@ const BIG_EFFECTS = {
 
 function canDrawBig(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.sudden && state.big >= 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.battle.pending && !run.sudden && state.big >= 1;
 }
 
 // 眼下能落下来的大机缘。
@@ -2115,7 +2121,7 @@ function autoResolve(state) {
 // stuck 为真表示这个机缘没有稳妥的选项，留在原处等玩家决定。
 function autoStep(state, rng) {
   const run = state.run;
-  if (!autoUnlocked(state) || run.phase !== 'alive' || atSea(run) || run.trib) return null;
+  if (!autoUnlocked(state) || run.phase !== 'alive' || atSea(run) || run.trib || run.battle.pending) return null;
   const out = { result: null, replaced: '', stuck: false };
   if (run.pending) {
     out.replaced = autoResolve(state);
@@ -2235,6 +2241,155 @@ function arenaFight(state, row, rng, times) {
   run.log = run.log.slice(-MAX_LOG);
   const dead = checkDeath(state);
   return { title: '竞技场', label: label, win: wins > 0, wins: wins, losses: losses, fights: fights, lines: lines, tags: tags, dead: dead };
+}
+// 历练：引气后可以下山打关卡。战斗自动进行，由 battle.js 一次算完，页面只负责播放。
+// 每场耗 1 次机缘和 1 年寿元（劫期过了照样多折），计入劫期；败了折寿，中途撤走折一半。
+const TRAIN_REALM = 1;
+const TRAIN_YEARS = 1;
+const TRAIN_LOSE_YEARS = 2;
+const TRAIN_RETREAT_YEARS = 1;
+// 赢了得的灵气，占丹田容量的比例：这一世头一回过这一关，和重打已经过了的关。
+const TRAIN_QI = 0.15;
+const TRAIN_QI_AGAIN = 0.05;
+
+function trainFighter(state) {
+  const run = state.run;
+  const counts = setCounts(run);
+  const schools = {};
+  SCHOOL_IDS.forEach((id) => {
+    schools[id] = { count: counts[id], power: 0 };
+  });
+  run.skills.forEach((entry) => {
+    const skill = skillInfo(entry.id);
+    // 藏经阁功法只改规则，不加战斗威力，但照算同系门数。
+    if (skill.tome || skillSuppressed(run, skill)) return;
+    schools[skill.school].power += (skill.arcane ? MAX_GRADE * 2 * 1.2 : entry.level) * pathMult(run, skill);
+  });
+  return battle.playerFighter({
+    name: '你',
+    attrs: attrs(state),
+    softCap: REALMS[run.realm].power.softCap,
+    demon: run.demon,
+    demonMode: run.mode === 'demon',
+    schools: schools
+  });
+}
+
+function trainFoe(state, index) {
+  return battle.foeFighter(TRAIN_STAGES[index], 1 + HEAVEN_REQ * state.run.heaven);
+}
+
+function trainYears(state) {
+  return TRAIN_YEARS + tribTerm(state).years;
+}
+
+// 第 index 关眼下打不了的原因；能打返回空串。
+function trainReason(state, index) {
+  const run = state.run;
+  const stage = TRAIN_STAGES[index];
+  if (run.phase !== 'alive') return '这一世已经结束';
+  if (run.realm < TRAIN_REALM) return REALMS[TRAIN_REALM].name + '之后才能下山历练';
+  if (!stage) return '没有这一关';
+  if (atSea(run)) return '人在枯海，回来再说';
+  if (run.event || run.pending || run.trib || run.battle.pending) return '先了结眼前的事';
+  if (index > run.battle.cleared) return '前一关还没过';
+  if (stage.layer > layerIndex(run)) return '还没到' + LAYERS[stage.layer];
+  if (run.chance < 1) return '机缘不足';
+  if (yearsLeft(state) <= trainYears(state) + TRAIN_LOSE_YEARS) return '寿元不足，经不起一败';
+  return '';
+}
+
+// 历练面板：各关的敌人、预估胜率和眼下能不能打。只列到“下一关”为止，后面的关不提前露底。
+function trainView(state) {
+  const run = state.run;
+  const open = run.phase === 'alive' && run.realm >= TRAIN_REALM;
+  const me = open ? trainFighter(state) : null;
+  const stages = [];
+  TRAIN_STAGES.forEach((stage, index) => {
+    if (!open || index > run.battle.cleared) return;
+    const foe = trainFoe(state, index);
+    stages.push({
+      index: index,
+      name: stage.name,
+      text: stage.text,
+      layer: LAYERS[stage.layer],
+      cleared: index < run.battle.cleared,
+      hp: foe.hp,
+      skill: stage.skill ? stage.skill.name : '',
+      chance: battle.estimate(me, foe),
+      qi: qiRewardAmount(state, index < run.battle.cleared ? TRAIN_QI_AGAIN : TRAIN_QI),
+      reason: trainReason(state, index)
+    });
+  });
+  return {
+    open: open,
+    reason: open ? '' : trainReason(state, 0),
+    cleared: run.battle.cleared,
+    total: TRAIN_STAGES.length,
+    best: state.trainBest,
+    years: open ? trainYears(state) : TRAIN_YEARS,
+    loseYears: TRAIN_LOSE_YEARS,
+    retreatYears: TRAIN_RETREAT_YEARS,
+    me: me ? { hp: me.hp, atk: Math.round(me.atk), interval: me.interval, reduce: me.reduce, crit: me.crit } : null,
+    stages: stages
+  };
+}
+
+// 开打：当场付机缘和寿元并算完整场，结果先记在 pending 里，等页面播完（或中途撤走）再由 trainFinish 结算。
+function trainStart(state, index, rng) {
+  if (trainReason(state, index)) return null;
+  const run = state.run;
+  const years = trainYears(state);
+  const overdue = years - TRAIN_YEARS;
+  const lines = ['耗 1 次机缘、' + years + ' 年寿元' + (overdue ? '（劫期已过，多折 ' + overdue + ' 年）' : '')];
+  // 战斗按开打时的状态算，不受这一年里涨的灵气影响。
+  const fight = battle.simulate(trainFighter(state), trainFoe(state, index), rng);
+  run.chance -= 1;
+  run.age += years;
+  passYears(state, years, lines, []);
+  run.realmChoices++;
+  run.battle.pending = { stage: index, win: fight.win, lines: lines };
+  return {
+    stage: index,
+    name: TRAIN_STAGES[index].name,
+    win: fight.win,
+    seconds: fight.seconds,
+    timeline: fight.timeline,
+    me: fight.me,
+    foe: fight.foe
+  };
+}
+
+// 结算打完的那一场。retreat 为真表示中途撤走：不论本来能不能赢都按败算，但折寿减半。
+function trainFinish(state, retreat) {
+  const run = state.run;
+  const pending = run.battle.pending;
+  if (run.phase !== 'alive' || !pending) return null;
+  run.battle.pending = null;
+  const stage = TRAIN_STAGES[pending.stage];
+  const before = snapshot(state);
+  const lines = pending.lines.slice();
+  const tags = [];
+  const win = pending.win && !retreat;
+  if (win) {
+    const first = pending.stage >= run.battle.cleared;
+    if (first) {
+      run.battle.cleared = pending.stage + 1;
+      state.trainBest = Math.max(state.trainBest, run.battle.cleared);
+    }
+    addQiWithLines(state, qiRewardAmount(state, first ? TRAIN_QI : TRAIN_QI_AGAIN), lines, tags);
+    tags.push('win');
+  } else {
+    const years = retreat ? TRAIN_RETREAT_YEARS : TRAIN_LOSE_YEARS;
+    loseLife(run, years);
+    lines.push('折寿 ' + years + ' 年');
+    tags.push('lose', 'life-');
+  }
+  const label = (win ? '打赢了' : (retreat ? '撤了，没打过' : '败给了')) + stage.name;
+  run.log.push({ age: run.age, title: '历练', text: label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  const dead = checkDeath(state);
+  return { title: '历练', label: label, win: win, retreat: !!retreat, lines: lines, tags: tags, dead: dead };
 }
 function choiceCosts(state, years, chances) {
   const desc = [];
@@ -3068,6 +3223,13 @@ function normalizeRun(state, raw, rng) {
     run.pending = { id: pending.id, level: pendingLevel };
   }
   run.sea = normalizeSea(run, raw.sea);
+  const saved = raw.battle && typeof raw.battle === 'object' ? raw.battle : {};
+  run.battle.cleared = toCount(saved.cleared, TRAIN_STAGES.length);
+  const fight = saved.pending;
+  if (fight && typeof fight === 'object' && toCount(fight.stage) === fight.stage && fight.stage <= run.battle.cleared && TRAIN_STAGES[fight.stage]) {
+    const lines = Array.isArray(fight.lines) ? fight.lines.slice(0, 4).map((line) => toText(line, 60)).filter((line) => line) : [];
+    run.battle.pending = { stage: fight.stage, win: fight.win === true, lines: lines };
+  }
   return run;
 }
 
@@ -3110,10 +3272,13 @@ function normalizeState(raw, now, rng) {
   state.oil = clamp(toNumber(raw.oil), 0, OIL_MAX);
   state.arenaPoints = toCount(raw.arenaPoints);
   state.run = normalizeRun(state, raw.run, rng);
+  state.trainBest = Math.max(toCount(raw.trainBest, TRAIN_STAGES.length), state.run.battle.cleared);
   // 挑好的前世功法在身死后、投胎选灵根前都要保留。
   const phase = state.run.phase;
   const carried = phase === 'dead' ? !!skillEntry(state.run, raw.carry) && !!findById(SKILLS, raw.carry) : phase === 'root' && !!findById(SKILLS, raw.carry);
   state.carry = carried && lampLevel(state, 'm1') > 0 ? raw.carry : '';
+  // 存档停在战斗播放途中：战斗开打时已经算完，读档直接按原结果结算。
+  trainFinish(state, false);
   if (state.run.phase === 'alive') checkDeath(state);
   return state;
 }
@@ -3267,6 +3432,12 @@ module.exports = {
   arenaWait,
   arenaStanding,
   ARENA_MAX,
+  TRAIN_STAGES,
+  trainFighter,
+  trainView,
+  trainReason,
+  trainStart,
+  trainFinish,
   SEA_REALM,
   SEA_TIDE_LIMIT,
   seaView,
