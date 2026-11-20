@@ -217,9 +217,15 @@ HIGH_REALMS.forEach((row, i) => {
   });
 });
 
+// 破境加成：每破一个大境界，总战力和历练里的攻击、气血都再乘一次 REALM_POWER_GROWTH。
+const REALM_POWER_GROWTH = 1.3;
+REALMS.forEach((realm, i) => {
+  realm.power.mult = Math.pow(REALM_POWER_GROWTH, i);
+});
+
 // TRIBS[i] 是从第 i 个境界突破到下一个境界的天劫。
 // 带 bolts 的天劫逐道雷渡：整场成功率 P 按权重拆给每道必接的雷（第 i 道是 P 的 bolts[i] 次方，权重合计为 1，全部硬接时合起来仍是 P）。
-// gear 是这场天劫要的装备分：身上的装备分不到这个数，成功率按差的比例往下扣。引气劫之前还没有历练，不设。
+// gear 是这场天劫要的装备分：身上的装备分不到这个数，成功率按差的比例往下扣；超过了多加一点，加幅递减。引气劫之前还没有历练，不设。
 // extra 是破境前可以多引的余雷：成功率是 P 的 pow 次方、不超过 cap，接住后收劫时考的每项属性 +attr、寿元上限 +life、灯芯 +wick。
 const TRIBS = [
   { name: '引气劫', tests: ['body', 'mind'], req: 16, life: 30, failYears: 15, bolts: [0.2, 0.3, 0.5],
@@ -1186,6 +1192,7 @@ module.exports = {
   RARE_ROOTS,
   LAYERS,
   REALMS,
+  REALM_POWER_GROWTH,
   STAGES,
   TRIBS,
   AUTO_LAMP,

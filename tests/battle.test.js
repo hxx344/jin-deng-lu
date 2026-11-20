@@ -199,6 +199,51 @@ test('历练：按顺序过关，过关不耗东西，储物袋攒得更快，�
   assert.strictEqual(s.run.log[s.run.log.length - 1].title, '历练');
 });
 
+test('历练：败了退回两关，最多退到第 1 关；重打的关不再掉东西，储物袋不变慢', () => {
+  const s = cultivator(30, 30, 30);
+  const always = () => 0;
+  assert.strictEqual(game.trainLose(s, 2), null);
+  assert.deepStrictEqual(game.trainLose(s, 1), { from: 1, stage: 1 });
+  for (let stage = 1; stage <= 6; stage++) game.trainClear(s, stage, always);
+  const rate = game.trainRate(s);
+  const pack = s.run.gear.pack.length;
+  const logs = s.run.log.length;
+
+  assert.deepStrictEqual(game.trainLose(s, 7), { from: 7, stage: 5 });
+  assert.strictEqual(game.trainStage(s), 5);
+  assert.strictEqual(game.trainEncounter(s, 0, () => 0.5).boss, true);
+  assert.strictEqual(s.run.battle.cleared, 6);
+  assert.strictEqual(game.trainRate(s), rate);
+  assert.strictEqual(game.trainView(s).cleared, 6);
+  // 连着败就接着退，退到第 1 关为止。
+  assert.strictEqual(game.trainLose(s, 5).stage, 3);
+  assert.strictEqual(game.trainLose(s, 3).stage, 1);
+  assert.strictEqual(game.trainLose(s, 1).stage, 1);
+
+  for (let stage = 1; stage <= 6; stage++) {
+    assert.strictEqual(game.trainClear(s, stage + 1, always), null);
+    const again = game.trainClear(s, stage, always);
+    assert.strictEqual(again.again, true);
+    assert.strictEqual(again.drop, null);
+  }
+  assert.strictEqual(s.run.gear.pack.length, pack);
+  assert.strictEqual(s.run.log.length, logs);
+  assert.strictEqual(game.trainRate(s), rate);
+  assert.strictEqual(game.trainStage(s), 7);
+  const fresh = game.trainClear(s, 7, always);
+  assert.ok(fresh.drop);
+  assert.ok(!fresh.again);
+  assert.strictEqual(s.run.battle.cleared, 7);
+
+  // 退回的位置进存档，坏值按没退读。
+  game.trainLose(s, 8);
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0);
+  assert.strictEqual(game.trainStage(loaded), 6);
+  const raw = JSON.parse(JSON.stringify(s));
+  raw.run.battle.back = 99;
+  assert.strictEqual(game.trainStage(game.normalizeState(raw, s.lastTime, () => 0)), 1);
+});
+
 test('储物袋：随现实时间攒灵气，有上限，收取后进丹田', () => {
   const s = cultivator(30, 30, 30);
   s.run.qi = 0;
@@ -252,15 +297,15 @@ test('历练：身死后停下，储物袋不再攒；重天放大敌人', () =>
 
 test('历练存档：旧档缺字段按空值读，储物袋不超过上限；关卡和储物袋不跨世，最远纪录跨世保留', () => {
   const old = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1 } }, 0, () => 0);
-  assert.deepStrictEqual(old.run.battle, { cleared: 0, bag: 0, loot: 0 });
+  assert.deepStrictEqual(old.run.battle, { cleared: 0, back: 0, bag: 0, loot: 0 });
   assert.strictEqual(old.trainBest, 0);
   const legacy = game.normalizeState({ trainBest: 3, run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 12, bag: 99, pending: { stage: 2, win: true } } } }, 0, () => 0);
   assert.strictEqual(legacy.run.battle.cleared, 12);
   assert.ok(Math.abs(legacy.run.battle.bag - game.trainRate(legacy) * game.TRAIN_BAG_HOURS) < 1e-9);
-  assert.deepStrictEqual(Object.keys(legacy.run.battle).sort(), ['bag', 'cleared', 'loot']);
+  assert.deepStrictEqual(Object.keys(legacy.run.battle).sort(), ['back', 'bag', 'cleared', 'loot']);
   assert.strictEqual(legacy.trainBest, 12);
   const broken = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: -4, bag: 'x' } } }, 0, () => 0);
-  assert.deepStrictEqual(broken.run.battle, { cleared: 0, bag: 0, loot: 0 });
+  assert.deepStrictEqual(broken.run.battle, { cleared: 0, back: 0, bag: 0, loot: 0 });
 
   const s = cultivator(30, 30, 30);
   game.trainClear(s, 1);
@@ -270,7 +315,7 @@ test('历练存档：旧档缺字段按空值读，储物袋不超过上限；�
   assert.ok(loaded.run.battle.bag > 0);
   game.retire(loaded);
   game.reincarnate(loaded, 0, () => 0);
-  assert.deepStrictEqual(loaded.run.battle, { cleared: 0, bag: 0, loot: 0 });
+  assert.deepStrictEqual(loaded.run.battle, { cleared: 0, back: 0, bag: 0, loot: 0 });
   assert.strictEqual(loaded.trainBest, 1);
 });
 
@@ -457,7 +502,7 @@ test('装备存档：不合法的装备丢掉，编号重排；装备和锻材�
   assert.deepStrictEqual(s.run.gear, old.run.gear);
 });
 
-test('天劫要装备分：不够时成功率按差的比例扣，够了不扣；引气劫不设', () => {
+test('天劫要装备分：不够时成功率按差的比例扣，够了不扣，超过了递减着加一点；引气劫不设', () => {
   const wear = (s, items) => {
     items.forEach((item, i) => {
       s.run.gear.worn[item.slot] = Object.assign({ uid: i + 1, tier: 1, level: 0, affixes: [] }, item);
@@ -470,7 +515,7 @@ test('天劫要装备分：不够时成功率按差的比例扣，够了不扣�
   assert.strictEqual(bare.name, '筑基劫');
   const need = game.TRIBS[1].gear;
   assert.strictEqual(need, 20);
-  assert.deepStrictEqual(bare.gear, { name: '筑基劫', need: need, score: 0, short: true, cut: game.GEAR_TRIB_MAX, penalty: game.GEAR_TRIB_MAX });
+  assert.deepStrictEqual(bare.gear, { name: '筑基劫', need: need, score: 0, short: true, cut: game.GEAR_TRIB_MAX, penalty: game.GEAR_TRIB_MAX, bonus: 0 });
   assert.strictEqual(part(bare).value, -game.GEAR_TRIB_MAX);
   // 一件凡品 4 分、一件 +5 的凡品 6 分，合计 10 分，差一半，扣一半。
   wear(s, [{ slot: 'weapon', grade: 0 }, { slot: 'armor', grade: 0, level: 5 }]);
@@ -483,10 +528,30 @@ test('天劫要装备分：不够时成功率按差的比例扣，够了不扣�
   const full = game.tribulationInfo(s);
   assert.strictEqual(full.gear.short, false);
   assert.strictEqual(part(full), undefined);
-  assert.ok(Math.abs(full.chance - bare.chance - game.GEAR_TRIB_MAX) < 1e-9);
-  // 再多也不加。
+  // 超过要求的部分另加一点：多出一成，离上限的差距缩到 0.5^(0.1 / GEAR_TRIB_HALF)。
+  const spare = (info) => info.parts.filter((entry) => entry.label === '装备分富余')[0];
+  const over = game.GEAR_TRIB_BONUS * (1 - Math.pow(0.5, 0.1 / game.GEAR_TRIB_HALF));
+  assert.ok(Math.abs(full.gear.bonus - over) < 1e-9);
+  assert.ok(Math.abs(spare(full).value - over) < 1e-9);
+  assert.ok(Math.abs(full.chance - bare.chance - game.GEAR_TRIB_MAX - over) < 1e-9);
+  // 刚好够不加；越往上每一截加得越少，怎么堆也不超过 GEAR_TRIB_BONUS。
+  s.run.gear.worn.ring = null;
+  s.run.gear.worn.charm.level = 5;
+  assert.strictEqual(game.gearScore(s), need);
+  const exact = game.tribulationInfo(s);
+  assert.strictEqual(exact.gear.bonus, 0);
+  assert.strictEqual(spare(exact), undefined);
+  // 多出九成：加得比多出一成时多，但远不到九倍。
   wear(s, [{ slot: 'weapon', grade: 3 }]);
-  assert.strictEqual(game.tribulationInfo(s).chance, full.chance);
+  const rich = game.tribulationInfo(s);
+  assert.strictEqual(rich.gear.score, 38);
+  assert.ok(Math.abs(rich.gear.bonus - game.GEAR_TRIB_BONUS * (1 - Math.pow(0.5, 0.9 / game.GEAR_TRIB_HALF))) < 1e-9);
+  assert.ok(rich.gear.bonus > over && rich.gear.bonus < over * 9 / 2);
+  assert.ok(Math.abs(rich.chance - exact.chance - rich.gear.bonus) < 1e-9);
+  wear(s, ['weapon', 'armor', 'crown', 'boots', 'charm', 'ring'].map((slot) => ({ slot: slot, grade: 6, level: 5, tier: 40 })));
+  const most = game.tribulationInfo(s);
+  assert.ok(most.gear.bonus > rich.gear.bonus && most.gear.bonus <= game.GEAR_TRIB_BONUS);
+  assert.ok(most.chance <= 0.98);
   assert.strictEqual(game.gearView(s).trib.need, need);
   // 装备不改属性：换装前后锋躯神一样。
   assert.deepStrictEqual(game.attrs(s), { edge: 48, body: 48, mind: 48 });

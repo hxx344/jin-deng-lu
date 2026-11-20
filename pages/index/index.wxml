@@ -147,7 +147,7 @@
             <view class="fray-hp-fill fray-hp-me {{bar.rest ? 'fray-hp-rest' : ''}}" style="width: {{bar.mePct}}%;"></view>
             <view wx:if="{{bar.shield}}" class="fray-hp-shield" style="width: {{bar.shield}}%;"></view>
           </view>
-          <view wx:if="{{bar.rest}}" class="fray-note">败了一阵 · 调息中</view>
+          <view wx:if="{{bar.rest}}" class="fray-note">{{bar.note}}</view>
         </view>
         <view class="fray-bag {{bag.full ? 'fray-bag-full' : ''}}" hover-class="opt-hover" bindtap="onBag">{{bag.text}}{{bag.full ? ' · 满' : ''}}</view>
         <view wx:if="{{bar.foe && bar.foe.state !== 'away'}}" class="fray-side fray-side-foe">

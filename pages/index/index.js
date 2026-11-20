@@ -92,8 +92,9 @@ const FRAY_REST = 40;
 const FRAY_POPS = 5;
 const FRAY_MY_HITS = ['hit', 'crit', 'double', 'extra', 'execute', 'thorns'];
 const HIDDEN_BAR = { show: false };
-// 渡劫面板里提一句装备分不够扣了多少；够了就不提。
-const gearShortText = (g) => (g.short ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 −' + percent(g.penalty) + '%。' : '');
+// 渡劫面板里提一句装备分不够扣了多少、富余加了多少；刚好够就不提。
+const gearShortText = (g) => (g.short ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 −' + percent(g.penalty) + '%。'
+  : (g.bonus >= 0.005 ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 +' + percent(g.bonus) + '%。' : ''));
 const FIDGETS = ['yawn', 'look', 'doze', 'scratch'];
 const FIDGET_MIN_MS = 7000;
 const FIDGET_SPAN_MS = 8000;
@@ -1173,13 +1174,14 @@ Page({
         ]),
         sec('战力与竞技场', [
           '主界面显示当前战力，“功法”页可以查看来源。提升境界、锋躯神、功法品级和羁绊都能提高战力。单项属性过高后增幅会放缓，三项兼修会加分。',
+          '每渡过一场天劫、破一个大境界，总战力再乘 ' + game.REALM_POWER_GROWTH + '，一层层叠上去，在战力构成里单列为“破境加成”；历练里的攻击和气血也跟着乘。',
           '“轮回”页里的“竞技场”可以挑战榜上玩家。对手战力按历史最高境界和累计灯芯估算，胜率写在按钮上。',
           '胜了积累论道积分，解锁竞技场称号。对手越强，积分越多。败了折损 3 年寿元。',
           '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
         ]),
         sec('历练', [
           '引气之后，会有东西冲着灯找上门，他坐在灯前自己打，战况就在场景里：左上角是他的气血和打到第几关，右上角是眼前这只的气血。',
-          '历练不耗寿元和机缘，也不算进劫期。关卡没有尽头，越往后越硬：寻常的关连打 ' + game.TRAIN_MOBS + ' 只小的，每 ' + game.TRAIN_BOSS_EVERY + ' 关是一个首领。败了调息一阵，从这一关的头一只重来。',
+          '历练不耗寿元和机缘，也不算进劫期。关卡没有尽头，越往后越硬：寻常的关连打 ' + game.TRAIN_MOBS + ' 只小的，每 ' + game.TRAIN_BOSS_EVERY + ' 关是一个首领。败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再一关一关打回来；重打的关不再掉装备，储物袋也不会因此变慢。',
           '每过一关，储物袋攒灵气就快一档，过首领关涨得更多。储物袋跟着现实时间攒，关掉游戏也在攒，最多存 ' + game.TRAIN_BAG_HOURS + ' 小时的量；点场景上方的“储物袋”把灵气收进丹田。',
           '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
           '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
@@ -1191,7 +1193,7 @@ Page({
           '词条有十三种：攻击、气血、暴击、暴击伤害、减伤、出手加快、吸血、反伤、回血、开场护盾、破甲、招式减伤、连击。',
           '装备的数值只在历练的战斗里起作用，不改锋躯神；装备分会算进战力。',
           '装备分看品级、强化、词条，也看阶：越靠后的关掉的装备，装备分越高。',
-          '往后的天劫要装备分撑着，前松后紧：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '，化神劫要 ' + game.TRIBS[4].gear + '，一路加到踏天劫的 ' + game.TRIBS[game.TRIBS.length - 1].gear + '；每高一重天再多 ' + Math.round(game.GEAR_HEAVEN * 100) + '%。不够的话成功率按差的比例往下扣：筑基劫一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%，金丹劫 ' + Math.round(game.TRIBS[2].gearCut * 100) + '%，元婴劫 ' + Math.round(game.TRIBS[3].gearCut * 100) + '%，化神劫起差多少扣多少；够了就不扣。所以后面的境界急不来，得先把历练的关往后推、把装备换上去。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
+          '往后的天劫要装备分撑着，前松后紧：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '，化神劫要 ' + game.TRIBS[4].gear + '，一路加到踏天劫的 ' + game.TRIBS[game.TRIBS.length - 1].gear + '；每高一重天再多 ' + Math.round(game.GEAR_HEAVEN * 100) + '%。不够的话成功率按差的比例往下扣：筑基劫一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%，金丹劫 ' + Math.round(game.TRIBS[2].gearCut * 100) + '%，元婴劫 ' + Math.round(game.TRIBS[3].gearCut * 100) + '%，化神劫起差多少扣多少；够了就不扣。超过要求还能再加一点成功率：最多 ' + Math.round(game.GEAR_TRIB_BONUS * 100) + '%，每多出要求的 ' + Math.round(game.GEAR_TRIB_HALF * 100) + '%，离这个上限的差距减半，越往上加得越少。所以后面的境界急不来，得先把历练的关往后推、把装备换上去。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
           '在“装备”页换装、强化和分解。强化耗锻材，最高 +' + game.GEAR_MAX_LEVEL + '，不会失败；锻材靠分解用不上的装备得来。背包最多 ' + game.GEAR_PACK_MAX + ' 件，满了之后新掉的直接分解。',
           '装备和锻材只管这一世。'
         ]),
@@ -1324,7 +1326,7 @@ Page({
       kind: 'train',
       title: v.open ? '历练 · 第 ' + v.stage + ' 关' : '历练',
       text: v.open
-        ? '他坐在灯前自己打，不耗寿元和机缘。关卡没有尽头，每 ' + v.bossEvery + ' 关一个首领；败了调息一阵，从这一关的头一只重来。这一世已过 ' + v.cleared + ' 关，历来最远 ' + v.best + ' 关。'
+        ? '他坐在灯前自己打，不耗寿元和机缘。关卡没有尽头，每 ' + v.bossEvery + ' 关一个首领；败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再打，重打的关不再掉东西。这一世最远过了 ' + v.cleared + ' 关，历来最远 ' + v.best + ' 关。'
         : v.reason,
       me: me ? '气血 ' + game.formatNumber(me.hp) + ' · 攻击 ' + game.formatNumber(me.atk) + ' · 每 ' + me.interval.toFixed(2) + ' 秒出手 · 减伤 ' + percent(me.reduce) + '% · 暴击 ' + percent(me.crit) + '%' : '',
       bagTitle: '储物袋 · 灵气 ' + game.formatNumber(bag.qi) + ' / ' + game.formatNumber(bag.max) + ' · 装备 ' + bag.gear + ' / ' + bag.gearMax,
@@ -1368,7 +1370,8 @@ Page({
     }
     let f = this.fray;
     let dirty = false;
-    if (!f || f.stage !== stage) {
+    // 败了当场就退关，调息那一阵还照原来这一关演完。
+    if (!f || (f.stage !== stage && f.phase !== 'rest')) {
       f = this.fray = {
         stage: stage, wave: 0, waves: game.trainWaves(stage), phase: 'gap', wait: FRAY_GAP, fight: null, next: 0, step: 0,
         me: 1, max: 1, foe: 0, shield: 0, pops: [], key: 0, meHit: 0, foeHit: 0, foeAct: 0, shot: 0, shotKind: 'hit'
@@ -1390,7 +1393,10 @@ Page({
         } else {
           f.phase = 'rest';
           f.wait = FRAY_REST;
+          const lost = game.trainLose(this.state, f.stage);
+          f.back = lost && lost.stage < f.stage ? lost.stage : 0;
           if (!this.act && !this.data.sheet.kind) this.play('hurt', null, true);
+          this.afterAction();
         }
       }
     } else {
@@ -1404,6 +1410,9 @@ Page({
           return;
         } else if (f.phase === 'gap') {
           this.frayNext(f);
+        } else if (f.phase === 'rest' && f.stage !== stage) {
+          this.fray = null;
+          return;
         } else {
           f.wave = f.phase === 'fall' ? f.wave + 1 : 0;
           f.phase = 'gap';
@@ -1439,6 +1448,10 @@ Page({
     const r = game.trainClear(this.state, f.stage, Math.random);
     this.fray = null;
     if (!r) return;
+    if (r.again) {
+      this.save();
+      return;
+    }
     const drop = r.drop ? this.dropText(r.drop) : '';
     if (r.boss) {
       audio.play('good');
@@ -1479,7 +1492,7 @@ Page({
       score: v.score,
       bonus: v.bonus || '身上还没有装备',
       forge: v.forge + ' / ' + v.forgeMax,
-      need: v.trib.need ? v.trib.name + '要装备分 ' + v.trib.need + (v.trib.short ? '，还差 ' + (v.trib.need - v.trib.score) + '：渡劫成功率 −' + percent(v.trib.penalty) + '%' : '，已经够了') : '',
+      need: v.trib.need ? v.trib.name + '要装备分 ' + v.trib.need + (v.trib.short ? '，还差 ' + (v.trib.need - v.trib.score) + '：渡劫成功率 −' + percent(v.trib.penalty) + '%' : '，已经够了' + (v.trib.bonus >= 0.005 ? '：渡劫成功率 +' + percent(v.trib.bonus) + '%' : '')) : '',
       needShort: v.trib.short,
       worn: v.worn.map((entry) => ({
         slot: entry.slot,
@@ -1589,6 +1602,7 @@ Page({
       title: '第 ' + f.stage + ' 关',
       pips: pips,
       rest: rest,
+      note: rest ? '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中') : '',
       mePct: rest ? 100 : pct(f.me, f.max),
       shield: rest ? 0 : pct(f.shield, f.max),
       foe: fight ? {

@@ -31,7 +31,7 @@ function attributePower(attributes, softCap) {
     Math.min(...effective) * BALANCE_WEIGHT;
 }
 
-// 所有来源独立取整后再求和。新玩法在调用侧提供带固定 id 的加减项。
+// 所有来源独立取整后再求和，破境加成再按合计乘出来单列一项。新玩法在调用侧提供带固定 id 的加减项。
 function powerProfile(realm, stage, attributes, extraSources = []) {
   const sources = [
     { id: 'realm', label: '境界', value: realm.power.base * stage.power },
@@ -42,16 +42,34 @@ function powerProfile(realm, stage, attributes, extraSources = []) {
     label: source.label,
     value: Number.isFinite(source.value) ? Math.round(source.value) : 0
   }));
+  const mult = realm.power.mult || 1;
+  const flat = sources.reduce((sum, source) => sum + source.value, 0);
+  if (mult > 1) {
+    sources.push({ id: 'boost', label: '破境加成 ×' + mult.toFixed(2), value: Math.round(Math.max(0, flat) * (mult - 1)) });
+  }
   const total = sources.reduce((sum, source) => sum + source.value, 0);
   return { total: Math.max(0, total), sources: sources };
 }
 
 // 排行榜沿用历史最高境界和累计灯芯，估算角色在该境界的战力。
-function estimatedOpponentPower(row) {
+function opponentRealm(row) {
   const index = Math.floor(Number(row.realmIndex));
-  if (row.realmIndex == null || row.realmIndex === '' || !Number.isFinite(index) || index < 0) return UNBORN_OPPONENT_POWER;
+  if (row.realmIndex == null || row.realmIndex === '' || !Number.isFinite(index) || index < 0) return null;
   const knownIndex = Math.min(index, REALMS.length * STAGES.length - 1);
-  const realm = REALMS[Math.floor(knownIndex / STAGES.length)];
+  return { realm: REALMS[Math.floor(knownIndex / STAGES.length)], knownIndex: knownIndex };
+}
+
+// 榜上这一行所在境界的破境加成；论道积分按除掉它的战力算，免得积分跟着境界翻倍。
+function opponentBoost(row) {
+  const known = opponentRealm(row);
+  return known ? known.realm.power.mult || 1 : 1;
+}
+
+function estimatedOpponentPower(row) {
+  const known = opponentRealm(row);
+  if (!known) return UNBORN_OPPONENT_POWER;
+  const knownIndex = known.knownIndex;
+  const realm = known.realm;
   const stage = STAGES[knownIndex % STAGES.length];
   const attribute = realm.power.opponentAttribute * stage.power;
   const extraSources = [
@@ -65,4 +83,4 @@ function estimatedOpponentPower(row) {
   return Math.round(profile.total * (1 + bonus));
 }
 
-module.exports = { powerProfile, masteryPower, bondPower, estimatedOpponentPower };
+module.exports = { powerProfile, masteryPower, bondPower, estimatedOpponentPower, opponentBoost };

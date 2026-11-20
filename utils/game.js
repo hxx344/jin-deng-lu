@@ -309,8 +309,8 @@ function newRun(state, rng) {
     revived: false,
     wards: 0,
     sures: 0,
-    // 历练：cleared 是这一世已经过了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记），loot 是储物袋里攒着的装备件数。
-    battle: { cleared: 0, bag: 0, loot: 0 },
+    // 历练：cleared 是这一世过的最远一关，back 是败了之后眼下比它退回了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记），loot 是储物袋里攒着的装备件数。
+    battle: { cleared: 0, back: 0, bag: 0, loot: 0 },
     gear: emptyGear(),
     death: null
   };
@@ -2193,7 +2193,7 @@ function arenaPower(state) {
 function arenaInfo(state, row, mine = arenaPower(state)) {
   const run = state.run;
   const foe = combatPower.estimatedOpponentPower(row);
-  const win = Math.max(ARENA_WIN_MIN, Math.round(foe * ARENA_WIN_RATE));
+  const win = Math.max(ARENA_WIN_MIN, Math.round(foe / combatPower.opponentBoost(row) * ARENA_WIN_RATE));
   const info = {
     power: foe,
     chance: clamp(mine / (mine + foe), 0.05, 0.95),
@@ -2256,11 +2256,13 @@ function arenaFight(state, row, rng, times) {
   return { title: '竞技场', label: label, win: wins > 0, wins: wins, losses: losses, fights: fights, lines: lines, tags: tags, dead: dead };
 }
 // 历练：引气后角色在场景里自己打，不耗寿元和机缘，也不计入劫期。战斗由 battle.js 一次算完，页面只负责播放。
-// 关卡不限数量：寻常的关连打 TRAIN_MOBS 只小怪，每 TRAIN_BOSS_EVERY 关是一个首领。败了从这一关的头一只重来，没有别的代价。
+// 关卡不限数量：寻常的关连打 TRAIN_MOBS 只小怪，每 TRAIN_BOSS_EVERY 关是一个首领。败了往回退 TRAIN_RETREAT 关，再一关一关打回来。
+// 退回去重打的关不再给东西：储物袋的速度和掉落都只认这一世过的最远一关，否则故意输就能反复刷首领的掉落。
 // 每过一关，储物袋攒灵气的速度就高一档；储物袋随现实时间攒，离线也攒，最多存 TRAIN_BAG_HOURS 小时的量。
 const TRAIN_REALM = 1;
 const TRAIN_MOBS = 3;
 const TRAIN_BOSS_EVERY = 5;
+const TRAIN_RETREAT = 2;
 const TRAIN_MAX = 9999;
 // 第 1 关小怪的气血和攻击，之后每关各乘一次增长率。
 const TRAIN_HP = 44;
@@ -2283,6 +2285,9 @@ const TRAIN_LOOT_MAX = TRAIN_BAG_HOURS * 3600 / TRAIN_LOOT_SEC;
 const FORGE_MAX = 99;
 // 装备分不够时，渡劫成功率最多扣这么多。
 const GEAR_TRIB_MAX = 0.3;
+// 装备分超过要求后成功率多加一点：最多加 GEAR_TRIB_BONUS，每多出要求的 GEAR_TRIB_HALF，离这个上限的差距减半。
+const GEAR_TRIB_BONUS = 0.08;
+const GEAR_TRIB_HALF = 0.25;
 // 每高一重天，天劫要的装备分多这么多。
 const GEAR_HEAVEN = 0.05;
 
@@ -2303,6 +2308,7 @@ function trainFighter(state) {
     name: '你',
     attrs: attrs(state),
     softCap: REALMS[run.realm].power.softCap,
+    boost: REALMS[run.realm].power.mult,
     demon: run.demon,
     demonMode: run.mode === 'demon',
     schools: schools,
@@ -2351,7 +2357,7 @@ function trainReason(state) {
 
 // 正在打第几关（从 1 起）；不在历练时返回 0。
 function trainStage(state) {
-  return trainReason(state) ? 0 : Math.min(TRAIN_MAX, state.run.battle.cleared + 1);
+  return trainReason(state) ? 0 : Math.min(TRAIN_MAX, state.run.battle.cleared + 1 - state.run.battle.back);
 }
 
 // 算出当前这一关的第 wave 场。只算不改状态；这一关最后一场打赢后由页面调 trainClear 记过关。
@@ -2391,11 +2397,17 @@ function fillBag(state, seconds) {
 }
 
 // 过了第 stage 关：储物袋攒得更快，可能掉一件装备。只有首领关记一条见闻，免得刷屏。
+// 败退之后重打的关只往前挪一关，again 为真，什么都不给。
 function trainClear(state, stage, rng) {
   const run = state.run;
-  if (!stage || trainStage(state) !== stage || run.battle.cleared >= TRAIN_MAX) return null;
+  if (!stage || trainStage(state) !== stage) return null;
   const boss = trainBoss(stage);
   const name = boss ? trainFoeDef(stage).name : trainFoeDef(stage).mob;
+  if (run.battle.back > 0) {
+    run.battle.back--;
+    return { stage: stage, boss: boss, name: name, perHour: qiRewardAmount(state, trainRate(state)), drop: null, again: true };
+  }
+  if (run.battle.cleared >= TRAIN_MAX) return null;
   run.battle.cleared = stage;
   state.trainBest = Math.max(state.trainBest, stage);
   const perHour = qiRewardAmount(state, trainRate(state));
@@ -2412,6 +2424,14 @@ function trainClear(state, stage, rng) {
     run.log = run.log.slice(-MAX_LOG);
   }
   return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop };
+}
+
+// 第 stage 关败了：往回退 TRAIN_RETREAT 关，最多退到第 1 关。返回退到了第几关。
+function trainLose(state, stage) {
+  const run = state.run;
+  if (!stage || trainStage(state) !== stage) return null;
+  run.battle.back = Math.min(run.battle.cleared, run.battle.back + TRAIN_RETREAT);
+  return { from: stage, stage: trainStage(state) };
 }
 
 // 储物袋眼下的样子：攒了多少、每小时攒多少、装满是多少。
@@ -2711,10 +2731,12 @@ function mountainReady(state) {
 }
 
 function mountainContext(state) {
+  const power = combatPowerDetails(state);
   return {
     ready: mountainReady(state), yuan: state.run.realm > SEA_REALM,
     cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber,
-    power: combatPowerDetails(state).total
+    // 亲自出阵按不含破境加成的战力折算，免得境界一高就把出阵的上限顶满。
+    power: power.total - power.sources.reduce((sum, source) => sum + (source.id === 'boost' ? source.value : 0), 0)
   };
 }
 
@@ -2793,14 +2815,15 @@ function retreatSea(state) {
 }
 
 // 渡劫成功率由哪几项加出来，按顺序列给玩家看；为零的项不列。
-// 这场天劫要多少装备分、身上有多少。不够时成功率按差的比例扣，一件不穿扣满 GEAR_TRIB_MAX。
+// 这场天劫要多少装备分、身上有多少。不够时成功率按差的比例扣，一件不穿扣满 GEAR_TRIB_MAX；超过了按多出的比例加，越往上加得越少。
 function tribGear(state) {
   const trib = TRIBS[state.run.realm];
   const need = Math.round(((trib && trib.gear) || 0) * (1 + GEAR_HEAVEN * state.run.heaven));
   const score = gearScore(state);
   const short = score < need;
   const cut = (trib && trib.gearCut) || GEAR_TRIB_MAX;
-  return { name: trib ? trib.name : '', need: need, score: score, short: short, cut: cut, penalty: short ? cut * (1 - score / need) : 0 };
+  const bonus = need > 0 && score > need ? GEAR_TRIB_BONUS * (1 - Math.pow(0.5, (score / need - 1) / GEAR_TRIB_HALF)) : 0;
+  return { name: trib ? trib.name : '', need: need, score: score, short: short, cut: cut, penalty: short ? cut * (1 - score / need) : 0, bonus: bonus };
 }
 
 function tribulationParts(state, ratio) {
@@ -2813,7 +2836,8 @@ function tribulationParts(state, ratio) {
     ['功法', sumSkills(run, 'trib')],
     ['大机缘的雷', run.tribBoon],
     ['重天', -HEAVEN_TRIB * run.heaven],
-    ['装备分不足', -tribGear(state).penalty]
+    ['装备分不足', -tribGear(state).penalty],
+    ['装备分富余', tribGear(state).bonus]
   ].filter((part) => Math.abs(part[1]) > 1e-9).map((part) => ({ label: part[0], value: part[1] }));
 }
 
@@ -3502,6 +3526,7 @@ function normalizeRun(state, raw, rng) {
   run.sea = normalizeSea(run, raw.sea);
   const saved = raw.battle && typeof raw.battle === 'object' ? raw.battle : {};
   run.battle.cleared = toCount(saved.cleared, TRAIN_MAX);
+  run.battle.back = toCount(saved.back, run.battle.cleared);
   run.battle.bag = clamp(toNumber(saved.bag), 0, trainRate(state, run.battle.cleared) * TRAIN_BAG_HOURS);
   run.battle.loot = run.battle.cleared > 0 ? clamp(toNumber(saved.loot), 0, TRAIN_LOOT_MAX) : 0;
   run.gear = normalizeGear(raw.gear);
@@ -3629,6 +3654,7 @@ module.exports = {
   ROOT_RARITIES,
   rootInfo,
   REALMS,
+  REALM_POWER_GROWTH: content.REALM_POWER_GROWTH,
   STAGES,
   TRIBS,
   AUTO_LAMP,
@@ -3707,6 +3733,7 @@ module.exports = {
   ARENA_MAX,
   TRAIN_MOBS,
   TRAIN_BOSS_EVERY,
+  TRAIN_RETREAT,
   TRAIN_BAG_HOURS,
   trainFighter,
   trainFoe,
@@ -3716,6 +3743,7 @@ module.exports = {
   trainWaves,
   trainEncounter,
   trainClear,
+  trainLose,
   trainRate,
   trainBag,
   trainCollect,
@@ -3728,6 +3756,8 @@ module.exports = {
   tribGear,
   GEAR_HEAVEN,
   GEAR_TRIB_MAX,
+  GEAR_TRIB_BONUS,
+  GEAR_TRIB_HALF,
   gearEquip,
   gearEquipBest,
   gearEnhance,

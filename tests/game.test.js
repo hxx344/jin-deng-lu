@@ -2105,6 +2105,33 @@ test('竞技场估算全境界逐阶段递增，同档构筑可公平切磋，�
   assert.strictEqual(game.arenaInfo(s, { realmIndex: null }).power, 8);
 });
 
+test('破境加成：每破一个大境界总战力多乘一次，单列一项；历练里的攻击和气血同样放大', () => {
+  assert.strictEqual(game.REALMS[0].power.mult, 1);
+  near(game.REALMS[3].power.mult, Math.pow(game.REALM_POWER_GROWTH, 3));
+  const s = born('pill');
+  s.run.stats = { edge: 20, body: 20, mind: 20 };
+  const mortal = game.combatPowerDetails(s);
+  assert.strictEqual(mortal.sources.find((entry) => entry.id === 'boost'), undefined);
+  const totals = [mortal.total];
+  for (let realm = 1; realm < game.REALMS.length; realm++) {
+    s.run.realm = realm;
+    const profile = game.combatPowerDetails(s);
+    const boost = profile.sources.find((entry) => entry.id === 'boost');
+    const flat = profile.total - boost.value;
+    assert.strictEqual(boost.value, Math.round(flat * (game.REALMS[realm].power.mult - 1)));
+    assert.strictEqual(profile.total, profile.sources.reduce((sum, source) => sum + source.value, 0));
+    // 同样的属性，破境后至少比破境前多出这一档的加成。
+    assert.ok(profile.total >= totals[realm - 1] * game.REALM_POWER_GROWTH - 1, game.REALMS[realm].name);
+    totals.push(profile.total);
+  }
+  s.run.realm = 1;
+  const low = game.trainFighter(s);
+  s.run.realm = 2;
+  const high = game.trainFighter(s);
+  near(high.atk / low.atk, game.REALM_POWER_GROWTH);
+  assert.ok(Math.abs(high.hp / low.hp - game.REALM_POWER_GROWTH) < 0.01);
+});
+
 test('竞技场：战力推算、胜败奖励、对战次数每小时回复一次并可一次用完', () => {
   const s = born();
   s.run.stats = { edge: 10, body: 10, mind: -5 };
@@ -2117,10 +2144,11 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   near(info.chance, 35 / 54);
   assert.deepStrictEqual([info.win, info.years, info.left, info.reason], [3, 3, 10, '']);
   info = game.arenaInfo(s, strong);
-  assert.strictEqual(info.power, 741);
+  assert.strictEqual(info.power, 1627);
   assert.strictEqual(info.chance, 0.05);
+  // 积分按不含破境加成的战力算。
   assert.strictEqual(info.win, 44);
-  assert.strictEqual(game.arenaInfo(s, { realmIndex: 12, totalWick: 0 }).power, 722);
+  assert.strictEqual(game.arenaInfo(s, { realmIndex: 12, totalWick: 0 }).power, 2062);
   assert.strictEqual(game.arenaInfo(s, { id: 'u3', realmIndex: -1, totalWick: 5 }).power, 8);
   assert.strictEqual(game.arenaInfo(s, { id: 'u4' }).power, 8);
 

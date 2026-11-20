@@ -270,7 +270,7 @@ function buyLamps(state) {
 }
 
 // 历练：场景里的战斗是自己打的，机器人也照打。seconds 是刚过去的现实时间，一场战斗占掉它自己的时长加上入场、倒下的间隔，
-// 败了再加调息；时间不够打下一场就留到下次。manage 为真时每过一关把更好的换上、用不上的分解、锻材拿去强化，并收储物袋。
+// 败了再加调息并退关；时间不够打下一场就留到下次。manage 为真时每过一关把更好的换上、用不上的分解、锻材拿去强化，并收储物袋。
 const TRAIN_GAP = 2;
 const TRAIN_REST = 4;
 const GEAR_STALL = 4;
@@ -299,7 +299,8 @@ function train(state, clock, seconds, manage) {
         clock.spare -= TRAIN_REST;
       }
     }
-    if (won && game.trainClear(state, stage, clock.trainRng) && manage) tidy();
+    if (!won) game.trainLose(state, stage);
+    else if (game.trainClear(state, stage, clock.trainRng) && manage) tidy();
   }
   if (manage && game.trainBag(state).gear >= 1 && game.trainCollect(state, clock.trainRng)) tidy();
 }
@@ -560,7 +561,7 @@ function render(data) {
     '- **挂机玩**：见过的选项全交给游戏自带的“自动机缘”估分；道途选手里功法最多的一系；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨。',
     '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
-    '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
+    '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒并退回 ' + game.TRAIN_RETREAT + ' 关。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
     '- 等装备：灵气满了、装备分还不够这一场天劫的要求时，挂机玩最多停 ' + config.gearPatience.idle + ' 分钟、认真玩最多停 ' + config.gearPatience.careful + ' 分钟，只让历练接着打；连着 ' + GEAR_STALL + ' 分钟装备分没涨就不等了。等的时间算进时长。随手玩不等。',
     '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽与灯油、散功保命、主动降重天。',
     ''

@@ -55,7 +55,7 @@ function ratio(value, cap) {
 }
 
 // input: { name, attrs: { edge, body, mind }, softCap, demon, demonMode, schools: { 流派: { count, power } }, gear }
-// gear 是装备加成（见 gear.js 的 STAT_KEYS），可以不给。
+// gear 是装备加成（见 gear.js 的 STAT_KEYS），可以不给。boost 是破境加成，气血和攻击最后各乘一次，不给按 1 算。
 function playerFighter(input) {
   const cap = Math.max(1, num(input.softCap));
   const edge = num(input.attrs.edge);
@@ -67,14 +67,15 @@ function playerFighter(input) {
     const school = input.schools[id];
     if (school && school.count > 0) schools[id] = { count: school.count, power: num(school.power) };
   });
+  const boost = Math.max(1, num(input.boost));
   const extra = {};
   ['atk', 'hp', 'atkPct', 'hpPct', 'crit', 'critDmg', 'reduce', 'haste', 'leech', 'thorns', 'regen', 'shield', 'pierce', 'guard', 'combo'].forEach((key) => {
     extra[key] = num(input.gear && input.gear[key]);
   });
   return {
     name: input.name || '你',
-    hp: Math.round((BASE_HP + body * HP_PER_BODY + extra.hp) * (1 + extra.hpPct)),
-    atk: (Math.max(1, edge * ATK_PER_EDGE) + extra.atk) * (1 + extra.atkPct) * (1 + rage),
+    hp: Math.round((BASE_HP + body * HP_PER_BODY + extra.hp) * (1 + extra.hpPct) * boost),
+    atk: (Math.max(1, edge * ATK_PER_EDGE) + extra.atk) * (1 + extra.atkPct) * (1 + rage) * boost,
     interval: Math.max(MIN_INTERVAL, BASE_INTERVAL * (1 - HASTE_PER_TENTH * Math.floor(mind / (cap * 0.1))) * (1 - Math.min(0.5, extra.haste))),
     reduce: Math.min(MAX_REDUCE, ratio(body, cap) + extra.reduce),
     crit: Math.min(MAX_CRIT, BASE_CRIT + CRIT_PER_CAP * mind / cap + extra.crit),
