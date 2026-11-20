@@ -1114,7 +1114,7 @@ function eventView(state) {
 }
 
 // 功法已满时，新功法的总权重压到可精进功法总权重的这个比例，让精进比新功法更常出现。
-const FULL_NEW_RATIO = 0.5;
+const FULL_NEW_RATIO = 0.15;
 
 function dampNewSkills(state, pool, weights) {
   const run = state.run;

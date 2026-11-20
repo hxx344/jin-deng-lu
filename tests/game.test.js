@@ -1986,8 +1986,8 @@ test('功法已满时，传承和随机得来的功法里精进比新功法更�
     return out;
   };
   const full = count(true);
-  assert.ok(full.fresh > 0 && full.fresh < full.owned, JSON.stringify(full));
-  assert.ok(full.gainFresh > 0 && full.gainFresh < full.gainOwned, JSON.stringify(full));
+  assert.ok(full.fresh > 0 && full.fresh * 4 < full.owned, JSON.stringify(full));
+  assert.ok(full.gainFresh > 0 && full.gainFresh * 4 < full.gainOwned, JSON.stringify(full));
   const open = count(false);
   assert.ok(open.fresh > open.owned && open.gainFresh > open.gainOwned, JSON.stringify(open));
 
