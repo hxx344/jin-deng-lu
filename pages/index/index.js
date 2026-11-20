@@ -232,6 +232,7 @@ Page({
     bar: HIDDEN_BAR,
     bag: { text: '', full: false },
     gear: { worn: [], pack: [] },
+    gearDot: false,
     tip: { at: '', text: '', next: '' },
     tab: 'skill',
     alive: false,
@@ -2028,6 +2029,7 @@ Page({
       tip: this.tipView(),
       sheet: this.sheetView(power.total),
       autoUnlocked: game.autoUnlocked(s),
+      gearDot: run.phase === 'alive' && game.gearHasBetter(s),
       alive: run.phase === 'alive',
       dead: run.phase === 'dead'
     };

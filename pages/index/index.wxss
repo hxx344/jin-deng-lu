@@ -1778,6 +1778,22 @@
   color: #fff;
 }
 
+.tab-label {
+  position: relative;
+  display: inline-block;
+}
+
+.tab-dot {
+  position: absolute;
+  top: -4rpx;
+  right: -16rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #ff4d3d;
+  box-shadow: 0 0 0 3rpx rgba(20, 16, 13, 0.6);
+}
+
 .list {
   flex: 1;
   height: 0;

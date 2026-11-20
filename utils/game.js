@@ -2583,6 +2583,12 @@ function gearScrapSpare(state) {
   return { count: spare.length, forge: forge };
 }
 
+// 背包里有没有比身上好的；标签页上的红点只问这一句，不必排一遍整个背包。
+function gearHasBetter(state) {
+  const g = state.run.gear;
+  return g.pack.some((item) => !g.worn[item.slot] || gear.rating(item) > gear.rating(g.worn[item.slot]));
+}
+
 function gearView(state) {
   const run = state.run;
   const g = run.gear;
@@ -3752,6 +3758,7 @@ module.exports = {
   GEAR_MAX_LEVEL: gear.MAX_LEVEL,
   TRAIN_DROP_PITY,
   gearView,
+  gearHasBetter,
   gearScore,
   tribGear,
   GEAR_HEAVEN,

@@ -478,6 +478,20 @@ test('储物袋攒装备：每 20 分钟一件，有上限，收取时按眼下�
   assert.strictEqual(bag.full, true);
 });
 
+test('装备红点：背包里有比身上好的才亮，换上或分解后熄灭', () => {
+  const s = cultivator(30, 30, 30);
+  assert.strictEqual(game.gearHasBetter(s), false);
+  s.run.gear.worn.weapon = { uid: 1, slot: 'weapon', grade: 1, tier: 1, level: 0, affixes: [] };
+  s.run.gear.pack.push({ uid: 2, slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] });
+  assert.strictEqual(game.gearHasBetter(s), false);
+  s.run.gear.pack.push({ uid: 3, slot: 'weapon', grade: 3, tier: 1, level: 0, affixes: [] });
+  assert.strictEqual(game.gearHasBetter(s), true);
+  assert.strictEqual(game.gearHasBetter(s), game.gearView(s).hasBetter);
+  assert.ok(game.gearEquip(s, 3));
+  assert.strictEqual(game.gearHasBetter(s), false);
+  assert.strictEqual(game.gearView(s).hasBetter, false);
+});
+
 test('装备存档：不合法的装备丢掉，编号重排；装备和锻材不跨世', () => {
   const raw = { run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 3, loot: 99 }, gear: {
     worn: { weapon: { slot: 'weapon', grade: 2, tier: 8, level: 3, affixes: ['atk', 'atk', 'hp', 'crit', 'x'] }, armor: { slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] }, charm: { slot: 'charm', grade: 9, tier: 1, level: 0, affixes: [] } },

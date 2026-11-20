@@ -223,7 +223,7 @@
       </view>
     </view>
     <view class="tab {{tab === 'skill' ? 'tab-on' : ''}}" data-tab="skill" bindtap="onTab">功法</view>
-    <view class="tab {{tab === 'gear' ? 'tab-on' : ''}}" data-tab="gear" bindtap="onTab">装备</view>
+    <view class="tab {{tab === 'gear' ? 'tab-on' : ''}}" data-tab="gear" bindtap="onTab"><view class="tab-label">装备<view wx:if="{{gearDot}}" class="tab-dot"></view></view></view>
     <view class="tab {{tab === 'log' ? 'tab-on' : ''}}" data-tab="log" bindtap="onTab">见闻</view>
     <view class="tab {{tab === 'lamp' ? 'tab-on' : ''}}" data-tab="lamp" bindtap="onTab">灯纹</view>
     <view class="tab {{tab === 'me' ? 'tab-on' : ''}}" data-tab="me" bindtap="onTab">轮回</view>
