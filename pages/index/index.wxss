@@ -3873,6 +3873,78 @@ button.sheet-btn::after {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* 装备页 */
+.gear-bonus {
+  margin-top: 6rpx;
+  font-size: 23rpx;
+  line-height: 1.5;
+  color: #e6d9c2;
+}
+
+.gear-note {
+  margin-top: 2rpx;
+  font-size: 21rpx;
+  color: #8c8275;
+}
+
+.gear-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gear-tools {
+  display: flex;
+}
+
+.gear-tool {
+  margin-left: 14rpx;
+  padding: 4rpx 16rpx;
+  border: 2rpx solid rgba(255, 207, 138, 0.35);
+  border-radius: 999rpx;
+  font-size: 21rpx;
+  font-weight: 600;
+  color: #ffcf8a;
+}
+
+.gear-acts {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.gear-acts .merge-btn {
+  margin-top: 8rpx;
+  text-align: center;
+}
+
+.gear-acts .merge-btn:first-child {
+  margin-top: 0;
+}
+
+.gear-btn-plain {
+  border: 2rpx solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  box-shadow: none;
+  color: #a3988a;
+}
+
+.gear-btn-off {
+  opacity: 0.45;
+}
+
+.gear-max {
+  flex-shrink: 0;
+  font-size: 21rpx;
+  color: #8c8275;
+}
+
+.gear-tag-up {
+  background: rgba(143, 230, 200, 0.18);
+  color: #8fe6c8;
+}
+
 /* 历练面板与场景里的战斗 */
 .train-me {
   margin-top: 12rpx;

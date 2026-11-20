@@ -7,6 +7,7 @@ const HP_PER_BODY = 12;
 const ATK_PER_EDGE = 2;
 const BASE_INTERVAL = 1.6;
 const MIN_INTERVAL = 1;
+const MAX_REDUCE = 0.8;
 // 神每达到软上限的一成，出手快这么多。
 const HASTE_PER_TENTH = 0.02;
 const BASE_CRIT = 0.05;
@@ -47,7 +48,8 @@ function ratio(value, cap) {
   return value / (value + cap);
 }
 
-// input: { name, attrs: { edge, body, mind }, softCap, demon, demonMode, schools: { 流派: { count, power } } }
+// input: { name, attrs: { edge, body, mind }, softCap, demon, demonMode, schools: { 流派: { count, power } }, gear }
+// gear 是装备加成 { atk, hp, atkPct, hpPct, crit, reduce, haste }，可以不给。
 function playerFighter(input) {
   const cap = Math.max(1, num(input.softCap));
   const edge = num(input.attrs.edge);
@@ -59,13 +61,17 @@ function playerFighter(input) {
     const school = input.schools[id];
     if (school && school.count > 0) schools[id] = { count: school.count, power: num(school.power) };
   });
+  const extra = {};
+  ['atk', 'hp', 'atkPct', 'hpPct', 'crit', 'reduce', 'haste'].forEach((key) => {
+    extra[key] = num(input.gear && input.gear[key]);
+  });
   return {
     name: input.name || '你',
-    hp: Math.round(BASE_HP + body * HP_PER_BODY),
-    atk: Math.max(1, edge * ATK_PER_EDGE) * (1 + rage),
-    interval: Math.max(MIN_INTERVAL, BASE_INTERVAL * (1 - HASTE_PER_TENTH * Math.floor(mind / (cap * 0.1)))),
-    reduce: ratio(body, cap),
-    crit: Math.min(MAX_CRIT, BASE_CRIT + CRIT_PER_CAP * mind / cap),
+    hp: Math.round((BASE_HP + body * HP_PER_BODY + extra.hp) * (1 + extra.hpPct)),
+    atk: (Math.max(1, edge * ATK_PER_EDGE) + extra.atk) * (1 + extra.atkPct) * (1 + rage),
+    interval: Math.max(MIN_INTERVAL, BASE_INTERVAL * (1 - HASTE_PER_TENTH * Math.floor(mind / (cap * 0.1))) * (1 - Math.min(0.5, extra.haste))),
+    reduce: Math.min(MAX_REDUCE, ratio(body, cap) + extra.reduce),
+    crit: Math.min(MAX_CRIT, BASE_CRIT + CRIT_PER_CAP * mind / cap + extra.crit),
     resist: ratio(mind, cap),
     taken: 1 + rage,
     schools: schools

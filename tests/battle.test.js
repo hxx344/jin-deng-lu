@@ -224,7 +224,7 @@ test('储物袋：随现实时间攒灵气，有上限，收取后进丹田', ()
   assert.strictEqual(bag.qi, bag.max);
 
   const age = s.run.age;
-  const r = game.trainCollect(s);
+  const r = game.trainCollect(s, () => 0.5);
   assert.strictEqual(r.qi, bag.max);
   assert.strictEqual(s.run.qi, bag.max);
   assert.strictEqual(s.run.battle.bag, 0);
@@ -252,15 +252,15 @@ test('历练：身死后停下，储物袋不再攒；重天放大敌人', () =>
 
 test('历练存档：旧档缺字段按空值读，储物袋不超过上限；关卡和储物袋不跨世，最远纪录跨世保留', () => {
   const old = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1 } }, 0, () => 0);
-  assert.deepStrictEqual(old.run.battle, { cleared: 0, bag: 0 });
+  assert.deepStrictEqual(old.run.battle, { cleared: 0, bag: 0, loot: 0 });
   assert.strictEqual(old.trainBest, 0);
   const legacy = game.normalizeState({ trainBest: 3, run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 12, bag: 99, pending: { stage: 2, win: true } } } }, 0, () => 0);
   assert.strictEqual(legacy.run.battle.cleared, 12);
   assert.ok(Math.abs(legacy.run.battle.bag - game.trainRate(legacy) * game.TRAIN_BAG_HOURS) < 1e-9);
-  assert.deepStrictEqual(Object.keys(legacy.run.battle).sort(), ['bag', 'cleared']);
+  assert.deepStrictEqual(Object.keys(legacy.run.battle).sort(), ['bag', 'cleared', 'loot']);
   assert.strictEqual(legacy.trainBest, 12);
   const broken = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: -4, bag: 'x' } } }, 0, () => 0);
-  assert.deepStrictEqual(broken.run.battle, { cleared: 0, bag: 0 });
+  assert.deepStrictEqual(broken.run.battle, { cleared: 0, bag: 0, loot: 0 });
 
   const s = cultivator(30, 30, 30);
   game.trainClear(s, 1);
@@ -270,7 +270,7 @@ test('历练存档：旧档缺字段按空值读，储物袋不超过上限；�
   assert.ok(loaded.run.battle.bag > 0);
   game.retire(loaded);
   game.reincarnate(loaded, 0, () => 0);
-  assert.deepStrictEqual(loaded.run.battle, { cleared: 0, bag: 0 });
+  assert.deepStrictEqual(loaded.run.battle, { cleared: 0, bag: 0, loot: 0 });
   assert.strictEqual(loaded.trainBest, 1);
 });
 
@@ -291,4 +291,162 @@ test('历练数值：引气中期的寻常修士能过头一个首领，越强�
   const s = cultivator(13, 13, 13);
   s.run.battle.cleared = 3;
   assert.ok(game.trainEncounter(s, 0, battle.seeded(5)).seconds < 20);
+});
+
+// 装备
+const gear = require('../utils/gear');
+
+test('装备：品级定词条数和装备分，阶越高、强化越高主属性越大', () => {
+  const low = { slot: 'weapon', grade: 0, tier: 9, level: 0, affixes: [] };
+  assert.strictEqual(gear.stats(low).atk, 7);
+  assert.strictEqual(gear.score(low), 4);
+  const high = { slot: 'weapon', grade: 3, tier: 9, level: 5, affixes: ['atk', 'crit', 'haste'] };
+  assert.strictEqual(gear.stats(high).atk, Math.round(6.5 * 2.5 * 1.5));
+  assert.strictEqual(gear.score(high), 22 * 1.5 + 6);
+  assert.ok(Math.abs(gear.stats(high).atkPct - 0.06) < 1e-9);
+  assert.ok(gear.stats({ slot: 'weapon', grade: 0, tier: 30, level: 0, affixes: [] }).atk > gear.stats(low).atk * 5);
+  assert.ok(gear.stats({ slot: 'armor', grade: 1, tier: 9, level: 0, affixes: [] }).hp > 0);
+  const charm = gear.stats({ slot: 'charm', grade: 2, tier: 9, level: 0, affixes: [] });
+  assert.ok(charm.atk > 0 && charm.hp > 0 && charm.crit === 0.06);
+  assert.ok(gear.rating(high) > gear.rating(low));
+  // 强化的花费逐级涨，到顶之后是 0；分解退一半。
+  assert.strictEqual(gear.enhanceCost(low), 1);
+  assert.strictEqual(gear.enhanceCost(high), 0);
+  assert.strictEqual(gear.scrapValue(low), 1);
+  assert.strictEqual(gear.scrapValue(high), 8 + Math.floor((4 + 8 + 12 + 16 + 20) / 2));
+});
+
+test('装备掉落：词条不重复，越往后好东西越多，首领掷两次取高', () => {
+  const count = (tier, boss) => {
+    const rng = battle.seeded(11);
+    const grades = [0, 0, 0, 0];
+    for (let i = 0; i < 2000; i++) {
+      const item = gear.roll(tier, rng, boss);
+      assert.strictEqual(item.affixes.length, gear.GRADES[item.grade].affixes);
+      assert.strictEqual(new Set(item.affixes).size, item.affixes.length);
+      assert.strictEqual(item.tier, tier);
+      grades[item.grade]++;
+    }
+    return grades;
+  };
+  const early = count(1, false);
+  const late = count(40, false);
+  const boss = count(1, true);
+  assert.ok(early[0] > 1000 && early[3] < 60);
+  assert.ok(late[3] > early[3] * 3 && late[0] < early[0]);
+  assert.ok(boss[0] < early[0] && boss[2] + boss[3] > early[2] + early[3]);
+});
+
+test('历练掉装备：首领关必掉，寻常的关有保底；空槽位直接穿上，装备让他打得更远', () => {
+  const s = cultivator(13, 13, 13);
+  // 随机数一直是 0.99：寻常的关不掉，连着 TRAIN_DROP_PITY 关没掉后必掉。
+  const never = () => 0.99;
+  for (let stage = 1; stage <= game.TRAIN_DROP_PITY; stage++) assert.strictEqual(game.trainClear(s, stage, never).drop, null);
+  const pity = game.trainClear(s, game.TRAIN_DROP_PITY + 1, never);
+  assert.ok(pity.drop && pity.drop.worn);
+  assert.strictEqual(pity.drop.item.tier, game.TRAIN_DROP_PITY + 1);
+  const boss = game.trainClear(s, 5, never);
+  assert.strictEqual(boss.boss, true);
+  assert.ok(boss.drop);
+  assert.ok(/得/.test(s.run.log[s.run.log.length - 1].text));
+  assert.ok(game.gearScore(s) > 0);
+  const power = game.combatPowerDetails(s);
+  assert.strictEqual(power.sources.filter((source) => source.id === 'gear')[0].value, game.gearScore(s));
+
+  const bare = game.trainFighter(cultivator(13, 13, 13));
+  const armed = cultivator(13, 13, 13);
+  armed.run.gear.worn.weapon = { uid: 1, slot: 'weapon', grade: 3, tier: 9, level: 5, affixes: ['atk', 'crit', 'haste'] };
+  armed.run.gear.worn.armor = { uid: 2, slot: 'armor', grade: 3, tier: 9, level: 5, affixes: ['hp', 'reduce', 'crit'] };
+  const me = game.trainFighter(armed);
+  assert.ok(me.atk > bare.atk * 1.8 && me.hp > bare.hp * 1.5 && me.interval < bare.interval && me.reduce > bare.reduce && me.crit > bare.crit);
+  const reach = (state, fighter) => {
+    let stage = 1;
+    while (stage < 100 && battle.estimate(fighter, game.trainFoe(state, stage), 60) >= 0.5) stage++;
+    return stage - 1;
+  };
+  assert.ok(reach(armed, me) >= reach(armed, bare) + 4);
+  // 装备不改锋躯神，渡劫不受影响。
+  assert.deepStrictEqual(game.attrs(armed), game.attrs(cultivator(13, 13, 13)));
+});
+
+test('装备：换上、一键换好的、强化、分解，背包满了新掉的直接分解', () => {
+  const s = cultivator(13, 13, 13);
+  const g = s.run.gear;
+  g.worn.weapon = { uid: 1, slot: 'weapon', grade: 0, tier: 3, level: 0, affixes: [] };
+  g.pack = [
+    { uid: 2, slot: 'weapon', grade: 1, tier: 6, level: 0, affixes: ['atk'] },
+    { uid: 3, slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] },
+    { uid: 4, slot: 'armor', grade: 0, tier: 2, level: 0, affixes: [] }
+  ];
+  g.seq = 4;
+  let view = game.gearView(s);
+  assert.deepStrictEqual(view.pack.map((item) => [item.uid, item.better]), [[2, true], [3, false], [4, true]]);
+  assert.strictEqual(game.gearEquipBest(s), 2);
+  assert.strictEqual(g.worn.weapon.uid, 2);
+  assert.strictEqual(g.worn.armor.uid, 4);
+  assert.deepStrictEqual(g.pack.map((item) => item.uid).sort(), [1, 3]);
+  assert.strictEqual(game.gearEquip(s, 99), false);
+  assert.strictEqual(game.gearEquip(s, 1), true);
+  assert.strictEqual(g.worn.weapon.uid, 1);
+
+  assert.strictEqual(game.gearEnhance(s, 'weapon'), false);
+  const spare = game.gearScrapSpare(s);
+  assert.deepStrictEqual(spare, { count: 1, forge: 1 });
+  assert.strictEqual(game.gearScrap(s, 2), 2);
+  assert.strictEqual(g.forge, 3);
+  assert.strictEqual(g.pack.length, 0);
+  assert.strictEqual(game.gearEnhance(s, 'weapon'), true);
+  assert.strictEqual(game.gearEnhance(s, 'weapon'), true);
+  assert.strictEqual(g.worn.weapon.level, 2);
+  assert.strictEqual(g.forge, 0);
+  assert.strictEqual(game.gearEnhance(s, 'charm'), false);
+
+  for (let i = 0; i < game.GEAR_PACK_MAX; i++) g.pack.push({ uid: 100 + i, slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] });
+  g.worn.charm = { uid: 200, slot: 'charm', grade: 0, tier: 1, level: 0, affixes: [] };
+  s.run.battle.cleared = 4;
+  const full = game.trainClear(s, 5, () => 0.5);
+  assert.ok(full.drop.scrapped > 0);
+  assert.strictEqual(g.pack.length, game.GEAR_PACK_MAX);
+  assert.strictEqual(g.forge, full.drop.scrapped);
+});
+
+test('储物袋攒装备：每 20 分钟一件，有上限，收取时按眼下的关数掷', () => {
+  const s = cultivator(13, 13, 13);
+  game.advance(s, s.lastTime + 3600 * 1000);
+  assert.strictEqual(game.trainBag(s).gear, 0);
+  s.run.battle.cleared = 7;
+  game.advance(s, s.lastTime + 3000 * 1000);
+  assert.strictEqual(game.trainBag(s).gear, 2);
+  const r = game.trainCollect(s, battle.seeded(2));
+  assert.strictEqual(r.drops.length, 2);
+  r.drops.forEach((drop) => assert.strictEqual(drop.item.tier, 7));
+  assert.ok(Math.abs(s.run.battle.loot - 0.5) < 1e-9);
+  game.advance(s, s.lastTime + 100 * 3600 * 1000);
+  const bag = game.trainBag(s);
+  assert.strictEqual(bag.gear, bag.gearMax);
+  assert.strictEqual(bag.full, true);
+});
+
+test('装备存档：不合法的装备丢掉，编号重排；装备和锻材不跨世', () => {
+  const raw = { run: { phase: 'alive', root: 'talisman', realm: 1, battle: { cleared: 3, loot: 99 }, gear: {
+    worn: { weapon: { slot: 'weapon', grade: 2, tier: 8, level: 3, affixes: ['atk', 'atk', 'hp', 'crit', 'x'] }, armor: { slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] }, charm: { slot: 'charm', grade: 9, tier: 1, level: 0, affixes: [] } },
+    pack: [{ slot: 'armor', grade: 1, tier: 2, level: 0, affixes: ['hp'] }, { slot: 'ring', grade: 0, tier: 1, level: 0, affixes: [] }, null, { slot: 'charm', grade: 0, tier: 0, level: 0, affixes: [] }],
+    forge: 500, dry: 50, seq: -3
+  } } };
+  const s = game.normalizeState(raw, 0, () => 0);
+  const g = s.run.gear;
+  assert.deepStrictEqual(g.worn.weapon, { slot: 'weapon', grade: 2, tier: 8, level: 3, affixes: ['atk', 'hp'], uid: 1 });
+  assert.strictEqual(g.worn.armor, null);
+  assert.strictEqual(g.worn.charm, null);
+  assert.strictEqual(g.pack.length, 1);
+  assert.strictEqual(g.pack[0].uid, 2);
+  assert.strictEqual(g.seq, 2);
+  assert.strictEqual(g.forge, 99);
+  assert.strictEqual(g.dry, game.TRAIN_DROP_PITY);
+  assert.strictEqual(s.run.battle.loot, game.trainBag(s).gearMax);
+  const old = game.normalizeState({ run: { phase: 'alive', root: 'talisman', realm: 1 } }, 0, () => 0);
+  assert.deepStrictEqual(old.run.gear, { worn: { weapon: null, armor: null, charm: null }, pack: [], forge: 0, seq: 0, dry: 0 });
+  game.retire(s);
+  game.reincarnate(s, 0, () => 0);
+  assert.deepStrictEqual(s.run.gear, old.run.gear);
 });

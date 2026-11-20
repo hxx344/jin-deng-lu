@@ -223,6 +223,7 @@
       </view>
     </view>
     <view class="tab {{tab === 'skill' ? 'tab-on' : ''}}" data-tab="skill" bindtap="onTab">功法</view>
+    <view class="tab {{tab === 'gear' ? 'tab-on' : ''}}" data-tab="gear" bindtap="onTab">装备</view>
     <view class="tab {{tab === 'log' ? 'tab-on' : ''}}" data-tab="log" bindtap="onTab">见闻</view>
     <view class="tab {{tab === 'lamp' ? 'tab-on' : ''}}" data-tab="lamp" bindtap="onTab">灯纹</view>
     <view class="tab {{tab === 'me' ? 'tab-on' : ''}}" data-tab="me" bindtap="onTab">轮回</view>
@@ -273,6 +274,56 @@
           <view class="desc">{{item.desc}}</view>
         </view>
         <view wx:if="{{item.canMerge}}" class="merge-btn" data-id="{{item.id}}" bindtap="onMerge">合秘法</view>
+      </view>
+    </block>
+
+    <block wx:elif="{{tab === 'gear'}}">
+      <view class="power-panel">
+        <view class="power-panel-head">
+          <text>装备分</text>
+          <text class="power-value">{{gear.score}}</text>
+        </view>
+        <view class="gear-bonus">{{gear.bonus}}</view>
+        <view class="gear-bonus gear-note">只在历练的战斗里起作用 · 锻材 {{gear.forge}}</view>
+      </view>
+      <view class="section">身上</view>
+      <view wx:for="{{gear.worn}}" wx:key="slot" class="card">
+        <view class="badge" style="background: {{item.item ? item.item.color : '#3a332d'}};">{{item.slotName}}</view>
+        <view wx:if="{{item.item}}" class="info">
+          <view class="name">
+            <text>{{item.item.name}}</text>
+            <text class="tag">{{item.item.grade}} · {{item.item.tier}} 阶</text>
+          </view>
+          <view class="desc">{{item.item.text}}</view>
+        </view>
+        <view wx:else class="info">
+          <view class="desc">空着。历练过关会掉装备。</view>
+        </view>
+        <view wx:if="{{item.item && !item.max}}" class="merge-btn {{item.off ? 'gear-btn-off' : ''}}" data-slot="{{item.slot}}" bindtap="onGearEnhance">强化 · {{item.cost}} 锻材</view>
+        <view wx:if="{{item.max}}" class="gear-max">已强化到顶</view>
+      </view>
+      <view class="section gear-head">
+        <text>背包 {{gear.packCount}}</text>
+        <view class="gear-tools">
+          <text wx:if="{{gear.hasBetter}}" class="gear-tool" bindtap="onGearBest">换上更好的</text>
+          <text wx:if="{{gear.hasSpare}}" class="gear-tool" bindtap="onGearSpare">分解用不上的</text>
+        </view>
+      </view>
+      <view wx:if="{{!gear.pack.length}}" class="empty">背包是空的。</view>
+      <view wx:for="{{gear.pack}}" wx:key="uid" class="card">
+        <view class="badge" style="background: {{item.color}};">{{item.slotName}}</view>
+        <view class="info">
+          <view class="name">
+            <text>{{item.name}}</text>
+            <text class="tag">{{item.grade}} · {{item.tier}} 阶</text>
+            <text wx:if="{{item.better}}" class="tag gear-tag-up">更好</text>
+          </view>
+          <view class="desc">{{item.text}}</view>
+        </view>
+        <view class="gear-acts">
+          <view class="merge-btn" data-uid="{{item.uid}}" bindtap="onGearEquip">换上</view>
+          <view class="merge-btn gear-btn-plain" data-uid="{{item.uid}}" bindtap="onGearScrap">分解 +{{item.scrap}}</view>
+        </view>
       </view>
     </block>
 

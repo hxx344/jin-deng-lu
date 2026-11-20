@@ -227,6 +227,7 @@ Page({
     actor: {},
     bar: HIDDEN_BAR,
     bag: { text: '', full: false },
+    gear: { worn: [], pack: [] },
     tip: { at: '', text: '', next: '' },
     tab: 'skill',
     alive: false,
@@ -1154,6 +1155,13 @@ Page({
           '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
           '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
         ]),
+        sec('装备', [
+          '历练掉装备：寻常的关过关时有三成机会掉一件，连着 ' + game.TRAIN_DROP_PITY + ' 关没掉下一关必掉；首领关必掉，品级更好。储物袋另外每 20 分钟攒一件，卡关时也有东西拿。',
+          '装备分兵、衣、佩三个槽位：兵加攻击，衣加气血，佩两样都加一点并加暴击。品级有凡、灵、玄、天，品级越高带的词条越多；越靠后的关掉的装备“阶”越高，数值越大。',
+          '装备只在历练的战斗里起作用，不改锋躯神，也不影响渡劫；装备分会算进战力。',
+          '在“装备”页换装、强化和分解。强化耗锻材，最高 +' + game.GEAR_MAX_LEVEL + '，不会失败；锻材靠分解用不上的装备得来。背包最多 ' + game.GEAR_PACK_MAX + ' 件，满了之后新掉的直接分解。',
+          '装备和锻材只管这一世。'
+        ]),
         sec('身死与轮回', [
           '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
           '灯芯用来点亮“灯纹”页里永久生效的加成，然后重新投胎，挑一副根骨。',
@@ -1286,11 +1294,11 @@ Page({
         ? '他坐在灯前自己打，不耗寿元和机缘。关卡没有尽头，每 ' + v.bossEvery + ' 关一个首领；败了调息一阵，从这一关的头一只重来。这一世已过 ' + v.cleared + ' 关，历来最远 ' + v.best + ' 关。'
         : v.reason,
       me: me ? '气血 ' + game.formatNumber(me.hp) + ' · 攻击 ' + game.formatNumber(me.atk) + ' · 每 ' + me.interval.toFixed(2) + ' 秒出手 · 减伤 ' + percent(me.reduce) + '% · 暴击 ' + percent(me.crit) + '%' : '',
-      bagTitle: '储物袋 · 灵气 ' + game.formatNumber(bag.qi) + ' / ' + game.formatNumber(bag.max),
+      bagTitle: '储物袋 · 灵气 ' + game.formatNumber(bag.qi) + ' / ' + game.formatNumber(bag.max) + ' · 装备 ' + bag.gear + ' / ' + bag.gearMax,
       bagText: bag.perHour
-        ? '每小时攒 ' + game.formatNumber(bag.perHour) + '，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时 ' + game.formatNumber(v.nextPerHour) + '。'
+        ? '每小时攒灵气 ' + game.formatNumber(bag.perHour) + '，每 ' + bag.gearMinutes + ' 分钟攒一件装备，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时灵气 ' + game.formatNumber(v.nextPerHour) + '。'
         : '过了第 1 关才开始攒。每过一关攒得更快，过首领关涨得更多。',
-      bagOff: bag.qi < 1,
+      bagOff: bag.qi < 1 && bag.gear < 1,
       stages: stages
     };
   },
@@ -1393,29 +1401,103 @@ Page({
     f.wait = FRAY_ENTER;
   },
 
-  // 这一关最后一个倒下了：记过关，下一拍换下一关。只有首领关出横幅，寻常的关太密了。
+  // 这一关最后一个倒下了：记过关，下一拍换下一关。寻常的关只在掉了装备时出横幅。
   frayClear(f) {
-    const r = game.trainClear(this.state, f.stage);
+    const r = game.trainClear(this.state, f.stage, Math.random);
     this.fray = null;
     if (!r) return;
+    const drop = r.drop ? this.dropText(r.drop) : '';
     if (r.boss) {
       audio.play('good');
-      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
+      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + (drop ? ' · ' + drop : '') + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
       if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
+    } else if (drop) {
+      audio.play('coin');
+      this.showBanner('第 ' + r.stage + ' 关 · ' + drop);
     }
     this.afterAction();
   },
 
+  dropText(drop) {
+    const name = '掉了' + drop.item.grade + drop.item.name;
+    if (drop.worn) return name + '，已穿上';
+    if (drop.scrapped) return name + '，背包满了，分解成锻材 +' + drop.scrapped;
+    return name + (drop.better ? '，比身上的好' : '');
+  },
+
   onBag() {
-    const r = game.trainCollect(this.state);
+    const r = game.trainCollect(this.state, Math.random);
     if (!r) {
       audio.play('tap');
-      this.showBanner(game.trainBag(this.state).perHour ? '储物袋还是空的，等它攒一会儿' : '过了第 1 关，储物袋才开始攒灵气');
+      this.showBanner(game.trainBag(this.state).perHour ? '储物袋还是空的，等它攒一会儿' : '过了第 1 关，储物袋才开始攒东西');
       return;
     }
-    this.showBanner('收了储物袋：' + r.lines.join('，'));
-    if (!this.act) this.play(actionForTags(r.tags));
+    const better = r.drops.filter((drop) => drop.better || drop.worn).length;
+    this.showBanner('收了储物袋：' + r.lines.join('，') + (better ? '（' + better + ' 件比身上的好）' : ''));
+    if (!this.act) this.play(r.qi ? actionForTags(r.tags) : 'lucky');
     else audio.play('qi');
+    this.afterAction();
+  },
+
+  // 装备页。
+  gearPanel() {
+    const v = game.gearView(this.state);
+    return {
+      score: v.score,
+      bonus: v.bonus || '身上还没有装备',
+      forge: v.forge + ' / ' + v.forgeMax,
+      worn: v.worn.map((entry) => ({
+        slot: entry.slot,
+        slotName: entry.slotName,
+        item: entry.item,
+        max: !!entry.item && !entry.cost,
+        cost: entry.cost,
+        off: !entry.canEnhance
+      })),
+      pack: v.pack,
+      packCount: v.pack.length + ' / ' + v.packMax,
+      hasBetter: v.hasBetter,
+      hasSpare: v.hasSpare
+    };
+  },
+
+  onGearEquip(e) {
+    if (!game.gearEquip(this.state, Number(e.currentTarget.dataset.uid))) return;
+    audio.play('pick');
+    this.afterAction();
+  },
+
+  onGearBest() {
+    const count = game.gearEquipBest(this.state);
+    if (!count) return;
+    audio.play('pick');
+    this.showBanner('换上了 ' + count + ' 件更好的');
+    this.afterAction();
+  },
+
+  onGearEnhance(e) {
+    if (!game.gearEnhance(this.state, e.currentTarget.dataset.slot)) {
+      audio.play('bad');
+      this.showBanner('锻材不够，分解用不上的装备可以得锻材');
+      return;
+    }
+    audio.play('up');
+    this.afterAction();
+  },
+
+  onGearScrap(e) {
+    const value = game.gearScrap(this.state, Number(e.currentTarget.dataset.uid));
+    if (!value) return;
+    audio.play('tap');
+    this.showBanner('分解：锻材 +' + value);
+    this.afterAction();
+  },
+
+  onGearSpare() {
+    const r = game.gearScrapSpare(this.state);
+    if (!r.count) return;
+    audio.play('tap');
+    this.showBanner('分解了 ' + r.count + ' 件：锻材 +' + r.forge);
     this.afterAction();
   },
 
@@ -1890,7 +1972,7 @@ Page({
     const power = game.combatPowerDetails(s, a);
     const pouch = run.phase === 'alive' ? game.trainBag(s) : null;
     const patch = {
-      bag: { text: pouch && pouch.perHour ? '储物袋 ' + game.formatNumber(pouch.qi) : '储物袋', full: !!(pouch && pouch.full) },
+      bag: { text: pouch && pouch.perHour ? '储物袋 ' + game.formatNumber(pouch.qi) + (pouch.gear ? ' · 装备 ' + pouch.gear : '') : '储物袋', full: !!(pouch && pouch.full) },
       hud: this.hudView(power.total),
       hero: this.heroView(),
       actor: this.actorView(),
@@ -1900,6 +1982,7 @@ Page({
       alive: run.phase === 'alive',
       dead: run.phase === 'dead'
     };
+    if (tab === 'gear') patch.gear = this.gearPanel();
     if (tab === 'skill') {
       const info = run.phase === 'alive' ? game.tribulationInfo(s) : null;
       const yuan = run.phase === 'alive' && run.realm === game.SEA_REALM ? game.TRIBS[run.realm] : null;

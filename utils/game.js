@@ -3,6 +3,7 @@ const content = require('./content');
 const combatPower = require('./combat-power');
 const mountain = require('./mountain');
 const battle = require('./battle');
+const gear = require('./gear');
 
 const SCHOOL_IDS = content.SCHOOL_IDS;
 const SCHOOLS = content.SCHOOLS;
@@ -300,8 +301,9 @@ function newRun(state, rng) {
     revived: false,
     wards: 0,
     sures: 0,
-    // 历练：cleared 是这一世已经过了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记）。
-    battle: { cleared: 0, bag: 0 },
+    // 历练：cleared 是这一世已经过了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记），loot 是储物袋里攒着的装备件数。
+    battle: { cleared: 0, bag: 0, loot: 0 },
+    gear: emptyGear(),
     death: null
   };
 }
@@ -766,7 +768,8 @@ function combatPowerDetails(state, currentAttrs) {
   const bonds = SCHOOL_IDS.reduce((sum, id) => sum + combatPower.bondPower(counts[id]), 0);
   return combatPower.powerProfile(REALMS[run.realm], STAGES[run.stage], currentAttrs || attrs(state), [
     { id: 'mastery', label: '功法品级', value: mastery },
-    { id: 'bonds', label: '流派羁绊', value: bonds }
+    { id: 'bonds', label: '流派羁绊', value: bonds },
+    { id: 'gear', label: '装备', value: gearScore(state) }
   ]);
 }
 
@@ -2262,6 +2265,13 @@ const TRAIN_BOSS_ATK = 1.4;
 const TRAIN_RATE = 0.015;
 const TRAIN_BOSS_BONUS = 2;
 const TRAIN_BAG_HOURS = 2;
+// 掉落：寻常的关过关时有这么大的机会掉一件，连着 TRAIN_DROP_PITY 关没掉下一关必掉；首领关必掉，品级掷两次取高的。
+// 储物袋另外每 TRAIN_LOOT_SEC 秒攒一件，卡关时也有东西拿。
+const TRAIN_DROP = 0.3;
+const TRAIN_DROP_PITY = 3;
+const TRAIN_LOOT_SEC = 1200;
+const TRAIN_LOOT_MAX = TRAIN_BAG_HOURS * 3600 / TRAIN_LOOT_SEC;
+const FORGE_MAX = 99;
 
 function trainFighter(state) {
   const run = state.run;
@@ -2282,7 +2292,8 @@ function trainFighter(state) {
     softCap: REALMS[run.realm].power.softCap,
     demon: run.demon,
     demonMode: run.mode === 'demon',
-    schools: schools
+    schools: schools,
+    gear: gear.bonus(wornItems(run))
   });
 }
 
@@ -2363,10 +2374,11 @@ function fillBag(state, seconds) {
   if (run.phase !== 'alive' || !(seconds > 0)) return;
   const rate = trainRate(state);
   run.battle.bag = Math.min(rate * TRAIN_BAG_HOURS, run.battle.bag + rate * seconds / 3600);
+  if (run.battle.cleared > 0) run.battle.loot = Math.min(TRAIN_LOOT_MAX, run.battle.loot + seconds / TRAIN_LOOT_SEC);
 }
 
-// 过了第 stage 关：储物袋攒得更快。只有首领关记一条见闻，免得刷屏。
-function trainClear(state, stage) {
+// 过了第 stage 关：储物袋攒得更快，可能掉一件装备。只有首领关记一条见闻，免得刷屏。
+function trainClear(state, stage, rng) {
   const run = state.run;
   if (!stage || trainStage(state) !== stage || run.battle.cleared >= TRAIN_MAX) return null;
   const boss = trainBoss(stage);
@@ -2374,11 +2386,19 @@ function trainClear(state, stage) {
   run.battle.cleared = stage;
   state.trainBest = Math.max(state.trainBest, stage);
   const perHour = qiRewardAmount(state, trainRate(state));
+  const roll = rng || Math.random;
+  let drop = null;
+  if (boss || run.gear.dry >= TRAIN_DROP_PITY || roll() < TRAIN_DROP) {
+    run.gear.dry = 0;
+    drop = gearGain(state, gear.roll(stage, roll, boss));
+  } else {
+    run.gear.dry++;
+  }
   if (boss) {
-    run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
+    run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '，得' + drop.item.grade + drop.item.name + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
     run.log = run.log.slice(-MAX_LOG);
   }
-  return { stage: stage, boss: boss, name: name, perHour: perHour };
+  return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop };
 }
 
 // 储物袋眼下的样子：攒了多少、每小时攒多少、装满是多少。
@@ -2390,28 +2410,188 @@ function trainBag(state) {
     qi: qiRewardAmount(state, run.battle.bag),
     perHour: qiRewardAmount(state, rate),
     max: qiRewardAmount(state, max),
-    full: max > 0 && run.battle.bag >= max,
-    hours: TRAIN_BAG_HOURS
+    full: max > 0 && run.battle.bag >= max && run.battle.loot >= TRAIN_LOOT_MAX,
+    hours: TRAIN_BAG_HOURS,
+    gear: Math.floor(run.battle.loot),
+    gearMax: TRAIN_LOOT_MAX,
+    gearMinutes: TRAIN_LOOT_SEC / 60
   };
 }
 
-// 把储物袋里的灵气收进丹田。袋里不足 1 点灵气时返回 null。
-function trainCollect(state) {
+// 把储物袋里的灵气收进丹田，装备按眼下过了的关数现掷。袋里什么都没有时返回 null。
+function trainCollect(state, rng) {
   const run = state.run;
   if (run.phase !== 'alive') return null;
   const amount = qiRewardAmount(state, run.battle.bag);
-  if (amount < 1) return null;
+  const pieces = Math.floor(run.battle.loot);
+  if (amount < 1 && pieces < 1) return null;
   const before = snapshot(state);
   const qi = run.qi;
   const lines = [];
   const tags = [];
-  run.battle.bag = 0;
-  addQiWithLines(state, amount, lines, tags);
+  if (amount >= 1) {
+    run.battle.bag = 0;
+    addQiWithLines(state, amount, lines, tags);
+  }
+  const drops = [];
+  const roll = rng || Math.random;
+  for (let i = 0; i < pieces; i++) drops.push(gearGain(state, gear.roll(Math.max(1, run.battle.cleared), roll, false)));
+  run.battle.loot -= pieces;
+  if (pieces) lines.push('装备 ' + pieces + ' 件');
   run.log.push({ age: run.age, title: '历练', text: '收了储物袋：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
-  return { title: '历练', label: '收了储物袋', qi: amount, gained: Math.max(0, Math.floor(run.qi - qi)), lines: lines, tags: tags };
+  return { title: '历练', label: '收了储物袋', qi: amount >= 1 ? amount : 0, gained: Math.max(0, Math.floor(run.qi - qi)), drops: drops, lines: lines, tags: tags };
 }
 
+// 装备：历练掉落，只管这一世。身上兵、衣、佩三个槽位，背包最多 PACK_MAX 件，装不下的直接分解成锻材。
+function emptyGear() {
+  return { worn: { weapon: null, armor: null, charm: null }, pack: [], forge: 0, seq: 0, dry: 0 };
+}
+
+function wornItems(run) {
+  return gear.SLOTS.map((slot) => run.gear.worn[slot.id]);
+}
+
+function gearScore(state) {
+  return wornItems(state.run).reduce((sum, item) => sum + (item ? gear.score(item) : 0), 0);
+}
+
+// 得到一件装备：槽位空着就穿上，否则进背包；背包满了当场分解。
+function gearGain(state, item) {
+  const g = state.run.gear;
+  item.uid = ++g.seq;
+  const out = { item: gear.describe(item), worn: false, scrapped: 0, better: false };
+  if (!g.worn[item.slot]) {
+    g.worn[item.slot] = item;
+    out.worn = true;
+  } else if (g.pack.length < gear.PACK_MAX) {
+    g.pack.push(item);
+    out.better = gear.rating(item) > gear.rating(g.worn[item.slot]);
+  } else {
+    out.scrapped = gear.scrapValue(item);
+    g.forge = Math.min(FORGE_MAX, g.forge + out.scrapped);
+  }
+  return out;
+}
+
+function packIndex(run, uid) {
+  for (let i = 0; i < run.gear.pack.length; i++) {
+    if (run.gear.pack[i].uid === uid) return i;
+  }
+  return -1;
+}
+
+// 把背包里的一件换到身上，原来身上那件回背包。
+function gearEquip(state, uid) {
+  const run = state.run;
+  const index = run.phase === 'alive' ? packIndex(run, uid) : -1;
+  if (index < 0) return false;
+  const item = run.gear.pack[index];
+  const old = run.gear.worn[item.slot];
+  run.gear.worn[item.slot] = item;
+  if (old) run.gear.pack[index] = old;
+  else run.gear.pack.splice(index, 1);
+  return true;
+}
+
+// 把背包里比身上好的都换上。返回换了几件。
+function gearEquipBest(state) {
+  const run = state.run;
+  if (run.phase !== 'alive') return 0;
+  let count = 0;
+  gear.SLOTS.forEach((slot) => {
+    let best = null;
+    run.gear.pack.forEach((item) => {
+      if (item.slot === slot.id && (!best || gear.rating(item) > gear.rating(best))) best = item;
+    });
+    const worn = run.gear.worn[slot.id];
+    if (best && (!worn || gear.rating(best) > gear.rating(worn)) && gearEquip(state, best.uid)) count++;
+  });
+  return count;
+}
+
+// 强化身上某个槽位的装备，耗锻材，不会失败。
+function gearEnhance(state, slot) {
+  const run = state.run;
+  const item = run.phase === 'alive' ? run.gear.worn[slot] : null;
+  const cost = item ? gear.enhanceCost(item) : 0;
+  if (!cost || run.gear.forge < cost) return false;
+  run.gear.forge -= cost;
+  item.level++;
+  return true;
+}
+
+// 分解背包里的一件，得锻材。返回得了多少；没有这一件返回 0。
+function gearScrap(state, uid) {
+  const run = state.run;
+  const index = run.phase === 'alive' ? packIndex(run, uid) : -1;
+  if (index < 0) return 0;
+  const value = gear.scrapValue(run.gear.pack.splice(index, 1)[0]);
+  run.gear.forge = Math.min(FORGE_MAX, run.gear.forge + value);
+  return value;
+}
+
+// 把背包里不比身上好的都分解掉。
+function gearScrapSpare(state) {
+  const run = state.run;
+  if (run.phase !== 'alive') return { count: 0, forge: 0 };
+  const spare = run.gear.pack.filter((item) => {
+    const worn = run.gear.worn[item.slot];
+    return worn && gear.rating(item) <= gear.rating(worn);
+  });
+  let forge = 0;
+  spare.forEach((item) => {
+    forge += gearScrap(state, item.uid);
+  });
+  return { count: spare.length, forge: forge };
+}
+
+function gearView(state) {
+  const run = state.run;
+  const g = run.gear;
+  const worn = gear.SLOTS.map((slot) => {
+    const item = g.worn[slot.id];
+    const cost = item ? gear.enhanceCost(item) : 0;
+    return { slot: slot.id, slotName: slot.name, item: item ? gear.describe(item) : null, cost: cost, canEnhance: cost > 0 && g.forge >= cost };
+  });
+  const pack = g.pack.map((item) => {
+    const mine = g.worn[item.slot];
+    return Object.assign(gear.describe(item), { better: !mine || gear.rating(item) > gear.rating(mine), scrap: gear.scrapValue(item) });
+  }).sort((a, b) => (a.slot === b.slot ? b.tier - a.tier || b.score - a.score : gear.SLOTS.findIndex((s) => s.id === a.slot) - gear.SLOTS.findIndex((s) => s.id === b.slot)));
+  return {
+    score: gearScore(state),
+    bonus: gear.statsText(gear.bonus(wornItems(run))),
+    forge: g.forge,
+    forgeMax: FORGE_MAX,
+    worn: worn,
+    pack: pack,
+    packMax: gear.PACK_MAX,
+    hasBetter: pack.some((item) => item.better),
+    hasSpare: pack.some((item) => !item.better)
+  };
+}
+
+function normalizeGear(raw) {
+  const out = emptyGear();
+  if (!raw || typeof raw !== 'object') return out;
+  const read = (entry) => {
+    const item = gear.clean(entry);
+    if (item) item.uid = ++out.seq;
+    return item;
+  };
+  const worn = raw.worn && typeof raw.worn === 'object' ? raw.worn : {};
+  gear.SLOTS.forEach((slot) => {
+    const item = worn[slot.id] && worn[slot.id].slot === slot.id ? read(worn[slot.id]) : null;
+    if (item) out.worn[slot.id] = item;
+  });
+  (Array.isArray(raw.pack) ? raw.pack : []).forEach((entry) => {
+    const item = out.pack.length < gear.PACK_MAX ? read(entry) : null;
+    if (item) out.pack.push(item);
+  });
+  out.forge = toCount(raw.forge, FORGE_MAX);
+  out.dry = toCount(raw.dry, TRAIN_DROP_PITY);
+  return out;
+}
 // 历练面板：打到第几关、眼前这一关和下一个首领的胜率、储物袋。
 function trainView(state) {
   const run = state.run;
@@ -3286,6 +3466,8 @@ function normalizeRun(state, raw, rng) {
   const saved = raw.battle && typeof raw.battle === 'object' ? raw.battle : {};
   run.battle.cleared = toCount(saved.cleared, TRAIN_MAX);
   run.battle.bag = clamp(toNumber(saved.bag), 0, trainRate(state, run.battle.cleared) * TRAIN_BAG_HOURS);
+  run.battle.loot = run.battle.cleared > 0 ? clamp(toNumber(saved.loot), 0, TRAIN_LOOT_MAX) : 0;
+  run.gear = normalizeGear(raw.gear);
   return run;
 }
 
@@ -3500,6 +3682,17 @@ module.exports = {
   trainRate,
   trainBag,
   trainCollect,
+  GEAR_SLOTS: gear.SLOTS,
+  GEAR_PACK_MAX: gear.PACK_MAX,
+  GEAR_MAX_LEVEL: gear.MAX_LEVEL,
+  TRAIN_DROP_PITY,
+  gearView,
+  gearScore,
+  gearEquip,
+  gearEquipBest,
+  gearEnhance,
+  gearScrap,
+  gearScrapSpare,
   SEA_REALM,
   SEA_TIDE_LIMIT,
   seaView,
