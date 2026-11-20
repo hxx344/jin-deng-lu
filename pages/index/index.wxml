@@ -13,8 +13,10 @@
     </view>
     <view class="qi">
       <text class="qi-num">{{hud.qi}}</text>
-      <text class="qi-cap">/ {{hud.cap}} 灵气</text>
-      <text class="qi-rate">每年 +{{hud.rate}}</text>
+      <view class="qi-side">
+        <text class="qi-cap">/ {{hud.cap}} 灵气</text>
+        <text class="qi-rate">每年 +{{hud.rate}}</text>
+      </view>
       <view class="power-badge">
         <text class="power-label">战力</text>
         <text class="power-value">{{hud.power}}</text>
