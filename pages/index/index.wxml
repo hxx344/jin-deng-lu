@@ -2,6 +2,7 @@
   <view class="hud">
     <view class="hud-top">
       <view class="realm">{{hud.realm}}</view>
+      <view wx:if="{{hud.mode}}" class="mode-tag">{{hud.mode}}</view>
       <view class="where">{{hud.where}}</view>
       <view class="wick">
         <image class="wick-icon" src="/assets/wick.svg" mode="aspectFit" />
@@ -13,6 +14,7 @@
     <view class="qi">
       <text class="qi-num">{{hud.qi}}</text>
       <text class="qi-cap">/ {{hud.cap}} 灵气</text>
+      <text class="qi-rate">每年 +{{hud.rate}}</text>
       <view class="power-badge">
         <text class="power-label">战力</text>
         <text class="power-value">{{hud.power}}</text>
@@ -21,16 +23,27 @@
     <view class="bar bar-qi">
       <view class="bar-fill" style="width: {{hud.qiPct}}%;"></view>
     </view>
-    <view class="chips">
-      <view class="chip">每年<text class="chip-num">+{{hud.rate}}</text></view>
-      <view class="chip {{hud.lifeLow ? 'chip-warn' : ''}}">寿元余<text class="chip-num">{{hud.years}} 年</text></view>
-      <view class="chip {{hud.demonHigh ? 'chip-warn' : ''}}">心魔<text class="chip-num">{{hud.demon}}</text></view>
-    </view>
-    <view class="chips chips-sub">
-      <view class="chip">机缘<text class="chip-num">{{hud.chanceRate}}</text></view>
-      <view class="chip">大机缘<text class="chip-num">{{hud.big}}</text></view>
-      <view class="chip">灯油<text class="chip-num">{{hud.oil}}</text></view>
-      <view wx:if="{{hud.mode}}" class="chip chip-warn"><text class="chip-num">{{hud.mode}}</text></view>
+    <view class="hud-stats">
+      <view class="hud-stat {{hud.lifeLow ? 'hud-stat-warn' : ''}}">
+        <view class="hud-stat-label">寿元余</view>
+        <view class="hud-stat-num">{{hud.years}} 年</view>
+      </view>
+      <view class="hud-stat {{hud.demonHigh ? 'hud-stat-warn' : ''}}">
+        <view class="hud-stat-label">心魔</view>
+        <view class="hud-stat-num">{{hud.demon}}</view>
+      </view>
+      <view class="hud-stat">
+        <view class="hud-stat-label">机缘</view>
+        <view class="hud-stat-num">{{hud.chance}}</view>
+      </view>
+      <view class="hud-stat">
+        <view class="hud-stat-label">大机缘</view>
+        <view class="hud-stat-num">{{hud.big}}</view>
+      </view>
+      <view class="hud-stat">
+        <view class="hud-stat-label">灯油</view>
+        <view class="hud-stat-num">{{hud.oil}}</view>
+      </view>
     </view>
     <view wx:if="{{hud.aftermath}}" class="chips chips-sub">
       <view class="chip chip-warn"><text class="chip-num">{{hud.aftermath}}</text></view>
@@ -51,7 +64,7 @@
     </view>
   </view>
 
-  <view class="stage stage-{{actor.layer}} {{actor.storm ? 'stage-storm' : ''}}">
+  <view class="stage stage-{{actor.layer}} {{actor.storm ? 'stage-storm' : ''}} {{bar.show && !actor.storm ? 'stage-fray' : ''}}">
     <view class="scene-far"></view>
     <view class="scene-near"></view>
     <view class="rib rib-1"></view>
@@ -111,6 +124,42 @@
       <view class="a-slash"></view>
       <view wx:if="{{actor.bubble}}" class="a-bubble">{{actor.bubble}}</view>
     </view>
+    <view wx:if="{{bar.show && !actor.storm}}" class="fray">
+      <view wx:if="{{bar.foe}}" class="foe foe-{{bar.foe.state}} {{bar.foe.boss ? 'foe-boss' : ''}}">
+        <view class="foe-aura"></view>
+        <view class="foe-shadow"></view>
+        <view class="foe-move {{bar.foeAct ? 'foe-lunge' + bar.foeAct : ''}}">
+          <view class="foe-bob">
+            <image class="foe-img {{bar.foeHit ? 'foe-hit' + bar.foeHit : ''}}" src="/assets/foes/{{bar.foe.sprite}}.svg" mode="aspectFit" />
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{bar.shot}}" class="shot shot-{{bar.shotKind}} shot-go{{bar.shot}}"></view>
+      <view wx:if="{{bar.meHit}}" class="fray-flash fray-flash{{bar.meHit}}"></view>
+      <view wx:for="{{bar.pops}}" wx:key="key" class="pop pop-{{item.side}} pop-{{item.tone}} {{bar.foe && bar.foe.boss ? 'pop-tall' : ''}}" style="margin-left: {{item.dx}}rpx;">{{item.text}}</view>
+      <view class="fray-top">
+        <view class="fray-side" bindtap="onTrain">
+          <view class="fray-title">
+            <text>{{bar.title}}</text>
+            <view wx:for="{{bar.pips}}" wx:key="key" class="fray-pip {{item.boss ? 'fray-pip-boss' : ''}} {{item.on ? 'fray-pip-on' : ''}} {{item.now ? 'fray-pip-now' : ''}}"></view>
+          </view>
+          <view class="fray-hp">
+            <view class="fray-hp-fill fray-hp-me {{bar.rest ? 'fray-hp-rest' : ''}}" style="width: {{bar.mePct}}%;"></view>
+            <view wx:if="{{bar.shield}}" class="fray-hp-shield" style="width: {{bar.shield}}%;"></view>
+          </view>
+          <view wx:if="{{bar.rest}}" class="fray-note">败了一阵 · 调息中</view>
+        </view>
+        <view wx:if="{{bar.foe && bar.foe.state !== 'away'}}" class="fray-side fray-side-foe">
+          <view class="fray-title">
+            <text wx:if="{{bar.foe.boss}}" class="fray-boss-tag">守关</text>
+            <text class="fray-foe-name">{{bar.foe.name}}</text>
+          </view>
+          <view class="fray-hp">
+            <view class="fray-hp-fill fray-hp-foe" style="width: {{bar.foe.pct}}%;"></view>
+          </view>
+        </view>
+      </view>
+    </view>
     <view wx:if="{{actor.storm}}" class="storm-front">
       <view class="storm-scorch"></view>
       <image class="storm-bolt storm-bolt-1" src="/assets/bolt.svg" mode="aspectFit" />
@@ -121,10 +170,12 @@
   </view>
 
   <view class="hero-row">
-    <view class="hero-line">{{hero.line}}</view>
-    <view wx:if="{{alive}}" class="auto {{autoUnlocked && auto ? 'auto-on' : ''}}" bindtap="onAuto">自动机缘 · {{autoUnlocked ? (auto ? '开' : '关') : autoCost + ' 灯芯解锁'}}</view>
+    <view class="hero-info">
+      <view class="hero-line">{{hero.line}}</view>
+      <view wx:if="{{alive && hero.term}}" class="hero-term {{hero.termOver ? 'hero-term-over' : ''}}">{{hero.term}}</view>
+    </view>
+    <view wx:if="{{alive}}" class="auto {{autoUnlocked && auto ? 'auto-on' : ''}}" bindtap="onAuto">自动 · {{autoUnlocked ? (auto ? '开' : '关') : autoCost + ' 灯芯'}}</view>
   </view>
-  <view wx:if="{{alive && hero.term}}" class="hero-term {{hero.termOver ? 'hero-term-over' : ''}}">{{hero.term}}</view>
   <view class="hero">
     <view wx:if="{{tip.at === 'main'}}" class="tip tip-above" catchtap="noop">
       <view class="tip-text">{{tip.text}}</view>
@@ -158,10 +209,6 @@
       <text class="main-sub">{{hero.powderSub}}</text>
     </view>
   </view>
-  <view wx:if="{{hero.train}}" class="mountain-entry" hover-class="opt-hover" bindtap="onTrain">
-    <text class="mountain-entry-title">{{hero.train}}</text>
-    <text class="mountain-entry-sub">{{hero.trainSub}}</text>
-  </view>
   <view wx:if="{{hero.mountainTitle}}" class="mountain-entry" hover-class="opt-hover" bindtap="onMountain">
     <text class="mountain-entry-title">{{hero.mountainTitle}}</text>
     <text class="mountain-entry-sub">{{hero.mountainSub}}</text>
@@ -184,8 +231,10 @@
     <block wx:if="{{tab === 'skill'}}">
       <view class="attrs">
         <view wx:for="{{attrs}}" wx:key="name" class="attr {{item.need ? 'attr-need' : ''}}">
-          <text class="attr-name">{{item.name}}</text>
-          <text class="attr-value">{{item.value}}</text>
+          <view class="attr-main">
+            <text class="attr-name">{{item.name}}</text>
+            <text class="attr-value">{{item.value}}</text>
+          </view>
           <text wx:if="{{item.need}}" class="attr-hint">天劫需 {{item.need}}</text>
         </view>
       </view>
@@ -299,9 +348,9 @@
     </block>
 
     <block wx:else>
-      <view class="stats">
-        <view wx:for="{{stats}}" wx:key="label" class="stat">
-          <text class="stat-label">{{item.label}}</text>
+      <view class="hud-stats">
+        <view wx:for="{{stats}}" wx:key="label" class="hud-stat">
+          <text class="hud-stat-label">{{item.label}}</text>
           <text class="stat-value">{{item.value}}</text>
         </view>
       </view>
@@ -658,65 +707,16 @@
           <view wx:for="{{sheet.stages}}" wx:key="index" class="rank-row">
             <text class="rank-no">{{item.no}}</text>
             <view class="rank-info">
-              <text class="rank-name">{{item.name}}{{item.cleared ? ' · 已过' : ''}}</text>
+              <text class="rank-name">{{item.name}}{{item.cleared ? ' · 已过' : (item.now ? ' · 正在打' : '')}}</text>
               <text class="rank-realm">{{item.text}}</text>
               <text class="rank-realm">{{item.sub}}</text>
-              <text wx:if="{{item.reason}}" class="rank-realm train-reason">{{item.reason}}</text>
             </view>
-            <view class="arena-btn {{item.off ? 'arena-btn-off' : ''}}" data-index="{{item.index}}" bindtap="onTrainFight">
-              <text class="arena-btn-title">{{item.cleared ? '再打' : '开打'}}</text>
-              <text class="arena-btn-sub">胜率 {{item.pct}}%</text>
+            <view class="train-rate">
+              <text class="train-rate-num">{{item.pct}}%</text>
+              <text class="train-rate-label">守关胜率</text>
             </view>
           </view>
         </scroll-view>
-      </block>
-
-      <block wx:elif="{{sheet.kind === 'battle'}}">
-        <view class="sheet-top">
-          <view class="sheet-type">历练 · {{sheet.over ? '分出胜负' : '战斗中'}}</view>
-          <view class="bt-time">{{sheet.time}}</view>
-        </view>
-        <view class="bt-bars">
-          <view class="bt-side">
-            <view class="bt-name">{{sheet.me.name}}</view>
-            <view class="bt-bar">
-              <view class="bt-fill bt-fill-me" style="width: {{sheet.me.pct}}%"></view>
-              <view wx:if="{{sheet.me.shield}}" class="bt-shield" style="width: {{sheet.me.shield}}%"></view>
-            </view>
-            <view class="bt-hp">{{sheet.me.hp}} / {{sheet.me.max}}</view>
-          </view>
-          <view class="bt-vs">对</view>
-          <view class="bt-side bt-side-foe">
-            <view class="bt-name">{{sheet.foe.name}}</view>
-            <view class="bt-bar">
-              <view class="bt-fill bt-fill-foe" style="width: {{sheet.foe.pct}}%"></view>
-            </view>
-            <view class="bt-hp">{{sheet.foe.hp}} / {{sheet.foe.max}}</view>
-          </view>
-        </view>
-        <view class="bt-field">
-          <view class="bt-fig bt-fig-me {{sheet.meAct ? 'bt-lunge-r' + sheet.meAct : ''}}">
-            <view class="bt-fig-in {{sheet.meHit ? 'bt-shake' + sheet.meHit : ''}} {{sheet.me.hp ? '' : 'bt-down'}}">
-              <view class="bt-head"></view>
-              <view class="bt-body"></view>
-            </view>
-          </view>
-          <view class="bt-fig bt-fig-foe {{sheet.foeAct ? 'bt-lunge-l' + sheet.foeAct : ''}}">
-            <view class="bt-fig-in {{sheet.foeHit ? 'bt-shake' + sheet.foeHit : ''}} {{sheet.foe.hp ? '' : 'bt-down'}}">
-              <view class="bt-head"></view>
-              <view class="bt-body"></view>
-            </view>
-          </view>
-          <text wx:for="{{sheet.pops}}" wx:key="key" class="bt-pop bt-pop-{{item.side}} bt-pop-{{item.tone}}">{{item.text}}</text>
-        </view>
-        <view class="bt-log">
-          <view wx:for="{{sheet.lines}}" wx:key="key" class="bt-line">{{item.text}}</view>
-        </view>
-        <view class="sheet-actions">
-          <view class="sheet-btn sheet-btn-plain {{sheet.over ? 'bt-btn-off' : ''}}" bindtap="onBattleRetreat">撤</view>
-          <view class="sheet-btn sheet-btn-plain {{sheet.fast ? 'bt-btn-on' : ''}}" bindtap="onBattleSpeed">两倍速</view>
-          <view class="sheet-btn" bindtap="onBattleSkip">跳过</view>
-        </view>
       </block>
 
       <block wx:elif="{{sheet.kind === 'cloud'}}">

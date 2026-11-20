@@ -300,8 +300,8 @@ function newRun(state, rng) {
     revived: false,
     wards: 0,
     sures: 0,
-    // 历练：cleared 是这一世已经过了几关，pending 是算完了、还没结算的那一场。
-    battle: { cleared: 0, pending: null },
+    // 历练：cleared 是这一世已经过了几关。
+    battle: { cleared: 0 },
     death: null
   };
 }
@@ -1213,13 +1213,13 @@ function generateEvent(state, rng, forcedType, excludeId) {
 
 function canDraw(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.battle.pending && run.chance >= 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance >= 1;
 }
 
 // 机缘用尽时只能静坐：耗 1 年寿元（劫期过了照样多折），让灵气和机缘跟着年岁涨。
 function canMeditate(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.battle.pending && run.chance < 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance < 1;
 }
 
 function meditateYears(state) {
@@ -1448,7 +1448,7 @@ const BIG_EFFECTS = {
 
 function canDrawBig(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.battle.pending && !run.sudden && state.big >= 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && !run.sudden && state.big >= 1;
 }
 
 // 眼下能落下来的大机缘。
@@ -2121,7 +2121,7 @@ function autoResolve(state) {
 // stuck 为真表示这个机缘没有稳妥的选项，留在原处等玩家决定。
 function autoStep(state, rng) {
   const run = state.run;
-  if (!autoUnlocked(state) || run.phase !== 'alive' || atSea(run) || run.trib || run.battle.pending) return null;
+  if (!autoUnlocked(state) || run.phase !== 'alive' || atSea(run) || run.trib) return null;
   const out = { result: null, replaced: '', stuck: false };
   if (run.pending) {
     out.replaced = autoResolve(state);
@@ -2242,15 +2242,15 @@ function arenaFight(state, row, rng, times) {
   const dead = checkDeath(state);
   return { title: '竞技场', label: label, win: wins > 0, wins: wins, losses: losses, fights: fights, lines: lines, tags: tags, dead: dead };
 }
-// 历练：引气后可以下山打关卡。战斗自动进行，由 battle.js 一次算完，页面只负责播放。
-// 每场耗 1 次机缘和 1 年寿元（劫期过了照样多折），计入劫期；败了折寿，中途撤走折一半。
+// 历练：引气后角色在场景里自己打，不耗寿元和机缘，也不计入劫期。战斗由 battle.js 一次算完，页面只负责播放。
+// 每关先来 TRAIN_MOBS 只小怪，再是守关的；打赢守关的才算过关。败了从这一关的头一只重来，没有别的代价。
 const TRAIN_REALM = 1;
-const TRAIN_YEARS = 1;
-const TRAIN_LOSE_YEARS = 2;
-const TRAIN_RETREAT_YEARS = 1;
-// 赢了得的灵气，占丹田容量的比例：这一世头一回过这一关，和重打已经过了的关。
+const TRAIN_MOBS = 3;
+// 小怪的气血和攻击，相对守关的比例。
+const TRAIN_MOB_HP = 0.4;
+const TRAIN_MOB_ATK = 0.7;
+// 这一世头一回过关得的灵气，占丹田容量的比例。
 const TRAIN_QI = 0.15;
-const TRAIN_QI_AGAIN = 0.05;
 
 function trainFighter(state) {
   const run = state.run;
@@ -2275,83 +2275,51 @@ function trainFighter(state) {
   });
 }
 
-function trainFoe(state, index) {
-  return battle.foeFighter(TRAIN_STAGES[index], 1 + HEAVEN_REQ * state.run.heaven);
-}
-
-function trainYears(state) {
-  return TRAIN_YEARS + tribTerm(state).years;
-}
-
-// 第 index 关眼下打不了的原因；能打返回空串。
-function trainReason(state, index) {
-  const run = state.run;
+// wave 小于 TRAIN_MOBS 是小怪，否则是守关的。
+function trainFoe(state, index, wave) {
   const stage = TRAIN_STAGES[index];
+  const scale = 1 + HEAVEN_REQ * state.run.heaven;
+  if (wave >= TRAIN_MOBS) return battle.foeFighter(stage, scale);
+  return battle.foeFighter({
+    name: stage.mob,
+    hp: stage.hp * TRAIN_MOB_HP,
+    atk: stage.atk * TRAIN_MOB_ATK,
+    interval: stage.interval,
+    reduce: stage.reduce,
+    resist: stage.resist
+  }, scale);
+}
+
+// 眼下不在历练的原因；在历练返回空串。
+function trainReason(state) {
+  const run = state.run;
   if (run.phase !== 'alive') return '这一世已经结束';
-  if (run.realm < TRAIN_REALM) return REALMS[TRAIN_REALM].name + '之后才能下山历练';
-  if (!stage) return '没有这一关';
+  if (run.realm < TRAIN_REALM) return REALMS[TRAIN_REALM].name + '之后才有东西找上门';
   if (atSea(run)) return '人在枯海，回来再说';
-  if (run.event || run.pending || run.trib || run.battle.pending) return '先了结眼前的事';
-  if (index > run.battle.cleared) return '前一关还没过';
-  if (stage.layer > layerIndex(run)) return '还没到' + LAYERS[stage.layer];
-  if (run.chance < 1) return '机缘不足';
-  if (yearsLeft(state) <= trainYears(state) + TRAIN_LOSE_YEARS) return '寿元不足，经不起一败';
   return '';
 }
 
-// 历练面板：各关的敌人、预估胜率和眼下能不能打。只列到“下一关”为止，后面的关不提前露底。
-function trainView(state) {
+// 正在打第几关：没过的头一关；全过了就留在最后一关。不在历练时返回 -1。
+function trainStage(state) {
+  if (trainReason(state)) return -1;
   const run = state.run;
-  const open = run.phase === 'alive' && run.realm >= TRAIN_REALM;
-  const me = open ? trainFighter(state) : null;
-  const stages = [];
-  TRAIN_STAGES.forEach((stage, index) => {
-    if (!open || index > run.battle.cleared) return;
-    const foe = trainFoe(state, index);
-    stages.push({
-      index: index,
-      name: stage.name,
-      text: stage.text,
-      layer: LAYERS[stage.layer],
-      cleared: index < run.battle.cleared,
-      hp: foe.hp,
-      skill: stage.skill ? stage.skill.name : '',
-      chance: battle.estimate(me, foe),
-      qi: qiRewardAmount(state, index < run.battle.cleared ? TRAIN_QI_AGAIN : TRAIN_QI),
-      reason: trainReason(state, index)
-    });
-  });
-  return {
-    open: open,
-    reason: open ? '' : trainReason(state, 0),
-    cleared: run.battle.cleared,
-    total: TRAIN_STAGES.length,
-    best: state.trainBest,
-    years: open ? trainYears(state) : TRAIN_YEARS,
-    loseYears: TRAIN_LOSE_YEARS,
-    retreatYears: TRAIN_RETREAT_YEARS,
-    me: me ? { hp: me.hp, atk: Math.round(me.atk), interval: me.interval, reduce: me.reduce, crit: me.crit } : null,
-    stages: stages
-  };
+  let index = Math.min(run.battle.cleared, TRAIN_STAGES.length - 1);
+  while (index > 0 && TRAIN_STAGES[index].layer > layerIndex(run)) index--;
+  return TRAIN_STAGES[index].layer > layerIndex(run) ? -1 : index;
 }
 
-// 开打：当场付机缘和寿元并算完整场，结果先记在 pending 里，等页面播完（或中途撤走）再由 trainFinish 结算。
-function trainStart(state, index, rng) {
-  if (trainReason(state, index)) return null;
-  const run = state.run;
-  const years = trainYears(state);
-  const overdue = years - TRAIN_YEARS;
-  const lines = ['耗 1 次机缘、' + years + ' 年寿元' + (overdue ? '（劫期已过，多折 ' + overdue + ' 年）' : '')];
-  // 战斗按开打时的状态算，不受这一年里涨的灵气影响。
-  const fight = battle.simulate(trainFighter(state), trainFoe(state, index), rng);
-  run.chance -= 1;
-  run.age += years;
-  passYears(state, years, lines, []);
-  run.realmChoices++;
-  run.battle.pending = { stage: index, win: fight.win, lines: lines };
+// 算出当前这一关的第 wave 场。只算不改状态；守关的打赢后由页面调 trainClear 记过关。
+function trainEncounter(state, wave, rng) {
+  const index = trainStage(state);
+  if (index < 0) return null;
+  const stage = TRAIN_STAGES[index];
+  const at = Math.max(0, Math.min(TRAIN_MOBS, Math.floor(wave) || 0));
+  const fight = battle.simulate(trainFighter(state), trainFoe(state, index, at), rng);
   return {
     stage: index,
-    name: TRAIN_STAGES[index].name,
+    wave: at,
+    boss: at >= TRAIN_MOBS,
+    sprite: stage.sprite,
     win: fight.win,
     seconds: fight.seconds,
     timeline: fight.timeline,
@@ -2360,36 +2328,57 @@ function trainStart(state, index, rng) {
   };
 }
 
-// 结算打完的那一场。retreat 为真表示中途撤走：不论本来能不能赢都按败算，但折寿减半。
-function trainFinish(state, retreat) {
+// 打赢了第 index 关守关的。这一世头一回过才有灵气和见闻；已经过了的关重打不给东西。
+function trainClear(state, index) {
   const run = state.run;
-  const pending = run.battle.pending;
-  if (run.phase !== 'alive' || !pending) return null;
-  run.battle.pending = null;
-  const stage = TRAIN_STAGES[pending.stage];
+  if (trainStage(state) !== index) return null;
+  const stage = TRAIN_STAGES[index];
+  if (index < run.battle.cleared) return { first: false, name: stage.name, qi: 0, lines: [] };
   const before = snapshot(state);
-  const lines = pending.lines.slice();
-  const tags = [];
-  const win = pending.win && !retreat;
-  if (win) {
-    const first = pending.stage >= run.battle.cleared;
-    if (first) {
-      run.battle.cleared = pending.stage + 1;
-      state.trainBest = Math.max(state.trainBest, run.battle.cleared);
-    }
-    addQiWithLines(state, qiRewardAmount(state, first ? TRAIN_QI : TRAIN_QI_AGAIN), lines, tags);
-    tags.push('win');
-  } else {
-    const years = retreat ? TRAIN_RETREAT_YEARS : TRAIN_LOSE_YEARS;
-    loseLife(run, years);
-    lines.push('折寿 ' + years + ' 年');
-    tags.push('lose', 'life-');
-  }
-  const label = (win ? '打赢了' : (retreat ? '撤了，没打过' : '败给了')) + stage.name;
-  run.log.push({ age: run.age, title: '历练', text: label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  const qi = run.qi;
+  const lines = [];
+  run.battle.cleared = index + 1;
+  state.trainBest = Math.max(state.trainBest, run.battle.cleared);
+  addQiWithLines(state, qiRewardAmount(state, TRAIN_QI), lines, []);
+  run.log.push({ age: run.age, title: '历练', text: '打赢了' + stage.name + (lines.length ? '：' + lines.join('，') : ''), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
-  const dead = checkDeath(state);
-  return { title: '历练', label: label, win: win, retreat: !!retreat, lines: lines, tags: tags, dead: dead };
+  return { first: true, name: stage.name, qi: Math.max(0, Math.floor(run.qi - qi)), lines: lines };
+}
+
+// 历练面板：打到第几关、各关的敌人和预估胜率。只列到正在打的这一关为止，后面的关不提前露底。
+function trainView(state) {
+  const run = state.run;
+  const current = trainStage(state);
+  const open = current >= 0;
+  const me = open ? trainFighter(state) : null;
+  const stages = [];
+  TRAIN_STAGES.forEach((stage, index) => {
+    if (!open || index > current) return;
+    const foe = trainFoe(state, index, TRAIN_MOBS);
+    stages.push({
+      index: index,
+      name: stage.name,
+      mob: stage.mob,
+      text: stage.text,
+      layer: LAYERS[stage.layer],
+      cleared: index < run.battle.cleared,
+      hp: foe.hp,
+      skill: stage.skill ? stage.skill.name : '',
+      chance: battle.estimate(me, foe),
+      qi: index < run.battle.cleared ? 0 : qiRewardAmount(state, TRAIN_QI)
+    });
+  });
+  return {
+    open: open,
+    reason: trainReason(state),
+    stage: current,
+    cleared: run.battle.cleared,
+    total: TRAIN_STAGES.length,
+    best: state.trainBest,
+    mobs: TRAIN_MOBS,
+    me: me ? { hp: me.hp, atk: Math.round(me.atk), interval: me.interval, reduce: me.reduce, crit: me.crit } : null,
+    stages: stages
+  };
 }
 function choiceCosts(state, years, chances) {
   const desc = [];
@@ -3225,11 +3214,6 @@ function normalizeRun(state, raw, rng) {
   run.sea = normalizeSea(run, raw.sea);
   const saved = raw.battle && typeof raw.battle === 'object' ? raw.battle : {};
   run.battle.cleared = toCount(saved.cleared, TRAIN_STAGES.length);
-  const fight = saved.pending;
-  if (fight && typeof fight === 'object' && toCount(fight.stage) === fight.stage && fight.stage <= run.battle.cleared && TRAIN_STAGES[fight.stage]) {
-    const lines = Array.isArray(fight.lines) ? fight.lines.slice(0, 4).map((line) => toText(line, 60)).filter((line) => line) : [];
-    run.battle.pending = { stage: fight.stage, win: fight.win === true, lines: lines };
-  }
   return run;
 }
 
@@ -3277,8 +3261,6 @@ function normalizeState(raw, now, rng) {
   const phase = state.run.phase;
   const carried = phase === 'dead' ? !!skillEntry(state.run, raw.carry) && !!findById(SKILLS, raw.carry) : phase === 'root' && !!findById(SKILLS, raw.carry);
   state.carry = carried && lampLevel(state, 'm1') > 0 ? raw.carry : '';
-  // 存档停在战斗播放途中：战斗开打时已经算完，读档直接按原结果结算。
-  trainFinish(state, false);
   if (state.run.phase === 'alive') checkDeath(state);
   return state;
 }
@@ -3433,11 +3415,13 @@ module.exports = {
   arenaStanding,
   ARENA_MAX,
   TRAIN_STAGES,
+  TRAIN_MOBS,
   trainFighter,
   trainView,
   trainReason,
-  trainStart,
-  trainFinish,
+  trainStage,
+  trainEncounter,
+  trainClear,
   SEA_REALM,
   SEA_TIDE_LIMIT,
   seaView,
