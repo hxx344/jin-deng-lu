@@ -401,9 +401,9 @@
     </block>
 
     <block wx:else>
-      <view class="hud-stats">
-        <view wx:for="{{stats}}" wx:key="label" class="hud-stat">
-          <text class="hud-stat-label">{{item.label}}</text>
+      <view class="stats">
+        <view wx:for="{{stats}}" wx:key="label" class="stat">
+          <text class="stat-label">{{item.label}}</text>
           <text class="stat-value">{{item.value}}</text>
         </view>
       </view>

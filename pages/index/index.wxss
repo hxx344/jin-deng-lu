@@ -2113,10 +2113,13 @@
 }
 
 .stat-label {
+  flex-shrink: 0;
+  margin-right: 24rpx;
   color: #a3988a;
 }
 
 .stat-value {
+  text-align: right;
   font-weight: 600;
   color: #f1e9dc;
 }
