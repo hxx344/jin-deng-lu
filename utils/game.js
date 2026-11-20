@@ -806,7 +806,7 @@ function qiRate(state) {
     (hasSet(run, 'pill', 2) ? 0.3 : 0) + 0.2 * lampLevel(state, 'r4') + mech(run, 'demonFuel') * Math.floor(run.demon / 10);
   const fate = fateInfo(run);
   const demon = run.mode === 'demon' ? 1 + MAX_DEMON * DEMON_QI_RATE : 1;
-  const cave = [1, 1.12, 1.25][run.cave ? run.cave.array : 0];
+  const cave = 1 + mountain.arrayBonus(run.cave ? run.cave.array : 0);
   return REALMS[run.realm].rate * (1 + bonus) * (1 + (fate.qi || 0)) * demon * cave;
 }
 
@@ -2768,6 +2768,7 @@ function mountainContext(state) {
   const power = combatPowerDetails(state);
   return {
     ready: mountainReady(state), yuan: state.run.realm > SEA_REALM, demon: state.run.mode === 'demon',
+    levelCap: Math.min(mountain.LEVEL_MAX, mountain.LEVEL_START + Math.max(0, state.run.realm - CAVE_REALM)),
     cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber,
     // 亲自出阵按不含破境加成的战力折算，免得境界一高就把出阵的上限顶满。
     power: power.total - power.sources.reduce((sum, source) => sum + (source.id === 'boost' ? source.value : 0), 0)
@@ -2998,7 +2999,7 @@ function yuanTrialView(state) {
     attribute('mind', '凭道心守住本名');
     if (sea.clue) prepared('clue', '凭「' + route.clue + '」唤回本名', 0, 8);
     if (run.marks.includes('petword')) prepared('word', '请逃字替你记名', 6, 0);
-    if (hasSet(run, 'pill', 2)) prepared('pill', '炼一炉定神丹', 0, 10 - (run.cave ? run.cave.field * 3 : 0));
+    if (hasSet(run, 'pill', 2)) prepared('pill', '炼一炉定神丹', 0, 10 - mountain.fieldPill(run.cave ? run.cave.field : 0));
   } else {
     attribute('edge', '斩断盐索');
     attribute('body', '负骨过潮');

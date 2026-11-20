@@ -80,6 +80,10 @@ test('开府与扩建使用筑石和灵气，旧档和早期境界仍可继续�
   act(state, 'cave', 'array');
   act(state, 'cave', 'array');
   assert.equal(game.qiRate(state), base * 1.25);
+  // 金丹的设施上限是 3 级
+  assert.equal(game.mountainView(state, 'cave', '').options.find((item) => item.id === 'array').stone, 8);
+  act(state, 'cave', 'array');
+  assert.ok(Math.abs(game.qiRate(state) - base * 1.37) < 1e-9);
   assert.equal(game.mountainView(state, 'cave', '').options.some((item) => item.id === 'array'), false);
   fund(state, 10);
   act(state, 'cave', 'field');
@@ -204,6 +208,56 @@ test('仙树：玉露浇灌后过两次普通机缘结果，仙果加寿元上�
   assert.equal(eat.disabled, true);
   assert.equal(game.chooseMountain(state, 'cave', '', game.mountainView(state, 'cave', '').stamp, 'eat', ''), null);
   assert.equal(state.run.cave.fruit, 1);
+});
+
+test('设施等级上限随大境界开放：筑基 2 级，每破一个大境界多一级，至多 8 级，越往上越贵越强', () => {
+  const state = cultivator(KIN - 1);
+  state.run.stage = 2;
+  fund(state);
+  act(state, 'cave', 'open');
+  const option = (id) => game.mountainView(state, 'cave', '').options.find((item) => item.id === id);
+  const build = (id) => { fund(state); state.run.stone = 99; act(state, 'cave', id); };
+  ['array', 'field', 'library', 'tree'].forEach((id) => { build(id); build(id); });
+  ['array', 'field', 'library', 'tree'].forEach((id) => assert.equal(option(id), undefined));
+  assert.match(game.mountainView(state, 'cave', '').text, /最高 2 级.*破境后可以再扩建/);
+
+  state.run.realm = KIN;
+  state.run.stage = 0;
+  assert.equal(option('tree').stone, 8);
+  assert.equal(option('tree').desc, '升到第 3 级：每颗仙果寿元上限 +16 年');
+  assert.equal(option('field').desc, '升到第 3 级：每累计两次普通机缘多得 3 灵材；定神丹少耗 9 次机缘');
+  build('field');
+  assert.equal(option('field'), undefined);
+  // 三级灵田：两次普通机缘共多得 3 灵材
+  state.run.materials = 0;
+  ordinary(state, 2);
+  assert.equal(state.run.materials, 2 + 3);
+  build('tree');
+  state.run.dew = 2;
+  act(state, 'cave', 'water');
+  ordinary(state, 2);
+  const life = game.maxLife(state);
+  act(state, 'cave', 'eat');
+  assert.equal(game.maxLife(state), life + 16);
+
+  state.run.realm = YUAN;
+  assert.equal(option('array').stone, 8);
+  build('array');
+  assert.equal(option('array').stone, 11);
+  build('array');
+  assert.equal(option('array'), undefined);
+  assert.equal(state.run.cave.array, 4);
+
+  state.run.realm = game.REALMS.length - 1;
+  for (let level = 5; level <= 8; level++) build('array');
+  assert.equal(option('array'), undefined);
+  assert.doesNotMatch(game.mountainView(state, 'cave', '').text, /多开一级/);
+  const loaded = reload(state);
+  assert.equal(loaded.run.cave.array, 8);
+  assert.deepEqual(loaded, state);
+  const broken = JSON.parse(JSON.stringify(state));
+  broken.run.cave.array = 40;
+  assert.equal(game.normalizeState(broken, state.lastTime, rng).run.cave.array, 8);
 });
 
 test('突破改变设施价格后，过时的设施报价不能扣掉更多灵气', () => {

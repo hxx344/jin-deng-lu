@@ -7,21 +7,48 @@ const COLD_ROUNDS = 3;
 const COLD_GOAL = 5;
 const AFTERMATH_LENGTH = 2;
 
+// 设施的等级上限跟着大境界走：洞府刚开放时 LEVEL_START 级，每破一个大境界多开一级，至多 LEVEL_MAX 级。
+const LEVEL_START = 2;
+const LEVEL_MAX = 8;
+
+// 聚灵阵 level 级时灵气产出加多少：前两级 12%、25%，之后每级再加 12%。
+function arrayBonus(level) {
+  return level < 2 ? 0.12 * level : 0.25 + 0.12 * (level - 2);
+}
+
+// 灵田每级让每次普通机缘多得半份灵材；单数级的那半份隔一次机缘给一回。
+function fieldExtra(level, choices) {
+  return Math.floor(level / 2) + Number(level % 2 === 1 && choices % 2 === 0);
+}
+
+// 灵田 level 级时定神丹少耗几次机缘。
+function fieldPill(level) {
+  return Math.min(9, level * 3);
+}
+
+function fruitLife(level) {
+  return 8 + 4 * (level - 1);
+}
+
+const pct = (value) => Math.round(value * 100) + '%';
+
+// effect(level) 是升到 level 级之后的效果说明。
 const FACILITIES = [
-  { id: 'array', name: '聚灵阵', effects: ['灵气产出 +12%', '灵气产出 +25%'] },
-  { id: 'field', name: '灵田', effects: ['每累计两次普通机缘多得 1 灵材；定神丹少耗 3 次机缘', '每次普通机缘多得 1 灵材；定神丹少耗 6 次机缘'] },
-  { id: 'library', name: '藏经室', effects: ['更常遇到已修流派的功法；弟子可学至天品', '进一步偏向已修流派；弟子可学秘法'] },
-  { id: 'tree', name: '仙树', effects: ['可用玉露浇灌结仙果；每颗仙果寿元上限 +8 年', '每颗仙果寿元上限 +12 年'] }
+  { id: 'array', name: '聚灵阵', effect: (level) => '灵气产出 +' + pct(arrayBonus(level)) },
+  { id: 'field', name: '灵田', effect: (level) => (level % 2 ? '每累计两次普通机缘多得 ' + level + ' 灵材' : '每次普通机缘多得 ' + level / 2 + ' 灵材') +
+    '；定神丹少耗 ' + fieldPill(level) + ' 次机缘' },
+  { id: 'library', name: '藏经室', effect: (level) => level === 1 ? '更常遇到已修流派的功法；弟子可学至天品' :
+    '进一步偏向已修流派' + (level === 2 ? '；弟子可学秘法' : '') },
+  { id: 'tree', name: '仙树', effect: (level) => (level === 1 ? '可用玉露浇灌结仙果；' : '') + '每颗仙果寿元上限 +' + fruitLife(level) + ' 年' }
 ];
 
 // 筑石和玉露从历练里来：筑石开府、修设施，玉露浇仙树。
 const STONE_MAX = 99;
 const DEW_MAX = 99;
 const FRUIT_MAX = 99;
-// 浇一次仙树耗这么多玉露，过这么多次普通机缘后结一颗仙果；仙果加的寿元上限按仙树的级别算。
+// 浇一次仙树耗这么多玉露，过这么多次普通机缘后结一颗仙果。
 const FRUIT_DEW = 2;
 const FRUIT_CHOICES = 2;
-const FRUIT_LIFE = [8, 12];
 
 function addStone(run, amount) {
   const gained = Math.min(amount, STONE_MAX - run.stone);
@@ -69,9 +96,7 @@ function newDisciple(id) {
 }
 
 function progressChoices(run, lines, rng) {
-  const field = run.cave ? run.cave.field : 0;
-  const extra = field === 2 || (field === 1 && run.mountainChoices % 2 === 0);
-  const gained = addMaterials(run, 1 + Number(extra));
+  const gained = addMaterials(run, 1 + fieldExtra(run.cave ? run.cave.field : 0, run.mountainChoices));
   if (gained) lines.push('灵材 +' + gained);
   const cave = run.cave;
   if (cave && cave.ripe && run.mountainChoices >= cave.ripe) {
@@ -192,14 +217,16 @@ function mountainView(state, page, selected, context) {
 
   if (page === 'cave') {
     view.title = cave ? '修整洞府' : '开辟洞府';
-    view.text = '历练每过一关得筑石，过首领关另得玉露。筑石用来开府和修建四种设施，各有两级；玉露浇灌仙树，结出的仙果能添寿元。';
+    const cap = context.levelCap;
+    view.text = '历练每过一关得筑石，过首领关另得玉露。筑石用来开府和修建四种设施；玉露浇灌仙树，结出的仙果能添寿元。设施眼下最高 ' + cap + ' 级' +
+      (cap < LEVEL_MAX ? '，每破一个大境界多开一级，至多 ' + LEVEL_MAX + ' 级。' : '。');
     if (!cave) {
       add('open', '修复石门', run.marks.includes('dog2') ? '黄狗先挤了进去，熟门熟路地找到了避雨的地方。' : '推开半塌的石门，清出一间可以住人的石室。',
         { qi: 0.15, stone: 2, years: 2 });
       return view;
     }
     if (cave.tree) {
-      const life = FRUIT_LIFE[cave.tree - 1];
+      const life = fruitLife(cave.tree);
       view.stats.push({ label: '仙果', value: cave.fruit + ' 颗' });
       if (cave.fruit) add('eat', '服下仙果', '寿元上限 +' + life + ' 年。', {},
         { life: life, disabled: context.demon, note: context.demon ? '魔躯燃寿已定，仙果无用' : '' });
@@ -209,9 +236,10 @@ function mountainView(state, page, selected, context) {
       const level = cave[facility.id];
       const growing = facility.id === 'tree' && cave.ripe ? ' · 还差 ' + Math.max(1, cave.ripe - run.mountainChoices) + ' 次机缘结果' : '';
       view.stats.push({ label: facility.name, value: level ? '第 ' + level + ' 级' + growing : '未建' });
-      if (level < 2) add(facility.id, (level ? '扩建' : '修建') + facility.name, facility.effects[level],
-        level ? { qi: 0.24, stone: 5, years: 2 } : { qi: 0.15, stone: 3, years: 1 });
+      if (level < cap) add(facility.id, (level ? '扩建' : '修建') + facility.name, (level ? '升到第 ' + (level + 1) + ' 级：' : '') + facility.effect(level + 1),
+        level ? { qi: 0.24, stone: 5 + 3 * (level - 1), years: 2 } : { qi: 0.15, stone: 3, years: 1 });
     });
+    if (cap < LEVEL_MAX && FACILITIES.every((facility) => cave[facility.id] >= cap)) view.text += '四处设施都已到眼下的上限，破境后可以再扩建。';
     return view;
   }
 
@@ -247,7 +275,7 @@ function mountainView(state, page, selected, context) {
       if (sect.heir === selected) view.stats.push({ label: '已留传承', value: skillName(disciple.book) });
       else add('heir', '托付传承', '托弟子保管所学功法。轮回后可以回山取回原品阶。');
     }
-    view.teaching = cave.library ? (cave.library === 2 ? '可传这世已习得的功法与秘法。' : '可传至天品，二级藏经室开放秘法。') : '可传至灵品，修建藏经室可提高上限。';
+    view.teaching = cave.library ? (cave.library >= 2 ? '可传这世已习得的功法与秘法。' : '可传至天品，二级藏经室开放秘法。') : '可传至灵品，修建藏经室可提高上限。';
     run.skills.forEach((entry) => {
       const skill = skillInfo(entry.id);
       // 藏经阁功法不在这里的功法表里，不能传给弟子。
@@ -422,7 +450,7 @@ function normalizeRunMountain(run, raw, yuan, toCount) {
   run.mountainRevision = toCount(raw.mountainRevision);
   if (!raw.cave || typeof raw.cave !== 'object' || Array.isArray(raw.cave)) return;
   run.cave = emptyCave();
-  FACILITIES.forEach((item) => { run.cave[item.id] = toCount(raw.cave[item.id], 2); });
+  FACILITIES.forEach((item) => { run.cave[item.id] = toCount(raw.cave[item.id], LEVEL_MAX); });
   if (run.cave.tree) {
     run.cave.ripe = toCount(raw.cave.ripe, run.mountainChoices + FRUIT_CHOICES);
     run.cave.fruit = toCount(raw.cave.fruit, FRUIT_MAX);
@@ -473,4 +501,4 @@ function normalizeArchive(raw, lives, toCount) {
   };
 }
 
-module.exports = { STONE_MAX, DEW_MAX, addStone, addDew, mountainView, chooseMountain, progressChoices, archive, normalizeRunMountain, normalizeArchive };
+module.exports = { STONE_MAX, DEW_MAX, LEVEL_START, LEVEL_MAX, arrayBonus, fieldPill, addStone, addDew, mountainView, chooseMountain, progressChoices, archive, normalizeRunMountain, normalizeArchive };
