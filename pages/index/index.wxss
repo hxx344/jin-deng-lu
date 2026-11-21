@@ -1,3 +1,5 @@
+@import "./star.wxss";
+
 .page {
   position: relative;
   display: flex;

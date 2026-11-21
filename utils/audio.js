@@ -1,5 +1,6 @@
 // 背景音乐和音效。文件由 tools/audio/build.js 合成，放在 assets/audio/。
-const NAMES = ['tap', 'pick', 'good', 'qi', 'bad', 'coin', 'up', 'big', 'born', 'lamp', 'die', 'thunder'];
+const STAR_SOUNDS = ['star-wood', 'star-jade', 'star-water', 'star-violet', 'star-gold', 'star-red', 'star-dao'];
+const NAMES = ['tap', 'pick', 'good', 'qi', 'bad', 'coin', 'up', 'big', 'born', 'lamp', 'die', 'thunder'].concat(STAR_SOUNDS);
 const BGM_VOLUME = 0.4;
 const SFX_VOLUME = 0.8;
 
@@ -62,4 +63,4 @@ function createAudio(api) {
   };
 }
 
-module.exports = { NAMES, createAudio };
+module.exports = { NAMES, STAR_SOUNDS, createAudio };

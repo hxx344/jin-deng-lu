@@ -1,0 +1,70 @@
+<view wx:if="{{sheet.kind === 'star'}}" class="star-scene" catchtap="noop">
+  <view class="star-sky" aria-hidden="true"></view>
+  <view class="star-nav">
+    <button class="star-back" bindtap="onStarClose">‹ 返回</button>
+    <view class="star-purse"><view class="star-ember"></view><text>香火</text><text class="star-balance">{{star.incense}}</text></view>
+  </view>
+  <scroll-view scroll-y class="star-scroll">
+    <view class="star-body">
+      <view class="star-heading">{{star.showRules ? '供奉规则' : '仙星'}}</view>
+      <view wx:if="{{star.showRules}}" class="star-rules">
+        <view class="star-section-name">香火来处</view>
+        <view>试招首胜得 {{star.rules.trialIncense}} 香火。普通关首通得 {{star.rules.clearIncense}}，首领关首通得 {{star.rules.bossIncense}}。储物袋每攒出一件装备，收取时另得 {{star.rules.clearIncense}} 香火。</view>
+        <view class="star-section-name">七品基础概率</view>
+        <view class="star-odds">
+          <view wx:for="{{star.odds}}" wx:key="grade" class="star-odds-row star-grade-{{item.grade}}"><text>{{item.name}}</text><text>{{item.chance}}</text></view>
+        </view>
+        <view class="star-section-name">本世保底</view>
+        <view>单抽与十连逐张累计。连续 {{star.rules.heavenPity - 1}} 抽未出天品及以上，下一抽至少天品。连续 {{star.rules.immortalPity - 1}} 抽未出仙品及以上，下一抽至少仙品。抽中对应品级或更高时，该档重新计数。投胎后香火和两档保底全部归零。</view>
+        <view class="star-section-name">装备去处</view>
+        <view>凡、灵、玄品自动分解为锻材，分别得 1、2、4 份，上限 {{star.forgeMax}}。天品及以上优先穿入空槽，其余进入背包。背包满时暂存仙星，整理后可回来领取。</view>
+        <button class="star-action star-action-primary star-wide" bindtap="onStarRules">返回星台</button>
+      </view>
+      <block wx:elif="{{!star.cards.length}}">
+        <view class="star-caption">供奉所得装备 · 当前 {{star.tier}} 阶</view>
+        <view class="star-altar" aria-hidden="true">
+          <view class="star-orbit star-orbit-outer"></view>
+          <view class="star-orbit star-orbit-inner"></view>
+          <view class="star-orbit star-orbit-slant"></view>
+          <view class="star-orbit star-orbit-cross"></view>
+          <view class="star-pole"></view>
+          <view class="star-censer">
+            <view class="star-stick star-stick-left"></view><view class="star-stick"></view><view class="star-stick star-stick-right"></view>
+            <view class="star-censer-foot"></view><view class="star-censer-bowl"></view><view class="star-censer-rim"></view>
+          </view>
+        </view>
+        <view class="star-pity"><text>天品及以上</text><text>至多 {{star.heavenLeft}} 抽</text></view>
+        <view class="star-pity star-pity-gold"><text>仙品及以上</text><text>至多 {{star.immortalLeft}} 抽</text></view>
+        <view class="star-prayer">
+          <button class="star-action" data-count="1" disabled="{{star.incense < star.rules.single}}" bindtap="onStarDraw"><text>单抽</text><text class="star-cost">{{star.rules.single}} 香火</text></button>
+          <button class="star-action star-action-primary" data-count="10" disabled="{{star.incense < star.rules.ten}}" bindtap="onStarDraw"><text>十连抽</text><text class="star-cost">{{star.rules.ten}} 香火 · {{star.discount}} 折</text></button>
+        </view>
+        <view class="star-note">{{star.incense < star.rules.single ? '历练首通或收取储物袋，可得香火。' : '凡、灵、玄品自动化为锻材。'}}香火与保底仅在本世有效。</view>
+        <button class="star-link" bindtap="onStarRules">概率与供奉规则 ›</button>
+      </block>
+      <block wx:else>
+        <view class="star-caption">{{star.cards.length === 1 ? '单抽' : '十连抽'}} · 已揭 {{star.revealed}} / {{star.cards.length}}</view>
+        <view class="star-spread {{star.cards.length === 1 ? 'star-single' : 'star-ten'}}">
+          <button wx:for="{{star.cards}}" wx:key="id" class="star-tile star-grade-{{item.light}} {{item.turning ? 'star-gather' : ''}} {{item.shown ? 'star-shown' : ''}} {{star.selected && star.selected.id === item.id ? 'star-selected' : ''}}" style="animation-delay: {{item.delay}}ms;" data-index="{{item.id}}" bindtap="onStarFlip" aria-label="{{item.shown ? item.grade + item.name : '翻开第 ' + (item.id + 1) + ' 张星牌'}}">
+            <view wx:if="{{!item.shown}}" class="star-backplate">
+              <view class="star-card-orbit"></view><view class="star-card-seal"></view>
+              <text wx:if="{{star.cards.length === 1}}" class="star-open-label">点牌揭晓</text>
+            </view>
+            <view wx:else class="star-face">
+              <text class="star-card-grade">{{item.grade}}</text><text class="star-card-slot">{{item.slot}}</text>
+              <text class="star-card-name">{{item.name}}</text><text class="star-card-place">{{item.place}}</text>
+            </view>
+          </button>
+        </view>
+        <view wx:if="{{star.selected}}" class="star-detail star-grade-{{star.selected.light}}">
+          <view class="star-detail-head"><text>{{star.selected.grade}} · {{star.selected.name}}</text><text>{{star.selected.place}}</text></view>
+          <view>{{star.selected.tier}} 阶 · 装备分 {{star.selected.score}}</view>
+          <view>{{star.selected.stats}}</view>
+        </view>
+        <view wx:elif="{{star.cards.length > 1}}" class="star-note">点一张星牌揭晓，或将余下的牌依次翻开。</view>
+        <button wx:if="{{star.done}}" class="star-action star-action-primary star-wide" bindtap="onStarFinish">{{star.held ? '收取暂存装备（' + star.held + '）' : '收起星牌'}}</button>
+        <button wx:elif="{{star.cards.length > 1}}" class="star-action star-wide" disabled="{{star.auto || star.turning}}" bindtap="onStarFlipAll">{{star.auto ? '正在依次翻牌…' : '依次翻开余牌'}}</button>
+      </block>
+    </view>
+  </scroll-view>
+</view>

@@ -246,6 +246,7 @@
     </view>
     <view class="tab {{tab === 'skill' ? 'tab-on' : ''}}" data-tab="skill" bindtap="onTab">功法</view>
     <view class="tab {{tab === 'gear' ? 'tab-on' : ''}}" data-tab="gear" bindtap="onTab"><view class="tab-label">装备<view wx:if="{{gearDot}}" class="tab-dot"></view></view></view>
+    <view wx:if="{{alive}}" class="tab star-entry" bindtap="onStarOpen">仙星</view>
     <view class="tab {{tab === 'log' ? 'tab-on' : ''}}" data-tab="log" bindtap="onTab">见闻</view>
     <view class="tab {{tab === 'lamp' ? 'tab-on' : ''}}" data-tab="lamp" bindtap="onTab">灯纹</view>
     <view class="tab {{tab === 'me' ? 'tab-on' : ''}}" data-tab="me" bindtap="onTab">轮回</view>
@@ -461,7 +462,8 @@
     </block>
   </scroll-view>
 
-  <view wx:if="{{sheet.kind}}" class="mask mask-sheet" catchtap="noop" catchtouchmove="noop">
+  <include src="star.wxml" />
+  <view wx:if="{{sheet.kind && sheet.kind !== 'star'}}" class="mask mask-sheet" catchtap="noop" catchtouchmove="noop">
     <view class="sheet">
       <view wx:if="{{tip.at === 'sheet'}}" class="tip tip-above tip-sheet" catchtap="noop">
         <view class="tip-text">{{tip.text}}</view>
@@ -810,6 +812,7 @@
         <view class="sheet-title">{{sheet.title}}</view>
         <view class="sheet-text">{{sheet.text}}</view>
         <view wx:if="{{sheet.me}}" class="train-me">{{sheet.me}}</view>
+        <view class="star-train-link" bindtap="onStarOpen"><text>本世香火 {{sheet.incense}}</text><text>前往仙星 ›</text></view>
         <scroll-view scroll-y class="sheet-body cloud-body">
           <view class="rank-row">
             <view class="rank-info">

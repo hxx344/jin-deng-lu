@@ -1,5 +1,6 @@
 const game = require('../../utils/game');
 const audio = require('../../utils/audio').createAudio(wx);
+const starScene = require('./star');
 const cloudSync = require('../../utils/cloud-sync');
 const { scoreOf, scoreKey, autoDaoName, cleanDaoName, preferCloudProgress, pickSave, friendlyError } = require('../../utils/cloud-score');
 
@@ -231,7 +232,7 @@ function drawChronicle(ctx, data, layout) {
   ctx.fillText('烬灯录 · 一世见闻，尽在此灯', 48, layout.height - 42);
 }
 
-Page({
+Page(Object.assign(starScene(audio), {
   data: {
     sparks: Array.from({ length: game.LAMP_INSIGHT }, (_, i) => i + 1),
     hud: {},
@@ -264,6 +265,7 @@ Page({
     stats: [],
     epitaphs: [],
     sheet: HIDDEN_SHEET,
+    star: {},
     mountainName: '',
     banner: '',
     modal: HIDDEN_MODAL,
@@ -327,6 +329,7 @@ Page({
     this.arenaOpen = false;
     this.trainOpen = false;
     this.trainCache = null;
+    this.starOpen = false;
     this.gateOpen = false;
     this.gateCache = null;
     this.fray = null;
@@ -400,6 +403,7 @@ Page({
       if (this.state.run.phase === 'alive') this.play('stretch');
     }
     this.wasFull = Math.floor(this.state.run.chance) >= game.maxChance(this.state);
+    if (this.starOpen) this.renderStar();
     this.refresh();
     this.startLoop();
     audio.startBgm();
@@ -591,7 +595,7 @@ Page({
     this.cloudSaveId = row.id || this.cloudSaveId;
     this.result = null;
     this.lampOpen = false;
-    this.clearGate();
+    this.clearScenes();
     this.eventOpen = false;
     this.seaOpen = false;
     this.mountainPanel = '';
@@ -843,7 +847,7 @@ Page({
 
   // 自动机缘：每隔一阵替玩家走一步。渡劫、坐化和投胎仍由玩家决定；会致命的选项不选。
   autoTick(now) {
-    if (!this.auto || !game.autoUnlocked(this.state) || now < this.nextAuto) return;
+    if (this.starOpen || !this.auto || !game.autoUnlocked(this.state) || now < this.nextAuto) return;
     const run = this.state.run;
     if (run.phase !== 'alive') {
       this.autoStuck = false;
@@ -891,6 +895,7 @@ Page({
   },
 
   stopAct() {
+    this.cancelStarTurn();
     clearTimeout(this.actTimer);
     clearTimeout(this.stormTimer);
     clearTimeout(this.boltTimer);
@@ -1380,9 +1385,10 @@ Page({
       me: me ? '气血 ' + game.formatNumber(me.hp) + ' · 攻击 ' + game.formatNumber(me.atk) + ' · 每 ' + me.interval.toFixed(2) + ' 秒出手 · 减伤 ' + percent(me.reduce) + '% · 暴击 ' + percent(me.crit) + '%' : '',
       bagTitle: '储物袋 · 灵气 ' + game.formatNumber(bag.qi) + ' / ' + game.formatNumber(bag.max) + ' · 装备 ' + bag.gear + ' / ' + bag.gearMax,
       bagText: bag.perHour
-        ? '每小时攒灵气 ' + game.formatNumber(bag.perHour) + '，每 ' + bag.gearMinutes + ' 分钟攒一件装备和一块筑石，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时灵气 ' + game.formatNumber(v.nextPerHour) + '。'
+        ? '每小时攒灵气 ' + game.formatNumber(bag.perHour) + '，每 ' + bag.gearMinutes + ' 分钟攒一件装备、一块筑石和 ' + game.STAR.clearIncense + ' 香火，最多存 ' + bag.hours + ' 小时的量，离开时也在攒。再过一关每小时灵气 ' + game.formatNumber(v.nextPerHour) + '。'
         : '过了第 1 关才开始攒。每过一关攒得更快，过首领关涨得更多。',
       bagOff: bag.qi < 1 && bag.gear < 1,
+      incense: s.run.incense,
       stages: stages
     };
   },
@@ -1438,8 +1444,10 @@ Page({
     };
   },
 
-  // 换档或重开时，旧那一世的秘境面板、战斗和被暂停的历练都不能带过去。
-  clearGate() {
+  // 换档或重开时，收起旧那一世的场景和战斗。
+  clearScenes() {
+    this.cancelStarTurn();
+    this.starOpen = false;
     this.gateOpen = false;
     this.gateCache = null;
     this.pausedFray = null;
@@ -1653,7 +1661,7 @@ Page({
     f.wait = FRAY_ENTER;
   },
 
-  // 这一关最后一个倒下了：记过关，下一拍换下一关。寻常的关只在掉了装备时出横幅。
+  // 这一关最后一个倒下了：记过关，下一拍换下一关。
   frayClear(f) {
     const r = game.trainClear(this.state, f.stage, Math.random);
     this.fray = null;
@@ -1662,14 +1670,19 @@ Page({
       this.save();
       return;
     }
+    if (this.starOpen) {
+      this.afterAction();
+      return;
+    }
     const drop = r.drop ? this.dropText(r.drop) : '';
+    const incense = ' · 香火 +' + r.incense;
     if (r.boss) {
       audio.play('good');
-      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + (drop ? ' · ' + drop : '') + (r.stone ? ' · 筑石 +' + r.stone : '') + (r.dew ? ' · 玉露 +' + r.dew : '') + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
+      this.showBanner('第 ' + r.stage + ' 关 · 打赢了' + r.name + incense + (drop ? ' · ' + drop : '') + (r.stone ? ' · 筑石 +' + r.stone : '') + (r.dew ? ' · 玉露 +' + r.dew : '') + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
       if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
-    } else if (drop) {
-      audio.play('coin');
-      this.showBanner(r.stage === 1 ? '试招取胜 · ' + drop : '第 ' + r.stage + ' 关 · ' + drop);
+    } else {
+      if (drop) audio.play('coin');
+      this.showBanner((r.stage === 1 ? '试招取胜' : '第 ' + r.stage + ' 关') + incense + (drop ? ' · ' + drop : ''));
     }
     this.afterAction();
   },
@@ -2253,6 +2266,10 @@ Page({
   refresh() {
     const s = this.state;
     const run = s.run;
+    if (this.starOpen && run.phase === 'alive') {
+      if (this.data.star.incense !== run.incense) this.renderStar();
+      return;
+    }
     // 天劫动画播完之前不揭晓结果：境界、寿元和结算面板都先不更新。
     if (this.act === 'thunder') {
       // 只在开始时设一次，之后不再触碰节点，免得动画被打断。
@@ -2728,7 +2745,7 @@ Page({
     if (!game.reincarnate(this.state, Date.now(), Math.random)) return;
     audio.play('tap');
     this.stopAct();
-    this.clearGate();
+    this.clearScenes();
     this.deadOpen = false;
     this.seaOpen = false;
     this.mountainPanel = '';
@@ -2809,7 +2826,7 @@ Page({
       this.state = game.createState(Date.now());
       this.lampOpen = false;
       this.stopAct();
-      this.clearGate();
+      this.clearScenes();
       this.tipDone = false;
       this.tipStep = 0;
       try {
@@ -2832,4 +2849,4 @@ Page({
       this.afterAction();
     });
   }
-});
+}));

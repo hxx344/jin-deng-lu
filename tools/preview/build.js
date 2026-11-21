@@ -7,13 +7,19 @@ const root = path.resolve(__dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const inline = (s) => s.replace(/<\/script/gi, '<\\/script');
 
-const css = (read('app.wxss') + '\n' + read('pages/index/index.wxss'))
+function expand(p, pattern) {
+  return read(p).replace(pattern, (_, file) => expand(path.join(path.dirname(p), file), pattern));
+}
+
+const cssImport = /@import\s+["']([^"']+)["'];/g;
+const wxmlInclude = /<include\s+src=["']([^"']+)["']\s*\/>/g;
+const css = (read('app.wxss') + '\n' + expand('pages/index/index.wxss', cssImport))
   .replace(/(-?\d*\.?\d+)rpx/g, 'calc($1 * var(--rpx))')
   .replace(/(^|\})\s*page\s*\{/g, '$1\nbody {');
 
-// utils 下的模块全部带上，页面新增依赖时不用再改这里。
-const modules = fs.readdirSync(path.join(root, 'utils')).filter((f) => f.endsWith('.js')).map((f) => 'utils/' + f)
-  .concat('pages/index/index.js')
+// 收入规则和本页的场景模块。
+const modules = ['utils', 'pages/index'].flatMap((dir) =>
+  fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.js')).map((f) => dir + '/' + f))
   .map((p) => '__modules[' + JSON.stringify(path.basename(p, '.js')) + '] = function (module, exports, require) {\n' + read(p) + '\n};')
   .join('\n');
 
@@ -40,7 +46,7 @@ ${css}
 </head>
 <body>
 <div id="app"></div>
-<script type="text/wxml" id="wxml">${inline(read('pages/index/index.wxml'))}</script>
+<script type="text/wxml" id="wxml">${inline(expand('pages/index/index.wxml', wxmlInclude))}</script>
 <script>
 ${inline(read('tools/preview/runtime.js'))}
 ${inline(modules)}

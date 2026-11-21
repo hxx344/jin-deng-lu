@@ -72,17 +72,26 @@ function rollGrade(tier, rng) {
   return 0;
 }
 
-// 掉一件 tier 阶的装备。boss 为真时品级掷两次取高的，给数字就掷那么多次；slot 指定槽位，不给就随机。
-function roll(tier, rng, boss, slot) {
-  const at = slot && slotInfo(slot) ? slot : SLOTS[Math.min(SLOTS.length - 1, Math.floor(rng() * SLOTS.length))].id;
-  let grade = rollGrade(tier, rng);
-  for (let i = 1; i < (boss === true ? 2 : boss || 1); i++) grade = Math.max(grade, rollGrade(tier, rng));
+function randomSlot(rng) {
+  return SLOTS[Math.min(SLOTS.length - 1, Math.floor(rng() * SLOTS.length))].id;
+}
+
+function makeItem(tier, grade, rng, slot) {
+  const at = slot || randomSlot(rng);
   const pool = AFFIXES.map((affix) => affix.id);
   const affixes = [];
   for (let i = 0; i < GRADES[grade].affixes; i++) {
     affixes.push(pool.splice(Math.min(pool.length - 1, Math.floor(rng() * pool.length)), 1)[0]);
   }
   return { slot: at, grade: grade, tier: Math.max(1, Math.floor(tier)), level: 0, affixes: affixes };
+}
+
+// 掉一件 tier 阶的装备。boss 为真时品级掷两次取高的，给数字就掷那么多次；slot 指定槽位，不给就随机。
+function roll(tier, rng, boss, slot) {
+  const at = slot && slotInfo(slot) ? slot : randomSlot(rng);
+  let grade = rollGrade(tier, rng);
+  for (let i = 1; i < (boss === true ? 2 : boss || 1); i++) grade = Math.max(grade, rollGrade(tier, rng));
+  return makeItem(tier, grade, rng, at);
 }
 
 function strength(item) {
@@ -207,4 +216,4 @@ function clean(raw) {
   return { slot: raw.slot, grade: grade, tier: tier, level: level, affixes: affixes };
 }
 
-module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, TIER_SCORE_LATE, TIER_SCORE_GROWTH, roll, stats, bonus, statsText, score, rating, better, spare, enhanceCost, scrapValue, describe, clean };
+module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, TIER_SCORE_LATE, TIER_SCORE_GROWTH, roll, makeItem, stats, bonus, statsText, score, rating, better, spare, enhanceCost, scrapValue, describe, clean };

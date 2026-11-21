@@ -873,3 +873,128 @@ test('机缘里得装备：补装备分最低的槽位，阶比过的最远一�
   s.run.event = { kind: 'event', id: 'a_pawn', rerolls: 0 };
   assert.ok(game.eventView(s).options[1].desc.indexOf('得一件上好的装备') >= 0);
 });
+
+test('香火随本世首通和储物袋结算，重打与重复收取不发放', () => {
+  const s = cultivator(13, 13, 13);
+  const first = game.trainClear(s, 1, () => 0);
+  assert.strictEqual(first.incense, 10);
+  assert.ok(first.drop.worn);
+  for (let stage = 2; stage <= 5; stage++) {
+    assert.strictEqual(game.trainClear(s, stage, () => 0).incense, stage === 5 ? 10 : 4);
+  }
+  assert.strictEqual(s.run.incense, 32);
+  game.trainLose(s, 6);
+  for (let stage = 4; stage <= 5; stage++) assert.ok(game.trainClear(s, stage, () => 0).again);
+  assert.strictEqual(s.run.incense, 32);
+  s.run.battle.loot = 2.5;
+  assert.strictEqual(game.trainCollect(s, () => 0).incense, 8);
+  assert.strictEqual(game.trainCollect(s, () => 0), null);
+  assert.strictEqual(s.run.incense, 40);
+});
+
+function putAwayStars(s) {
+  s.run.starCards.forEach((card) => { card.shown = true; });
+  assert.ok(game.finishStarDraw(s));
+}
+
+test('仙星十连九折且与单抽逐张共用两档保底，未揭完不能重复扣费', () => {
+  const s = cultivator(13, 13, 13);
+  s.run.incense = 89;
+  const before = JSON.stringify(s);
+  for (const count of [0, 2, 10, -1, '1']) assert.strictEqual(game.starDraw(s, count, () => 0), false);
+  assert.strictEqual(JSON.stringify(s), before);
+  s.run.incense = 1000;
+  for (let i = 0; i < 8; i++) {
+    assert.ok(game.starDraw(s, 1, () => 0));
+    putAwayStars(s);
+  }
+  assert.ok(game.starDraw(s, 10, () => 0));
+  assert.strictEqual(s.run.incense, 830);
+  assert.deepStrictEqual(s.run.starCards.map((card) => card.item.grade), [0, 3, 0, 0, 0, 0, 0, 0, 0, 0]);
+  assert.deepStrictEqual([s.run.starDry, s.run.starGoldDry], [8, 18]);
+  assert.ok(!game.starDraw(s, 1, () => 0));
+  assert.ok(!game.finishStarDraw(s));
+  assert.strictEqual(s.run.incense, 830);
+  putAwayStars(s);
+  for (let i = 0; i < 3; i++) {
+    game.starDraw(s, 10, () => 0);
+    putAwayStars(s);
+  }
+  game.starDraw(s, 10, () => 0);
+  assert.strictEqual(s.run.starCards[1].item.grade, 4);
+  assert.deepStrictEqual([s.run.starDry, s.run.starGoldDry], [8, 8]);
+  putAwayStars(s);
+  game.starDraw(s, 1, () => 0.99);
+  assert.deepStrictEqual([s.run.starDry, s.run.starGoldDry], [0, 0]);
+});
+
+test('仙星七品都可抽，按最终品级生成词条，天品以下直接化为实际能容纳的锻材', () => {
+  const rolls = [0.2, 0.5, 0.8, 0.9, 0.98, 0.996, 0.9995];
+  for (let grade = 0; grade < rolls.length; grade++) {
+    const s = cultivator(13, 13, 13);
+    s.run.battle.cleared = 12;
+    s.run.incense = 10;
+    s.run.gear.forge = 98;
+    if (grade === 6) s.run.starGoldDry = 49;
+    assert.ok(game.starDraw(s, 1, () => rolls[grade]));
+    const card = s.run.starCards[0];
+    assert.deepStrictEqual([card.item.grade, card.item.tier, card.item.affixes.length], [grade, 12, grade]);
+    assert.strictEqual(s.run.gear.pack.length, 0);
+    if (grade < 3) {
+      assert.strictEqual(s.run.gear.worn[card.item.slot], null);
+      assert.deepStrictEqual([card.place, card.forge, s.run.gear.forge], ['forge', 1, 99]);
+      putAwayStars(s);
+      s.run.incense = 10;
+      game.starDraw(s, 1, () => rolls[grade]);
+      assert.strictEqual(s.run.starCards[0].forge, 0);
+    } else {
+      assert.strictEqual(card.place, 'worn');
+      assert.strictEqual(s.run.gear.worn[card.item.slot].grade, grade);
+    }
+  }
+});
+
+test('满包时仙星保留高品，读档和分批收取都不会重复发奖', () => {
+  let s = cultivator(13, 13, 13);
+  s.run.incense = 90;
+  const plain = () => gear.makeItem(1, 0, () => 0, 'ring');
+  s.run.gear.worn.ring = plain();
+  s.run.gear.pack = Array.from({ length: game.GEAR_PACK_MAX }, plain);
+  assert.ok(game.starDraw(s, 10, () => 0.9995));
+  assert.ok(s.run.starCards.every((card) => card.place === 'held' && card.item.grade === 6));
+  assert.strictEqual(s.run.gear.forge, 0);
+  s.run.starCards.forEach((card) => { card.shown = true; });
+  s = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  assert.strictEqual(s.run.incense, 0);
+  assert.strictEqual(game.finishStarDraw(s), false);
+  game.gearScrap(s, s.run.gear.pack[0].uid);
+  assert.strictEqual(game.finishStarDraw(s), false);
+  assert.strictEqual(s.run.gear.pack.filter((item) => item.grade === 6).length, 1);
+  assert.strictEqual(s.run.starCards.filter((card) => card.place === 'held').length, 9);
+  s.run.gear.pack.slice(0, 9).forEach((item) => game.gearScrap(s, item.uid));
+  assert.ok(game.finishStarDraw(s));
+  assert.strictEqual(s.run.gear.pack.filter((item) => item.grade === 6).length, 10);
+  assert.ok(!game.finishStarDraw(s));
+});
+
+test('旧档按本世关数补香火一次，同世读档保留未揭牌，轮回清空香火和两档保底', () => {
+  const old = cultivator(13, 13, 13);
+  old.trainBest = 80;
+  old.run.battle.cleared = 12;
+  delete old.run.incense;
+  const s = game.normalizeState(old, 0, () => 0);
+  assert.strictEqual(s.run.incense, 66);
+  assert.ok(game.starDraw(s, 1, () => 0));
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  assert.deepStrictEqual([loaded.run.incense, loaded.run.starDry, loaded.run.starGoldDry], [56, 1, 1]);
+  assert.deepStrictEqual(loaded.run.starCards, s.run.starCards);
+  assert.strictEqual(loaded.run.gear.forge, 1);
+  s.run.incense = 0;
+  assert.strictEqual(game.normalizeState(s, 0, () => 0).run.incense, 0);
+  assert.ok(game.retire(loaded));
+  assert.ok(!game.starDraw(loaded, 1, () => 0));
+  assert.ok(game.reincarnate(loaded, 0, () => 0));
+  const newborn = game.normalizeState(loaded, 0, () => 0);
+  assert.deepStrictEqual([newborn.run.incense, newborn.run.starDry, newborn.run.starGoldDry, newborn.run.starCards.length], [0, 0, 0, 0]);
+  assert.ok(!game.starDraw(newborn, 1, () => 0));
+});

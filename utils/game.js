@@ -362,6 +362,10 @@ function newRun(state, rng) {
     // 历练：cleared 是这一世过的最远一关，back 是败了之后眼下比它退回了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记），loot 是储物袋里攒着的装备件数。
     battle: { cleared: 0, back: 0, bag: 0, loot: 0 },
     gear: emptyGear(),
+    incense: 0,
+    starDry: 0,
+    starGoldDry: 0,
+    starCards: [],
     // 关隘：mats 是各秘境凑到的材料，lost 是在各秘境败过几场（对手让了几步）。
     gate: emptyGate(false),
     death: null
@@ -2727,6 +2731,12 @@ const TRAIN_STONE = 1;
 const TRAIN_BOSS_STONE = 3;
 const TRAIN_BOSS_DEW = 1;
 const FORGE_MAX = 99;
+const STAR = {
+  single: 10, ten: 90, heavenPity: 10, immortalPity: 50,
+  trialIncense: 10, clearIncense: 4, bossIncense: 10,
+  // 七品的基础概率，单位为千分之一。
+  weights: [400, 280, 200, 90, 24, 5, 1]
+};
 // 装备分不够时，渡劫成功率最多扣这么多。
 const GEAR_TRIB_MAX = 0.3;
 // 装备分超过要求后成功率多加一点：最多加 GEAR_TRIB_BONUS，每多出要求的 GEAR_TRIB_HALF，离这个上限的差距减半。
@@ -2869,15 +2879,17 @@ function trainClear(state, stage, rng) {
   }
   const stone = mountain.addStone(run, boss ? TRAIN_BOSS_STONE : TRAIN_STONE);
   const dew = boss ? mountain.addDew(run, TRAIN_BOSS_DEW) : 0;
+  const incense = stage === 1 ? STAR.trialIncense : (boss ? STAR.bossIncense : STAR.clearIncense);
+  run.incense += incense;
   if (stage === 1) {
-    run.log.push({ age: run.age, title: '试招', text: '击退' + name + '，拾得' + drop.item.grade + drop.item.name, detail: '' });
+    run.log.push({ age: run.age, title: '试招', text: '击退' + name + '，拾得' + drop.item.grade + drop.item.name + '、香火 ' + incense, detail: '' });
     run.log = run.log.slice(-MAX_LOG);
   } else if (boss) {
     run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '，得' + drop.item.grade + drop.item.name +
-      (stone ? '、筑石 ' + stone + ' 块' : '') + (dew ? '、玉露 ' + dew + ' 滴' : '') + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
+      (stone ? '、筑石 ' + stone + ' 块' : '') + (dew ? '、玉露 ' + dew + ' 滴' : '') + '、香火 ' + incense + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
     run.log = run.log.slice(-MAX_LOG);
   }
-  return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop, stone: stone, dew: dew };
+  return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop, stone: stone, dew: dew, incense: incense };
 }
 
 // 第 stage 关败了：往回退 TRAIN_RETREAT 关，最多退到第 1 关。返回退到了第几关。
@@ -2925,11 +2937,16 @@ function trainCollect(state, rng) {
   for (let i = 0; i < pieces; i++) drops.push(gearGain(state, gear.roll(Math.max(1, run.battle.cleared), roll, false)));
   run.battle.loot -= pieces;
   if (pieces) lines.push('装备 ' + pieces + ' 件');
+  const incense = pieces * STAR.clearIncense;
+  if (incense) {
+    run.incense += incense;
+    lines.push('香火 +' + incense);
+  }
   const stone = mountain.addStone(run, pieces);
   if (stone) lines.push('筑石 ' + stone + ' 块');
   run.log.push({ age: run.age, title: '历练', text: '收了储物袋：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
-  return { title: '历练', label: '收了储物袋', qi: amount >= 1 ? amount : 0, gained: Math.max(0, Math.floor(run.qi - qi)), drops: drops, lines: lines, tags: tags };
+  return { title: '历练', label: '收了储物袋', qi: amount >= 1 ? amount : 0, gained: Math.max(0, Math.floor(run.qi - qi)), drops: drops, incense: incense, lines: lines, tags: tags };
 }
 
 // 关隘与秘境：GATES 里的几场天劫要先凑齐材料才肯落下，材料只在对应的秘境里打赢对手才有。
@@ -3134,6 +3151,74 @@ function packIndex(run, uid) {
     if (run.gear.pack[i].uid === uid) return i;
   }
   return -1;
+}
+
+// 仙星的天品以上装备保留至本世。抽到时背包已满，可以先整理背包，再回仙星收取。
+function storeStarGear(state, item) {
+  const g = state.run.gear;
+  if (g.worn[item.slot] && g.pack.length >= gear.PACK_MAX) return 'held';
+  return gearGain(state, Object.assign({}, item)).worn ? 'worn' : 'pack';
+}
+
+function rollStarGrade(rng) {
+  let roll = Math.floor(rng() * 1000);
+  for (let grade = 0; grade < STAR.weights.length; grade++) {
+    roll -= STAR.weights[grade];
+    if (roll < 0) return grade;
+  }
+  return STAR.weights.length - 1;
+}
+
+// 扣香火、逐张算保底并给装备。整批结果随本世存档，翻牌只改已揭标记。
+function starDraw(state, count, rng) {
+  const run = state.run;
+  if (run.phase !== 'alive' || run.starCards.length || (count !== 1 && count !== 10)) return false;
+  const cost = count === 1 ? STAR.single : STAR.ten;
+  if (run.incense < cost) return false;
+  const roll = rng || Math.random;
+  const tier = Math.max(1, run.battle.cleared);
+  run.incense -= cost;
+  for (let i = 0; i < count; i++) {
+    let grade = rollStarGrade(roll);
+    if (++run.starDry >= STAR.heavenPity) grade = Math.max(3, grade);
+    if (++run.starGoldDry >= STAR.immortalPity) grade = Math.max(4, grade);
+    if (grade >= 3) run.starDry = 0;
+    if (grade >= 4) run.starGoldDry = 0;
+    const item = gear.makeItem(tier, grade, roll);
+    const card = { item: item, place: 'forge', forge: 0, shown: false };
+    if (grade < 3) {
+      card.forge = Math.min(FORGE_MAX - run.gear.forge, gear.scrapValue(item));
+      run.gear.forge += card.forge;
+    } else {
+      card.place = storeStarGear(state, item);
+    }
+    run.starCards.push(card);
+  }
+  return true;
+}
+
+function finishStarDraw(state) {
+  const run = state.run;
+  if (run.phase !== 'alive' || !run.starCards.length || run.starCards.some((card) => !card.shown)) return false;
+  run.starCards.forEach((card) => {
+    if (card.place === 'held') card.place = storeStarGear(state, card.item);
+  });
+  if (run.starCards.some((card) => card.place === 'held')) return false;
+  run.starCards = [];
+  return true;
+}
+
+function normalizeStarCards(raw) {
+  if (!Array.isArray(raw)) return [];
+  const cards = [];
+  raw.slice(0, 10).forEach((entry) => {
+    const item = entry && gear.clean(entry.item);
+    if (!item || item.level !== 0) return;
+    const places = item.grade < 3 ? ['forge'] : ['worn', 'pack', 'held'];
+    if (!places.includes(entry.place)) return;
+    cards.push({ item: item, place: entry.place, forge: entry.place === 'forge' ? toCount(entry.forge, gear.scrapValue(item)) : 0, shown: entry.shown === true });
+  });
+  return cards;
 }
 
 // 把背包里的一件换到身上，原来身上那件回背包。
@@ -4243,6 +4328,15 @@ function normalizeRun(state, raw, rng) {
   }
   // 加入关隘之前就已经开始的这一世不补这道门槛，按材料齐全算。
   run.gate = raw.gate === undefined ? emptyGate(true) : normalizeGate(raw.gate);
+  // 升级前已经首通的关按本世进度一次补齐，花到零的存档仍按零读。
+  const starCleared = toCount(raw.battle && raw.battle.cleared, TRAIN_MAX);
+  const starBosses = Math.floor(starCleared / TRAIN_BOSS_EVERY);
+  run.incense = raw.incense === undefined && starCleared
+    ? STAR.trialIncense + (starCleared - starBosses - 1) * STAR.clearIncense + starBosses * STAR.bossIncense
+    : toCount(raw.incense, Number.MAX_SAFE_INTEGER);
+  run.starDry = toCount(raw.starDry, STAR.heavenPity - 1);
+  run.starGoldDry = toCount(raw.starGoldDry, STAR.immortalPity - 1);
+  run.starCards = normalizeStarCards(raw.starCards);
   if (phase === 'dead') {
     const death = raw.death && typeof raw.death === 'object' ? raw.death : {};
     run.death = {
@@ -4515,6 +4609,10 @@ module.exports = {
   TRAIN_STONE,
   TRAIN_BOSS_STONE,
   TRAIN_BOSS_DEW,
+  STAR,
+  FORGE_MAX,
+  starDraw,
+  finishStarDraw,
   caveOpen,
   trainFighter,
   trainFoe,

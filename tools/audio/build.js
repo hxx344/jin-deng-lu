@@ -86,6 +86,25 @@ const PLUCK = [1, 0.5, 0.28, 0.12, 0.06];
 const BELL = [1, 0, 0.45, 0, 0.2, 0, 0.1];
 const SOFT = [1, 0.25];
 
+// 星牌从叩木、击玉到钟磬和声；神品用低锣，道品的尾音逐层散开。
+const STAR_CHIMES = [
+  { name: 'wood', notes: [2], harm: PLUCK, step: 0, tail: 0.2, decay: 24 },
+  { name: 'jade', notes: [24], harm: SOFT, step: 0, tail: 0.38, decay: 10 },
+  { name: 'water', notes: [17, 24], harm: BELL, step: 0.09, tail: 0.46, decay: 7 },
+  { name: 'violet', notes: [12, 19, 27], harm: PLUCK, step: 0.08, tail: 0.62, decay: 5 },
+  { name: 'gold', notes: [7, 19, 24, 31], harm: BELL, step: 0.1, tail: 0.98, decay: 3.4 },
+  { name: 'red', notes: [-12, 0, 7, 19], harm: [1, 0.22, 0.55, 0.18], step: 0.065, tail: 1.16, decay: 3 },
+  { name: 'dao', notes: [0, 12, 19, 24, 31, 36], harm: BELL, step: 0.1, tail: 1.4, decay: 2.7 }
+];
+
+function starChime(chime) {
+  const out = buf((chime.notes.length - 1) * chime.step + chime.tail);
+  chime.notes.forEach((semi, i) => {
+    tone(out, i * chime.step, chime.tail, hz(semi), 0.7, { harm: chime.harm, decay: chime.decay });
+  });
+  return out;
+}
+
 // 背景音乐：D 小调五声，24 秒无缝循环。低音铺底，上面是稀疏的拨弦。
 function bgm() {
   const out = buf(24);
@@ -232,3 +251,4 @@ write('born', born(), 0.6);
 write('lamp', lamp(), 0.6);
 write('die', die(), 0.8);
 write('thunder', thunder(), 0.95);
+STAR_CHIMES.forEach((chime) => write('star-' + chime.name, starChime(chime), 0.6));

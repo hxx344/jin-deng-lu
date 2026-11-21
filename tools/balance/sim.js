@@ -316,7 +316,13 @@ function train(state, clock, seconds, manage) {
     clock.spare = 0;
     return;
   }
-  const tidy = () => tidyGear(state);
+  const tidy = () => {
+    if (state.run.incense >= game.STAR.ten && game.starDraw(state, 10, clock.starRng)) {
+      state.run.starCards.forEach((card) => { card.shown = true; });
+    }
+    tidyGear(state);
+    if (state.run.starCards.length) game.finishStarDraw(state);
+  };
   clock.spare += seconds;
   while (clock.spare > 0) {
     const stage = game.trainStage(state);
@@ -505,7 +511,7 @@ function playSave(policyId, seed, config) {
   const policy = Object.assign({ id: policyId }, POLICIES[policyId]);
   const rng = mulberry(seed);
   // 历练用单独的随机数流，战斗打几场不影响机缘的随机序列。
-  const clock = { now: 0, spare: 0, trainRng: mulberry((seed ^ 0x5bd1e995) >>> 0) };
+  const clock = { now: 0, spare: 0, trainRng: mulberry((seed ^ 0x5bd1e995) >>> 0), starRng: mulberry((seed ^ 0x783ad95b) >>> 0) };
   const state = game.createState(0, rng);
   const lives = [];
   for (let i = 0; i < config.lives; i++) {
@@ -656,6 +662,7 @@ function render(data) {
     '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，再拖一次机缘多折的寿元不比渡劫失败折的少时不再等，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
     '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒并退回 ' + game.TRAIN_RETREAT + ' 关。认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩和挂机玩不管装备，只有空槽位会自动穿上。',
+    '- 认真玩在本世攒够 ' + game.STAR.ten + ' 香火时进行仙星十连，翻牌后换装和强化。',
     '- 等装备：灵气满了、装备分还不够这一场天劫的要求时，认真玩最多停 ' + config.gearPatience.careful + ' 分钟，只让历练接着打；连着 ' + GEAR_STALL + ' 分钟装备分没涨就不等了。等的时间算进时长。随手玩和挂机玩不等。',
     '- 秘境：人在有关隘的境界、材料没凑齐时，机缘够 ' + game.GATE_COST + ' 次就进秘境打。随手玩和挂机玩三个对手里随便挑；认真玩挑“胜率 × 材料”最高的，胜率到 ' + Math.round(GATE_ODDS * 100) + '% 才去；灵气圆满后只差材料、胜率还不到时，先停下来让历练接着打（和等装备共用耐心），等不动了照打。只差材料、机缘又不够打一场时静坐着攒。一场占掉它自己的时长加 ' + TRAIN_GAP + ' 秒，败了多歇 ' + TRAIN_REST + ' 秒。',
     '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽与灯油、散功保命、主动降重天。',
