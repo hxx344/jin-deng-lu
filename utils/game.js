@@ -863,7 +863,8 @@ function qiRate(state) {
   const fate = fateInfo(run);
   const demon = run.mode === 'demon' ? 1 + MAX_DEMON * DEMON_QI_RATE : 1;
   const cave = 1 + mountain.arrayBonus(run.cave ? run.cave.array : 0);
-  return REALMS[run.realm].rate * (1 + bonus) * (1 + LAMP_QI * lampLevel(state, 'r4')) * (1 + (fate.qi || 0)) * demon * cave;
+  const sect = 1 + mountain.progressBonus(run).qi;
+  return REALMS[run.realm].rate * (1 + bonus) * (1 + LAMP_QI * lampLevel(state, 'r4')) * (1 + (fate.qi || 0)) * demon * cave * sect;
 }
 
 function humanLifeCap(state, realm, lifeFlat) {
@@ -910,7 +911,7 @@ function chanceInterval(state) {
   const run = state.run;
   const slow = run.aftermath && run.aftermath.id === 'fortune' ? 1.5 : 1;
   return CHANCE_INTERVAL_SEC * chanceRealmSlow(run.realm) / (1 + 0.15 * lampLevel(state, 'y4')) / (hasSet(run, 'luck', 4) ? 1.25 : 1) /
-    (1 + sumSkills(run, 'speed')) / (1 + run.speed + (fateInfo(run).speed || 0)) * slow;
+    (1 + sumSkills(run, 'speed')) / (1 + run.speed + (fateInfo(run).speed || 0)) / (1 + mountain.progressBonus(run).speed) * slow;
 }
 
 function realmText(run) {
@@ -3161,7 +3162,7 @@ function tribGear(state) {
   return { name: trib ? trib.name : '', need: need, score: score, short: short, cut: cut, penalty: short ? cut * (1 - score / need) : 0, bonus: bonus };
 }
 
-// 羁绊、灯纹、功法、大机缘和装备富余这些加成，按考核属性的达标程度打折：属性只到要求的四成，加成也只算四成。
+// 羁绊、灯纹、功法、大机缘、宗门和装备富余这些加成，按考核属性的达标程度打折：属性只到要求的四成，加成也只算四成。
 function tribulationParts(state, ratio) {
   const run = state.run;
   const gear = tribGear(state);
@@ -3170,6 +3171,7 @@ function tribulationParts(state, ratio) {
     ['灯纹「劫后余生」', 0.03 * lampLevel(state, 'm2')],
     ['功法', sumSkills(run, 'trib')],
     ['大机缘的雷', run.tribBoon],
+    ['宗门护阵', mountain.progressBonus(run).trib],
     ['装备分富余', gear.bonus]
   ];
   const boost = boosts.reduce((sum, part) => sum + Math.max(0, part[1]), 0);

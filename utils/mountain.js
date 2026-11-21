@@ -250,7 +250,7 @@ function mountainView(state, page, selected, context) {
     view.canName = true;
     RULES.forEach((rule) => {
       const first = rule.id === 'aid' && run.marks.includes('manager') ? 'clerk' : rule.disciple;
-      add(rule.id, rule.name + '立宗', rule.perk + '；' + rule.world + '；首徒 ' + find(DISCIPLES, first).name + '。',
+      add(rule.id, rule.name + '立宗', rule.perk + '；' + rule.world + '；' + rule.main + '；首徒 ' + find(DISCIPLES, first).name + '。',
         { qi: 0.2, material: 5, years: 3 }, { disciple: first, placeholder: rule.defaultName });
     });
     return view;
@@ -259,7 +259,7 @@ function mountainView(state, page, selected, context) {
   const rule = find(RULES, sect.rule);
   const quest = sect.quest;
   view.title = sect.name;
-  view.text = rule.name + '门规：' + rule.perk + '。巡山在两次普通机缘后返山。' +
+  view.text = rule.name + '门规：' + rule.perk + '。巡山在两次普通机缘后返山。' + world.progressText(run) +
     (sect.rank < MAX_RANK ? '山门的品阶在「山外」页凭声望、领地和门人提升。' : '');
   const disciple = find(sect.disciples, selected);
   if (disciple) {
@@ -501,4 +501,4 @@ function normalizeArchive(raw, lives, toCount) {
   };
 }
 
-module.exports = { STONE_MAX, DEW_MAX, LEVEL_START, LEVEL_MAX, arrayBonus, fieldPill, addStone, addDew, mountainView, chooseMountain, progressChoices, archive, normalizeRunMountain, normalizeArchive };
+module.exports = { STONE_MAX, DEW_MAX, LEVEL_START, LEVEL_MAX, arrayBonus, fieldPill, addStone, addDew, mountainView, chooseMountain, progressChoices, progressBonus: world.progressBonus, archive, normalizeRunMountain, normalizeArchive };

@@ -19,9 +19,9 @@ const RULE_MIGHT = 3;
 const SMALL_EVENT_RATE = 0.6;
 
 const RULES = [
-  { id: 'guard', name: '守骨', defaultName: '守骨山门', disciple: 'li', perk: '弟子修阵多得 1 进度', world: '守山时宗门战力 +' + RULE_MIGHT },
-  { id: 'aid', name: '济人', defaultName: '长明山门', disciple: 'ya', perk: '弟子护民多得 1 进度', world: '门人每次多来 1 人，庇护与布施多得 1 声望' },
-  { id: 'salvage', name: '取骸', defaultName: '拾骨山门', disciple: 'suo', perk: '每趟巡山多得 1 灵材', world: '出击时宗门战力 +' + RULE_MIGHT }
+  { id: 'guard', name: '守骨', defaultName: '守骨山门', disciple: 'li', perk: '弟子修阵多得 1 进度', world: '守山时宗门战力 +' + RULE_MIGHT, main: '每阶额外使渡劫 +1%' },
+  { id: 'aid', name: '济人', defaultName: '长明山门', disciple: 'ya', perk: '弟子护民多得 1 进度', world: '门人每次多来 1 人，庇护与布施多得 1 声望', main: '每阶使机缘积攒 +5%' },
+  { id: 'salvage', name: '取骸', defaultName: '拾骨山门', disciple: 'suo', perk: '每趟巡山多得 1 灵材', world: '出击时宗门战力 +' + RULE_MIGHT, main: '每阶额外使灵气 +4%' }
 ];
 
 const DISCIPLES = [
@@ -119,6 +119,27 @@ const owned = (world) => SITES.filter((site) => world.sites[site.id] === 'own');
 const foeAlive = (world) => world.sites.altar !== 'own';
 const memberCap = (sect) => sect.rank * 15 + owned(sect.world).length * 6;
 const stockCap = (rank) => 20 + rank * 10;
+
+// 宗门对本世修行的反哺由品阶和实际控制的领地决定，失地会立即收回对应收益。
+function progressBonus(run) {
+  const sect = run.sect;
+  if (!sect || !sect.world) return { qi: 0, trib: 0, speed: 0, rank: 0, sites: 0 };
+  const sites = owned(sect.world).length;
+  return {
+    qi: sect.rank * (sect.rule === 'salvage' ? 0.12 : 0.08) + sites * 0.02,
+    trib: sect.rank * (sect.rule === 'guard' ? 0.03 : 0.02) + sites * 0.01,
+    speed: sect.rule === 'aid' ? sect.rank * 0.05 : 0,
+    rank: sect.rank,
+    sites: sites
+  };
+}
+
+function progressText(run) {
+  const bonus = progressBonus(run);
+  const parts = ['灵气 +' + Math.round(bonus.qi * 100) + '%', '渡劫 +' + Math.round(bonus.trib * 100) + '%'];
+  if (bonus.speed) parts.push('机缘积攒 +' + Math.round(bonus.speed * 100) + '%');
+  return '修行反哺：' + parts.join('，') + '（' + bonus.rank + ' 阶宗门，' + bonus.sites + ' 块领地）。';
+}
 
 function might(sect) {
   const world = sect.world;
@@ -391,7 +412,8 @@ function fillView(run, view, add, context) {
   const growth = memberGrowth(sect);
   view.title = sect.name + ' · ' + RANKS[sect.rank - 1];
   view.text = '门人、库藏和山外的小事随每次普通机缘自行变化，扩张、战役和升阶等大事等你决断。眼下每次机缘：门人 ' + signed(growth) +
-    '，库藏 ' + signed(stockIncome(sect)) + '。' + rule.name + '门规：' + rule.world + '。';
+    '，库藏 ' + signed(stockIncome(sect)) + '。' + rule.name + '门规：' + rule.world + '。' + progressText(run) +
+    '每块领地提供灵气 +2%、渡劫 +1%，失去领地即收回。';
   view.stats = [
     { label: '声望', value: String(world.renown) },
     { label: '门人', value: world.members + ' / ' + memberCap(sect) },
@@ -492,5 +514,5 @@ function normalizeWorld(raw, sect, toCount) {
 
 module.exports = {
   MATERIAL_MAX, RANKS, MAX_RANK, RULES, DISCIPLES, find, skillInfo, addMaterials,
-  createWorld, owns, owned, might, tick, fillView, resolve, normalizeWorld
+  createWorld, owns, owned, progressBonus, progressText, might, tick, fillView, resolve, normalizeWorld
 };

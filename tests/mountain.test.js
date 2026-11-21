@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const game = require('../utils/game');
+const gear = require('../utils/gear');
 
 const NOW = 1000;
 const KIN = game.SEA_REALM;
@@ -48,6 +49,51 @@ function found(state, rule = 'guard') {
   act(state, 'cave', 'open');
   act(state, 'sect', rule, '', '听雪门');
 }
+
+function near(actual, expected) {
+  assert.ok(Math.abs(actual - expected) < 1e-9, actual + ' != ' + expected);
+}
+
+test('宗门品阶和山外领地反哺修行，门规各有所长，失地会收回加成', () => {
+  let state = cultivator(YUAN);
+  const info = game.tribulationInfo(state);
+  const item = { slot: 'weapon', grade: 0, tier: 1, level: 0, affixes: [] };
+  while (gear.score(item) < info.gear.need) item.tier++;
+  state.run.gear.worn.weapon = item;
+  const req = info.req;
+  state.run.stats = { edge: req, body: req, mind: req };
+  const qi = game.qiRate(state);
+  const interval = game.chanceInterval(state);
+  const trib = game.tribulationInfo(state).chance;
+  assert.equal(game.mountainView(state, 'sect', '').text.includes('修行反哺'), false);
+
+  found(state);
+  near(game.qiRate(state), qi * 1.08);
+  near(game.chanceInterval(state), interval);
+  near(game.tribulationInfo(state).chance, trib + 0.03);
+  assert.match(game.mountainView(state, 'sect', '').text, /修行反哺：灵气 \+8%，渡劫 \+3%/);
+
+  state.run.sect.rank = 3;
+  world(state).event = null;
+  Object.assign(world(state).sites, { village: 'own', mine: 'own', ferry: 'own' });
+  near(game.qiRate(state), qi * 1.3);
+  near(game.tribulationInfo(state).chance, trib + 0.12);
+  assert.match(game.mountainView(state, 'world', '').text, /3 块领地/);
+  world(state).sites.mine = 'foe';
+  near(game.qiRate(state), qi * 1.28);
+  near(game.tribulationInfo(state).chance, trib + 0.11);
+  state = reload(state);
+  assert.deepEqual(reload(state), state);
+
+  const aid = cultivator(YUAN);
+  const aidInterval = game.chanceInterval(aid);
+  found(aid, 'aid');
+  near(game.chanceInterval(aid), aidInterval / 1.05);
+  const salvage = cultivator(YUAN);
+  const salvageQi = game.qiRate(salvage);
+  found(salvage, 'salvage');
+  near(game.qiRate(salvage), salvageQi * 1.12);
+});
 
 test('开府与扩建使用筑石和灵气，旧档和早期境界仍可继续修行', () => {
   assert.equal(game.mountainView(cultivator(KIN - 1), 'cave', ''), null);
@@ -450,7 +496,9 @@ test('立宗后山外先送来一件大事，门人、库藏和小事随普通�
   assert.equal(first.story.title, '盐滩村求庇护');
   assert.deepEqual(first.options.map((item) => item.id), ['w-claim-village-a', 'w-claim-village-b', 'w-claim-village-c', 'donate']);
   assert.equal(first.goals.ready, false);
+  const claimQi = game.qiRate(state);
   const result = act(state, 'world', 'w-claim-village-a');
+  near(game.qiRate(state), claimQi * 1.1 / 1.08);
   assert.equal(result.title, '盐滩村求庇护');
   assert.deepEqual([world(state).sites.village, world(state).renown, world(state).stock, world(state).event], ['own', 2, 1, null]);
   assert.match(game.mountainView(state, 'world', '').story.text, /再完成 2 次/);
@@ -554,6 +602,7 @@ test('升阶条件齐备后由大事完成，品阶和领地决定可收的弟�
     state.run.demon = 9;
     act(state, 'world', 'w-ascend-a');
     assert.equal(state.run.sect.rank, rank);
+    near(game.tribulationInfo(state).parts.find((part) => part.label === '宗门护阵').value, rank * 0.02 + 0.03);
     assert.equal(state.run.demon, 4);
     ordinary(state, 1);
   }
