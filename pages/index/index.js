@@ -994,7 +994,7 @@ Page({
       line = full ? (seaEntry ? '金丹圆满。烬灯照出一条通往枯海的航路。' : '金丹圆满。了结手中的机缘或功法，然后入枯海。') : '金丹后期灵气圆满后，可入枯海。';
     } else {
       const top = game.REALMS[run.realm].name;
-      line = full ? top + '圆满，前面没有路了。可继续修行，或在轮回页坐化。' : top + '已成，继续修行可达圆满。';
+      line = run.ascended ? top + '圆满，前面没有路了。可继续修行，或在轮回页坐化。' : top + '已成，继续修行可达圆满。';
     }
     const max = game.maxChance(s);
     const count = Math.floor(run.chance);
@@ -1153,6 +1153,7 @@ Page({
         sec('境界与渡劫', [
           '凡胎、引气、筑基、金丹、元婴，各分前、中、后期。小境界灵气满了自动突破。',
           '元婴不是头。往后是化神、婴变、问鼎，再是阴虚、阳实、窥涅、净涅、碎涅，再是空涅、空灵、空玄、空劫，最后是踏天，一共 ' + (game.REALMS.length - 1) + ' 个境界。这些境界的天劫照旧考锋、躯、神，但更看装备分，越往后越是这样。',
+          '阴虚劫、空涅劫、踏天劫是三道大关：不看劫相，锋、躯、神三项全考，属性和装备分的要求比前后的天劫高出一截，失败折的寿元也重得多。踏天后期灵气满了还有一场终劫，同样三项全考，渡过才算踏天圆满。',
           '前三场天劫每一世的“劫相”都不同：有的考两项，有的只考一项但要求高出三成多。主界面和“功法”页会标出这一场考什么、需要多少。',
           '劫期：每个境界只能从容做一定次数的机缘（主界面写着还剩几次）。过了劫期，每次机缘都多折寿元，越拖越重；多折的寿元是白折的，不涨灵气也不攒机缘。所以不能无限攒属性，要估着劫期决定什么时候渡劫。',
           '羁绊、灯纹、功法、大机缘的雷和装备分富余这些加成，按被考属性的达标程度打折：属性只到要求的一半，这些加成也只算一半。属性堆上去，加成才管用。',
@@ -1204,7 +1205,7 @@ Page({
           '词条有十三种：攻击、气血、暴击、暴击伤害、减伤、出手加快、吸血、反伤、回血、开场护盾、破甲、招式减伤、连击。',
           '装备的数值只在历练的战斗里起作用，不改锋躯神；装备分会算进战力。',
           '装备分看品级、强化、词条，也看阶：越靠后的关掉的装备，装备分越高。',
-          '往后的天劫要装备分撑着，前松后紧：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '，化神劫要 ' + game.TRIBS[4].gear + '，一路加到踏天劫的 ' + game.TRIBS[game.TRIBS.length - 1].gear + '；每高一重天再多 ' + Math.round(game.GEAR_HEAVEN * 100) + '%。不够的话成功率按差的比例往下扣：筑基劫一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%，金丹劫 ' + Math.round(game.TRIBS[2].gearCut * 100) + '%，元婴劫 ' + Math.round(game.TRIBS[3].gearCut * 100) + '%，化神劫起差多少扣多少；够了就不扣。超过要求还能再加一点成功率：最多 ' + Math.round(game.GEAR_TRIB_BONUS * 100) + '%，每多出要求的 ' + Math.round(game.GEAR_TRIB_HALF * 100) + '%，离这个上限的差距减半，越往上加得越少。所以后面的境界急不来，得先把历练的关往后推、把装备换上去。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
+          '往后的天劫要装备分撑着，前松后紧：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '，化神劫要 ' + game.TRIBS[4].gear + '，往后一路往上加，大关要得格外多（' + game.TRIBS.filter((t) => t.wall).map((t) => t.name + ' ' + t.gear).join('、') + '）；每高一重天再多 ' + Math.round(game.GEAR_HEAVEN * 100) + '%。不够的话成功率按差的比例往下扣：筑基劫一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%，金丹劫 ' + Math.round(game.TRIBS[2].gearCut * 100) + '%，元婴劫 ' + Math.round(game.TRIBS[3].gearCut * 100) + '%，化神劫起差多少扣多少；够了就不扣。超过要求还能再加一点成功率：最多 ' + Math.round(game.GEAR_TRIB_BONUS * 100) + '%，每多出要求的 ' + Math.round(game.GEAR_TRIB_HALF * 100) + '%，离这个上限的差距减半，越往上加得越少。所以后面的境界急不来，得先把历练的关往后推、把装备换上去。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
           '在“装备”页换装、强化和分解。强化耗锻材，最高 +' + game.GEAR_MAX_LEVEL + '，不会失败；锻材靠分解用不上的装备得来。背包最多 ' + game.GEAR_PACK_MAX + ' 件，满了之后新掉的直接分解。',
           '背包里标“更好”的，是战斗数值比身上的高、装备分也不比身上低的；“换上更好的”只换这些，“分解用不上的”只分解两样都不比身上高的。高几阶的新装备数值更高、装备分却不如强化过的旧装备时，两边都不算，要换就自己点“换上”再强化。',
           '装备和锻材只管这一世。'
@@ -1218,7 +1219,7 @@ Page({
           '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
           '寿元快到头又渡不过劫时，可以在“轮回”页主动坐化，直接结算。',
           '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。',
-          '重天：在已开的最高一重天修到踏天圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1。投胎时可以选去哪一重。'
+          '重天：在已开的最高一重天渡过终劫、修到踏天圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1。投胎时可以选去哪一重。'
         ]),
         sec('角色在干什么', [
           '中间的小人是你这一世的肉身。衣服颜色跟境界走，腰带颜色是你主修的那一系。',
@@ -1653,12 +1654,12 @@ Page({
     return {
       kind: 'trib',
       title: info.name,
-      text: (info.aspect ? '这一世的劫相是「' + info.aspect + '」：' : '') + '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req + '。' + gearShortText(info.gear) + '选一种渡法，选定即引下天雷。',
+      text: (info.wall ? '这是一道大关，失败折的寿元比寻常天劫重得多。' : '') + (info.aspect ? '这一世的劫相是「' + info.aspect + '」：' : '') + '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req + '。' + gearShortText(info.gear) + '选一种渡法，选定即引下天雷。',
       options: [
         {
           id: 'endure',
           label: '硬抗 · 成功率 ' + percent(info.chance) + '%',
-          desc: '成功：' + (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeBonus + ' 年') + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
+          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeBonus + ' 年')) + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
           disabled: false
         },
         {

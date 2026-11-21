@@ -1283,7 +1283,7 @@ test('内容完整性：功法、事件、因果和灯纹的数据都能被规�
   assert.strictEqual(new Set(game.SKILLS.map((k) => k.id)).size, 40);
   assert.strictEqual(new Set(game.SKILLS.map((k) => k.name)).size, 40);
   assert.strictEqual(game.LAMPS.length, 14);
-  assert.strictEqual(game.TRIBS.length, game.REALMS.length - 1);
+  assert.strictEqual(game.TRIBS.length, game.REALMS.length);
 });
 
 test('随机游玩 300 世：不会卡死，数值始终合法，存档读回后完全一致', () => {
@@ -3282,8 +3282,9 @@ test('重天：在最高一重天修到最高境界圆满后身死开出下一�
   const s = born();
   s.run.realm = game.REALMS.length - 1;
   s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
   assert.ok(game.retire(s));
-  assert.strictEqual(s.heavenMax, 0, '没到圆满不开新天');
+  assert.strictEqual(s.heavenMax, 0, '灵气满了但没渡过终劫，不算圆满，不开新天');
   assert.ok(game.reincarnate(s, 0, () => 0));
   assert.strictEqual(game.setHeaven(s, 1), false);
   s.run.fate = '';
@@ -3291,6 +3292,7 @@ test('重天：在最高一重天修到最高境界圆满后身死开出下一�
   s.run.realm = game.REALMS.length - 1;
   s.run.stage = game.STAGES.length - 1;
   s.run.qi = game.qiCap(s);
+  s.run.ascended = true;
   assert.ok(game.isFull(s));
   const plainWick = game.wickGain(s, 'retire');
   const plainChance = game.tribulationChance(s, 1);
@@ -3314,6 +3316,7 @@ test('重天：在最高一重天修到最高境界圆满后身死开出下一�
   s.run.realm = game.REALMS.length - 1;
   s.run.stage = game.STAGES.length - 1;
   s.run.qi = game.qiCap(s);
+  s.run.ascended = true;
   assert.strictEqual(game.wickGain(s, 'retire'), Math.ceil(plainWick * 1.5 - 1e-9));
   const saved = game.normalizeState(JSON.parse(JSON.stringify(s)), 0);
   assert.strictEqual(saved.heavenMax, 1);

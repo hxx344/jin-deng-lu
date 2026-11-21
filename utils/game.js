@@ -294,6 +294,7 @@ function newRun(state, rng) {
     path: '',
     realmChoices: 0,
     scatters: 0,
+    ascended: false,
     rootRolls: ROOT_REROLLS,
     root: '',
     realm: 0,
@@ -473,7 +474,7 @@ function tribReq(state, trib, mult) {
 // 这一世要过的每一场天劫：名字、劫相、考哪几项、每项要多少。
 function tribPlan(state) {
   return TRIBS.map((trib, i) => {
-    if (trib.seaTrial) return { name: trib.name, aspect: '', tests: trib.tests, req: tribReq(state, trib) };
+    if (trib.seaTrial || trib.wall) return { name: trib.name, aspect: '', tests: trib.tests, req: tribReq(state, trib) };
     const aspect = tribAspect(state.run, i);
     return { name: trib.name, aspect: aspect.name, tests: aspect.tests, req: tribReq(state, trib, aspect.req) };
   });
@@ -874,7 +875,7 @@ function chanceInterval(state) {
 }
 
 function realmText(run) {
-  return REALMS[run.realm].name + STAGES[run.stage].name;
+  return REALMS[run.realm].name + (run.ascended ? '圆满' : STAGES[run.stage].name);
 }
 
 function atSea(run) {
@@ -892,6 +893,17 @@ function layerName(run) {
 function isFull(state) {
   const run = state.run;
   return run.stage === STAGES.length - 1 && run.qi >= qiCap(state);
+}
+
+// 圆满：最高境界要渡过终劫才算，其余境界后期灵气满了就算。
+function isPerfect(state) {
+  const run = state.run;
+  return run.realm === REALMS.length - 1 ? run.ascended : isFull(state);
+}
+
+// 眼下这个境界要渡的天劫；终劫渡过后就没有了。
+function tribOf(run) {
+  return run.ascended ? null : TRIBS[run.realm];
 }
 
 function gainLiveWick(state, amount) {
@@ -1440,7 +1452,7 @@ const BIG_EFFECTS = {
   thunder: {
     ok: (state) => {
       const run = state.run;
-      const trib = TRIBS[run.realm];
+      const trib = tribOf(run);
       return run.mode !== 'demon' && !!trib && !trib.seaTrial && !run.tribBoon;
     },
     run: (state, rng, lines) => {
@@ -1712,7 +1724,7 @@ function setBonus(run) {
 function wickGain(state, cause) {
   const run = state.run;
   const full = REALMS[run.realm].fullWick;
-  const score = full && isFull(state) ? full : WICK_SCORE[run.realm * STAGES.length + run.stage];
+  const score = full && isPerfect(state) ? full : WICK_SCORE[run.realm * STAGES.length + run.stage];
   return Math.max(1, Math.ceil(score * (1 + setBonus(run) + sumSkills(run, 'wick')) * (1 + (fateInfo(run).wick || 0)) *
     (1 + HEAVEN_WICK * run.heaven) * DEATH_MULT[cause] - 1e-9));
 }
@@ -1738,7 +1750,7 @@ function die(state, cause) {
   const wick = wickGain(state, cause);
   const text = epitaph(state, cause);
   // 在已解锁的最高一重天修到最高境界圆满，下一重天就开了。
-  const cleared = run.realm === REALMS.length - 1 && isFull(state) && run.heaven === state.heavenMax && state.heavenMax < HEAVEN_MAX;
+  const cleared = run.realm === REALMS.length - 1 && isPerfect(state) && run.heaven === state.heavenMax && state.heavenMax < HEAVEN_MAX;
   run.phase = 'dead';
   run.event = null;
   run.pending = null;
@@ -2920,7 +2932,7 @@ function retreatSea(state) {
 // 渡劫成功率由哪几项加出来，按顺序列给玩家看；为零的项不列。
 // 这场天劫要多少装备分、身上有多少。不够时成功率按差的比例扣，一件不穿扣满 GEAR_TRIB_MAX；超过了按多出的比例加，越往上加得越少。
 function tribGear(state) {
-  const trib = TRIBS[state.run.realm];
+  const trib = tribOf(state.run);
   const need = Math.round(((trib && trib.gear) || 0) * (1 + GEAR_HEAVEN * state.run.heaven));
   const score = gearScore(state);
   const short = score < need;
@@ -3017,6 +3029,12 @@ function tribulationTerms(state, trib) {
 
 function enterNextRealm(state, info, lines) {
   const run = state.run;
+  // 终劫不破境：渡过就是最高境界圆满，丹田和寿元都不再变。
+  if (info.final) {
+    run.ascended = true;
+    lines.push(realmText(run));
+    return;
+  }
   run.realm++;
   run.realmChoices = 0;
   run.scatters = 0;
@@ -3138,7 +3156,7 @@ function tribQiReady(state) {
 
 function tribulationInfo(state) {
   const run = state.run;
-  const trib = TRIBS[run.realm];
+  const trib = tribOf(run);
   if (!trib || trib.seaTrial) return null;
   const a = attrs(state);
   const plan = tribPlan(state)[run.realm];
@@ -3163,6 +3181,8 @@ function tribulationInfo(state) {
   const scatterAttr = run.scatters < SCATTER_MAX ? Math.max(1, Math.round(plan.req * SCATTER_ATTR)) : 0;
   const info = Object.assign(tribulationTerms(state, trib), {
     name: trib.name,
+    final: !!trib.final,
+    wall: !!trib.wall,
     aspect: plan.aspect,
     tests: plan.tests,
     req: plan.req,
@@ -3533,6 +3553,7 @@ function normalizeRun(state, raw, rng) {
   run.fate = findById(FATES, raw.fate) ? raw.fate : '';
   run.realm = toCount(raw.realm, REALMS.length - 1);
   run.stage = toCount(raw.stage, STAGES.length - 1);
+  run.ascended = raw.ascended === true && run.realm === REALMS.length - 1 && run.stage === STAGES.length - 1;
   run.age = toCount(raw.age);
   run.lifeFlat = Math.round(toNumber(raw.lifeFlat));
   run.demon = toCount(raw.demon, MAX_DEMON);
@@ -3843,6 +3864,7 @@ module.exports = {
   layerName,
   atSea,
   isFull,
+  isPerfect,
   advance,
   skillInfo,
   skillDesc,

@@ -603,14 +603,12 @@ test('天劫要装备分：不够时成功率按差的比例扣，够了不扣�
   assert.ok(game.chooseRoot(mortal, 'talisman', 0, () => 0));
   assert.strictEqual(game.tribGear(mortal).need, 0);
   assert.strictEqual(game.tribGear(mortal).short, false);
-  // 前松后紧：要求一场比一场高，扣幅从三成加到十成；每高一重天要求再多 5%。
-  const needs = game.TRIBS.map((trib) => trib.gear || 0);
+  // 前松后紧：寻常的天劫要求一场比一场高，扣幅从三成加到十成；每高一重天要求再多 5%。
+  const plain = game.TRIBS.filter((trib) => !trib.wall);
   const cuts = game.TRIBS.map((trib) => trib.gearCut || game.GEAR_TRIB_MAX);
-  assert.strictEqual(needs[0], 0);
-  for (let i = 1; i < needs.length; i++) {
-    assert.ok(needs[i] > needs[i - 1], game.TRIBS[i].name);
-    assert.ok(cuts[i] >= cuts[i - 1], game.TRIBS[i].name);
-  }
+  assert.strictEqual(plain[0].gear, undefined);
+  for (let i = 2; i < plain.length; i++) assert.ok(plain[i].gear > plain[i - 1].gear, plain[i].name);
+  for (let i = 1; i < cuts.length; i++) assert.ok(cuts[i] >= cuts[i - 1], game.TRIBS[i].name);
   assert.strictEqual(cuts[1], 0.3);
   assert.strictEqual(cuts[cuts.length - 1], 1);
   s.run.heaven = 2;
@@ -621,14 +619,14 @@ test('元婴之后的境界：十三个新境界接在元婴后面，各有天�
   const names = game.REALMS.map((realm) => realm.name);
   assert.deepStrictEqual(names.slice(0, 5), ['凡胎', '引气', '筑基', '金丹', '元婴']);
   assert.deepStrictEqual(names.slice(5), ['化神', '婴变', '问鼎', '阴虚', '阳实', '窥涅', '净涅', '碎涅', '空涅', '空灵', '空玄', '空劫', '踏天']);
-  assert.strictEqual(game.TRIBS.length, game.REALMS.length - 1);
+  assert.strictEqual(game.TRIBS.length, game.REALMS.length);
   for (let i = 5; i < game.REALMS.length; i++) {
     const realm = game.REALMS[i];
     const before = game.REALMS[i - 1];
     const trib = game.TRIBS[i - 1];
     assert.ok(realm.cap > before.cap && realm.rate > before.rate && realm.power.base > before.power.base && realm.power.softCap > before.power.softCap, realm.name);
     assert.ok(realm.fullWick > realm.wick[2] && realm.wick[0] > before.fullWick, realm.name);
-    assert.ok(trib.req > game.TRIBS[i - 2].req && trib.life > 0 && trib.failYears > 0 && !trib.bolts && !trib.seaTrial, trib.name);
+    assert.ok(trib.req > 0 && trib.life > 0 && trib.failYears > 0 && !trib.bolts && !trib.seaTrial, trib.name);
   }
   // 元婴圆满后接着渡化神劫。零装备时硬抗和借势都是 0%，不能靠 5% 保底或反复借势绕过。
   const s = cultivator(400, 400, 400);
@@ -670,17 +668,71 @@ test('元婴之后的境界：十三个新境界接在元婴后面，各有天�
   }
   assert.strictEqual(layers.size, 3);
   s.run.event = null;
-  // 走到头：踏天后期没有天劫，圆满的灯芯比后期多。
-  s.run.realm = game.REALMS.length - 1;
+  // 踏天后期还有一场终劫：灵气满了也不算圆满，渡过才算；不破境、不加寿元，之后再没有天劫。
+  const last = game.REALMS.length - 1;
+  s.run.realm = last;
   s.run.stage = game.STAGES.length - 1;
   s.run.qi = 0;
-  assert.strictEqual(game.tribulationInfo(s), null);
+  s.run.stats = { edge: 3000, body: 3000, mind: 3000 };
+  const waiting = game.tribulationInfo(s);
+  assert.ok(waiting.final && waiting.wall && !waiting.ready);
+  assert.strictEqual(waiting.name, '终劫');
+  assert.strictEqual(waiting.failYears, game.TRIBS[last].failYears);
   assert.strictEqual(game.realmText(s.run), '踏天后期');
   const late = game.wickGain(s, 'retire');
   s.run.qi = game.qiCap(s);
+  assert.strictEqual(game.isPerfect(s), false);
+  assert.strictEqual(game.wickGain(s, 'retire'), late);
+  const lifeBefore = game.maxLife(s);
+  const done = game.attemptTribulation(s, () => 0, 'endure');
+  assert.ok(done.success && done.broke && !done.dead);
+  assert.ok(s.run.ascended && game.isPerfect(s));
+  assert.strictEqual(s.run.realm, last);
+  assert.strictEqual(game.maxLife(s), lifeBefore);
+  assert.strictEqual(game.realmText(s.run), '踏天圆满');
+  assert.strictEqual(game.tribulationInfo(s), null);
+  assert.strictEqual(game.tribGear(s).need, 0);
   assert.ok(game.wickGain(s, 'retire') > late);
   const saved = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
-  assert.strictEqual(saved.run.realm, game.REALMS.length - 1);
+  assert.strictEqual(saved.run.realm, last);
+  assert.strictEqual(saved.run.ascended, true);
+  // 没到踏天后期的存档带着这个标记也不认。
+  const forged = JSON.parse(JSON.stringify(s));
+  forged.run.realm = last - 1;
+  assert.strictEqual(game.normalizeState(forged, 0, () => 0).run.ascended, false);
+});
+
+test('大关：阴虚劫、空涅劫、踏天劫和终劫三项全考，要求比前后的天劫高出一截，失败折寿重得多', () => {
+  const walls = game.TRIBS.filter((trib) => trib.wall).map((trib) => trib.name);
+  assert.deepStrictEqual(walls, ['阴虚劫', '空涅劫', '踏天劫', '终劫']);
+  const plain = game.TRIBS.filter((trib) => !trib.wall && !trib.bolts && !trib.seaTrial);
+  for (let i = 1; i < plain.length; i++) assert.ok(plain[i].req > plain[i - 1].req, plain[i].name);
+  const s = cultivator(400, 400, 400);
+  const plan = game.tribPlan(s);
+  game.TRIBS.forEach((trib, i) => {
+    if (!trib.wall) return;
+    const before = game.TRIBS[i - 1];
+    const after = game.TRIBS[i + 1];
+    assert.ok(trib.req > before.req && trib.gear > before.gear && trib.failYears > (before.wall ? 1 : 2) * before.failYears, trib.name);
+    if (after && !after.wall) assert.ok(trib.req > after.req && trib.gear > after.gear && trib.failYears > 2 * after.failYears, trib.name);
+    assert.strictEqual(plan[i].aspect, '');
+    assert.deepStrictEqual(plan[i].tests, ['edge', 'body', 'mind']);
+    assert.strictEqual(plan[i].req, trib.req);
+  });
+  // 只堆一项属性过不了大关：另外两项不够，成功率上不去。
+  s.run.realm = game.TRIBS.findIndex((trib) => trib.name === '阴虚劫');
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  ['weapon', 'armor', 'crown', 'boots', 'charm', 'ring'].forEach((slot, i) => {
+    s.run.gear.worn[slot] = { uid: i + 1, slot: slot, grade: 6, tier: 40, level: 5, affixes: [] };
+  });
+  s.run.stats = { edge: 5000, body: 100, mind: 100 };
+  const lopsided = game.tribulationInfo(s);
+  assert.ok(lopsided.wall && !lopsided.final && !lopsided.gear.short);
+  s.run.stats = { edge: 700, body: 700, mind: 700 };
+  const even = game.tribulationInfo(s);
+  assert.ok(even.chance > lopsided.chance + 0.3, lopsided.chance + ' / ' + even.chance);
+  assert.strictEqual(even.failYears, game.TRIBS[s.run.realm].failYears);
 });
 
 test('装备扩充：六个槽位、七个品级、十三种词条，高品级要到后面的关才掉', () => {

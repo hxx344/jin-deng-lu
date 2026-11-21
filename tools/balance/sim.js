@@ -12,7 +12,7 @@ const DOC_FILE = path.join(__dirname, '..', '..', 'docs', '平衡基线.md');
 const CONFIG = {
   seed: 20261120,
   saves: 60,
-  lives: 12,
+  lives: 16,
   // 每做一次选择或操作花掉的现实时间。
   choiceSeconds: 5,
   // 认真玩：渡劫成功率到这个数才渡；劫期过了降到 overdueThreshold；寿元只剩 lastDitchYears 年时不再等。
@@ -25,7 +25,7 @@ const CONFIG = {
   idleThreshold: 0.5,
   // 装备分不够时每个境界最多肯停下来等几分钟。
   gearPatience: { casual: 0, idle: 5, careful: 20 },
-  reportLives: [1, 2, 4, 8, 12]
+  reportLives: [1, 2, 4, 8, 12, 16]
 };
 // 单元测试每次都跑的小样本：只用来发现“数值变了”，读数以全量结果为准。
 const CHECK = { saves: 12, lives: 5, reportLives: [1, 3, 5] };
@@ -311,10 +311,11 @@ function train(state, clock, seconds, manage) {
 
 // 跑完一世，返回这一世的记录。
 function playLife(state, policy, rng, config, clock) {
-  const life = { tribs: [], capped: false, waited: game.REALMS.map(() => 0) };
+  const life = { tribs: [], capped: false, waited: game.REALMS.map(() => 0), spent: game.REALMS.map(() => 0) };
   const start = clock.now;
   const tick = (seconds) => {
     clock.now += seconds * 1000;
+    life.spent[state.run.realm] += seconds / 60;
     game.advance(state, clock.now);
     if (state.run.phase === 'alive') train(state, clock, seconds, !!policy.gear);
   };
@@ -375,7 +376,7 @@ function playLife(state, policy, rng, config, clock) {
       break;
     }
     // 最高境界圆满后灯芯不会再涨，三种打法都直接坐化。
-    if (run.realm === LAST_REALM && game.isFull(state)) {
+    if (game.isPerfect(state) && run.realm === LAST_REALM) {
       game.retire(state);
       break;
     }
@@ -414,7 +415,7 @@ function playLife(state, policy, rng, config, clock) {
   }
   life.realm = run.realm;
   life.stage = run.realm * STAGE_COUNT + run.stage;
-  life.full = run.realm === LAST_REALM && run.qi >= game.qiCap(state);
+  life.full = run.realm === LAST_REALM && game.isPerfect(state);
   life.heaven = run.heaven;
   life.cause = life.full ? 'clear' : (run.death.cause === 'retire' ? 'age' : run.death.cause);
   life.wick = run.death.wick;
@@ -504,10 +505,15 @@ function summarize(saves, config) {
     };
   });
   const all = [].concat.apply([], saves);
-  game.TRIBS.forEach((trib) => {
+  game.TRIBS.forEach((trib, i) => {
     const tries = [].concat.apply([], all.map((life) => life.tribs)).filter((item) => item.name === trib.name);
+    // 这场天劫挡在第 i 个境界后面：渡过的那些世在这个境界停了多久，以及每个存档头一回走到这里的那一世过没过。
+    const passed = (life) => reached(life, i + 1);
+    const stays = all.filter(passed).map((life) => life.spent[i]);
+    const firsts = saves.map((save) => save.find((life) => life.realm >= i)).filter((life) => !!life);
     out.tribs[trib.name] = { perLife: round(tries.length / all.length, 2), success: tries.length ? share(tries, (item) => item.success) : null,
-      gear: tries.length ? median(tries.map((item) => item.gear)) : null, cleared: tries.length ? median(tries.map((item) => item.cleared)) : null };
+      gear: tries.length ? median(tries.map((item) => item.gear)) : null, cleared: tries.length ? median(tries.map((item) => item.cleared)) : null,
+      stay: stays.length ? round(median(stays)) : null, firstSaves: firsts.length, firstPass: firsts.length ? share(firsts, passed) : null };
   });
   out.capped = all.filter((life) => life.capped).length;
   return out;
@@ -558,7 +564,7 @@ function render(data) {
     '- 每种打法 ' + config.saves + ' 个存档，每个存档连续玩 ' + config.lives + ' 世，随机种子 ' + config.seed + ' 起逐档加一，结果可完全复现。',
     '- 时间：灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐到下一次机缘回来；每次选择或操作算 ' + config.choiceSeconds + ' 秒。“时长”是这些操作时间加上后文说的等装备时间。',
     '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。“灯纹全满”把随重天加深的等级也算在内。',
-    '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '圆满，在最高一重做到就解锁下一重。',
+    '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '后期、灵气满了再渡过' + game.TRIBS[LAST_REALM].name + '，在最高一重做到就解锁下一重。',
     '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
     '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',
     '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍和道途随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
@@ -599,10 +605,11 @@ function render(data) {
       })), '');
     out.push('“活不死”的局数：' + result.capped + '。', '');
     out.push('**天劫**', '');
-    out.push(table(['天劫', '每世平均渡劫次数', '成功率', '渡劫时的装备分（中位数）', '渡劫时历练过了几关（中位数）'],
+    out.push('“在这个境界停留”只算渡过了这场天劫的那些世。“头一回走到”看每个存档第一次走到这场天劫所在境界的那一世，括号里是走到过的存档数。', '');
+    out.push(table(['天劫', '每世平均渡劫次数', '成功率', '渡劫时的装备分（中位数）', '渡劫时历练过了几关（中位数）', '在这个境界停留（分，中位数）', '头一回走到就渡过'],
       Object.keys(result.tribs).map((name) => {
         const item = result.tribs[name];
-        return [name, item.perLife, pct(item.success), orDash(item.gear), orDash(item.cleared)];
+        return [name, item.perLife, pct(item.success), orDash(item.gear), orDash(item.cleared), orDash(item.stay), item.firstPass === null ? '—' : item.firstPass + '%（' + item.firstSaves + '）'];
       })), '');
   });
   return out.join('\n');
