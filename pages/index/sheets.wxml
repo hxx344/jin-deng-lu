@@ -316,7 +316,7 @@
       </view>
       <view class="sheet-title">我的战力 {{sheet.power}} · 对战次数 {{sheet.left}}</view>
       <view class="sheet-text">{{sheet.standing}}<text wx:if="{{sheet.nextRank}}"> · {{sheet.nextRank}}</text></view>
-      <view class="sheet-text">对手战力按历史最高境界和累计灯芯估算。胜了获论道积分，败了折寿。{{sheet.waitText}}连战时，寿元经不起一败会自动停手。</view>
+      <view class="sheet-text">对手战力按他眼下的境界和累计灯芯估算。胜了获论道积分，败了折寿。{{sheet.waitText}}连战时，寿元经不起一败会自动停手。</view>
       <view class="sheet-body">
         <view wx:if="{{sheet.error}}" class="cloud-error" bindtap="onCloudRefresh">{{sheet.error}}（点这里重试）</view>
         <view wx:if="{{sheet.loading && !sheet.rows.length}}" class="empty">正在读取榜单…</view>

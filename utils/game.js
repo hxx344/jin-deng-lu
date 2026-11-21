@@ -2634,7 +2634,7 @@ function arenaPower(state) {
   return combatPowerDetails(state).total;
 }
 
-// row 是榜上的一行：{ id, name, realmIndex, totalWick }。对战次数跨世保留，随时间回复。
+// row 是榜上的一行：{ id, name, realmIndex, totalWick }，realmIndex 是对手这一世的当前境界。对战次数跨世保留，随时间回复。
 function arenaInfo(state, row, mine = arenaPower(state)) {
   const run = state.run;
   const foe = combatPower.estimatedOpponentPower(row);

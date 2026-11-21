@@ -3,7 +3,7 @@ const audio = require('../../utils/audio').createAudio(wx);
 const starScene = require('./star');
 const cloudSync = require('../../utils/cloud-sync');
 const stage3d = require('../../utils/stage3d');
-const { scoreOf, scoreKey, autoDaoName, cleanDaoName, preferCloudProgress, pickSave, friendlyError } = require('../../utils/cloud-score');
+const { scoreOf, scoreKey, boardRealms, autoDaoName, cleanDaoName, preferCloudProgress, pickSave, friendlyError } = require('../../utils/cloud-score');
 
 const SAVE_KEY = 'jindeng_save_v1';
 const SAVE_META_KEY = 'jindeng_save_meta_v1';
@@ -806,19 +806,23 @@ Page(Object.assign(starScene(audio), {
     if (!rank.error) this.patchCloud({ myRank: rank.data || 0 });
   },
 
+  // realm 是榜单上排名用的历史最高境界；nowRealm 和 realmIndex 是这一世的当前境界，竞技场用。
   boardRows(data) {
-    return data.map((row, i) => ({
-      id: String(row.owner_id),
-      rank: i + 1,
-      name: row.dao_name || '无名',
-      realm: row.realm_name || '尚未投胎',
-      wick: game.formatNumber(Number(row.total_wick) || 0),
-      realmIndex: Number(row.realm_index),
-      totalWick: Number(row.total_wick) || 0,
-      mine: !!this.cloudUid && row.owner_id === this.cloudUid
-    }));
+    return data.map((row, i) => {
+      const realms = boardRealms(row);
+      return {
+        id: String(row.owner_id),
+        rank: i + 1,
+        name: row.dao_name || '无名',
+        realm: realms.bestName,
+        nowRealm: realms.currentName,
+        wick: game.formatNumber(Number(row.total_wick) || 0),
+        realmIndex: realms.current,
+        totalWick: Number(row.total_wick) || 0,
+        mine: !!this.cloudUid && row.owner_id === this.cloudUid
+      };
+    });
   },
-
   showBanner(text) {
     clearTimeout(this.bannerTimer);
     this.setData({ banner: text });
@@ -1227,7 +1231,7 @@ Page(Object.assign(starScene(audio), {
           id: row.id,
           rank: row.rank,
           name: row.name,
-          realm: row.mine ? game.realmText(s.run) : row.realm,
+          realm: row.mine ? game.realmText(s.run) : row.nowRealm,
           mine: row.mine,
           power: game.formatNumber(row.mine ? power : info.power),
           pct: percent(info.chance),

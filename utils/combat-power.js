@@ -92,7 +92,7 @@ function powerProfile(realm, stage, attributes, extraSources = []) {
   return { total: Math.max(0, total), baseTotal: Math.max(0, flat), multiplier: mult, sources: boosted };
 }
 
-// 排行榜沿用历史最高境界和累计灯芯，估算角色在该境界的战力。
+// row.realmIndex 是对手这一世的当前境界；按它和累计灯芯估算角色在该境界的战力。
 function opponentRealm(row) {
   const index = Math.floor(Number(row.realmIndex));
   if (row.realmIndex == null || row.realmIndex === '' || !Number.isFinite(index) || index < 0) return null;

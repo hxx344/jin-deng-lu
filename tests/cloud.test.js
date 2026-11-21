@@ -1,7 +1,8 @@
 const assert = require('node:assert');
 const test = require('node:test');
-const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, preferCloudProgress, pickSave, friendlyError } = require('../utils/cloud-score');
+const { scoreOf, scoreKey, boardRealms, autoDaoName, cleanDaoName, isBlankSave, preferCloudProgress, pickSave, friendlyError } = require('../utils/cloud-score');
 const { createRetryWx, canRetry } = require('../utils/cloud-retry');
+const content = require('../utils/content');
 
 // 只造 scoreOf 真正会读的字段，避免把规则层整份状态搬进测试。
 function aliveState(realm, stage, extra) {
@@ -25,23 +26,37 @@ test('名次分：按境界和阶段算出序号与名字', () => {
   assert.strictEqual(yuan.realm_name, '元婴前期');
 });
 
-test('名次分：取身死最高境界和当前境界里更高的那个', () => {
+test('名次分：名次取身死最高境界和当前境界里更高的那个，境界名记当前境界', () => {
   const dead = scoreOf({ run: { phase: 'root' }, best: 5, totalWick: 10, lives: 2 });
   assert.strictEqual(dead.realm_index, 5);
-  assert.strictEqual(dead.realm_name, '引气后期');
+  assert.strictEqual(dead.realm_name, '尚未投胎');
   const climbed = scoreOf(aliveState(1, 0, { best: 2 }));
   assert.strictEqual(climbed.realm_index, 3);
+  assert.strictEqual(climbed.realm_name, '引气前期');
+  const reborn = scoreOf(aliveState(0, 1, { best: 13 }));
+  assert.strictEqual(reborn.realm_index, 13);
+  assert.strictEqual(reborn.realm_name, '凡胎中期');
+  // 转世后名次没变、当前境界变了，也要重新上报
+  assert.notStrictEqual(scoreKey(reborn, '甲'), scoreKey(scoreOf(aliveState(0, 2, { best: 13 })), '甲'));
+});
+
+test('榜单一行：历史最高用于排名，当前境界给竞技场', () => {
+  assert.deepStrictEqual(boardRealms({ realm_index: 13, realm_name: '凡胎中期' }), { best: 13, bestName: '元婴中期', current: 1, currentName: '凡胎中期' });
+  assert.deepStrictEqual(boardRealms({ realm_index: 5, realm_name: '尚未投胎' }), { best: 5, bestName: '引气后期', current: -1, currentName: '尚未投胎' });
+  // 境界名缺失或认不出时，当前境界退回历史最高
+  assert.strictEqual(boardRealms({ realm_index: 7 }).current, 7);
+  assert.strictEqual(boardRealms({ realm_index: 7, realm_name: '不存在的境界' }).currentName, '筑基中期');
+  assert.deepStrictEqual(boardRealms({}), { best: -1, bestName: '尚未投胎', current: -1, currentName: '尚未投胎' });
+  assert.strictEqual(boardRealms({ realm_index: 9999, realm_name: '' }).best, content.REALMS.length * content.STAGES.length - 1);
 });
 
 test('名次分：best 为 0 不能被当成缺失值', () => {
   const score = scoreOf({ run: { phase: 'root' }, best: 0, totalWick: 4, lives: 1 });
   assert.strictEqual(score.realm_index, 0);
-  assert.strictEqual(score.realm_name, '凡胎前期');
+  assert.strictEqual(boardRealms(score).bestName, '凡胎前期');
 });
-
 test('名次分：越界与脏数据都被夹住', () => {
   const high = scoreOf(aliveState(99, 99, { totalWick: 1e18, lives: -3 }));
-  const content = require('../utils/content');
   assert.strictEqual(high.realm_index, content.REALMS.length * content.STAGES.length - 1);
   assert.strictEqual(high.total_wick, 9000000000000000);
   assert.strictEqual(high.lives, 0);

@@ -16,8 +16,16 @@ function toInt(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+const UNBORN = '尚未投胎';
+
+function realmName(index) {
+  const stages = game.STAGES.length;
+  return index < 0 ? UNBORN : game.REALMS[Math.floor(index / stages)].name + game.STAGES[index % stages].name;
+}
+
 // 榜上的名次取「身死时的最高境界」和「这一世当前境界」里更高的那个：
 // 活着的人也该在榜上，不必等到死。尚未投胎记 -1。
+// realm_name 记的是这一世的当前境界，竞技场按它显示和估算对手；名次只看 realm_index。
 function scoreOf(state) {
   const s = state || {};
   const run = s.run || {};
@@ -32,20 +40,37 @@ function scoreOf(state) {
   const index = clamp(Math.max(best, current), -1, maxIndex);
   return {
     realm_index: index,
-    realm_name: index < 0
-      ? '尚未投胎'
-      : game.REALMS[Math.floor(index / stages)].name + game.STAGES[index % stages].name,
+    realm_name: realmName(current),
     total_wick: clamp(toInt(s.totalWick, 0), 0, MAX_WICK),
     lives: Math.max(0, toInt(s.lives, 0))
   };
 }
 
+// 榜上一行的两个境界：best 是排名用的历史最高，current 是这一世的当前境界。
+// 认不出 realm_name 时当前境界退回历史最高。
+function boardRealms(row) {
+  const r = row || {};
+  const maxIndex = game.STAGES.length * game.REALMS.length - 1;
+  const best = clamp(toInt(r.realm_index, -1), -1, maxIndex);
+  const name = String(r.realm_name || '');
+  let current = best;
+  if (name === UNBORN) current = -1;
+  else {
+    for (let i = 0; i <= maxIndex; i += 1) {
+      if (realmName(i) === name) {
+        current = i;
+        break;
+      }
+    }
+  }
+  return { best: best, bestName: realmName(best), current: current, currentName: realmName(current) };
+}
+
 // 上报去重：这几项没变就不用重复写库。
 function scoreKey(score, name) {
   const s = score || {};
-  return [toInt(s.realm_index, -1), toInt(s.total_wick, 0), toInt(s.lives, 0), String(name || '')].join('|');
+  return [toInt(s.realm_index, -1), String(s.realm_name || ''), toInt(s.total_wick, 0), toInt(s.lives, 0), String(name || '')].join('|');
 }
-
 // 没设道号时按 uid 生成一个稳定的名字，同一账号每次登录都一致。
 function autoDaoName(uid) {
   const id = String(uid || '');
@@ -114,6 +139,7 @@ module.exports = {
   MAX_WICK,
   MAX_NAME,
   scoreOf,
+  boardRealms,
   scoreKey,
   autoDaoName,
   cleanDaoName,
