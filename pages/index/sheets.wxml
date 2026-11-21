@@ -1,4 +1,4 @@
-<scroll-view wx:if="{{sheet.kind && sheet.kind !== 'star'}}" scroll-y scroll-into-view="sheet-{{sheet.kind}}" class="sheet-scroll">
+<scroll-view wx:if="{{sheet.kind && sheet.kind !== 'star'}}" scroll-y scroll-into-view="{{sheetAnchor}}" class="sheet-scroll">
   <view class="sheet" id="sheet-{{sheet.kind}}">
     <view wx:if="{{tip.at === 'sheet'}}" class="tip tip-above tip-sheet" catchtap="noop">
       <view class="tip-text">{{tip.text}}</view>

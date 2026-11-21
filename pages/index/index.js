@@ -11,6 +11,7 @@ const DAO_NAME_KEY = 'jindeng_dao_name_v1';
 const BOARD_KEY = 'jindeng_board_v1';
 const CLOUD_PUSH_INTERVAL_MS = 30000;
 const TICK_MS = 250;
+const SHEET_ANCHOR_MS = 600;
 const SAVE_INTERVAL_MS = 10000;
 const OFFLINE_NOTICE_SEC = 60;
 const BANNER_MS = 2400;
@@ -320,6 +321,7 @@ Page(Object.assign(starScene(audio), {
     stats: [],
     epitaphs: [],
     sheet: HIDDEN_SHEET,
+    sheetAnchor: '',
     star: {},
     mountainName: '',
     banner: '',
@@ -2483,6 +2485,15 @@ Page(Object.assign(starScene(audio), {
     const power = game.combatPowerDetails(s, a);
     const pouch = run.phase === 'alive' ? game.trainBag(s) : null;
     const sheet = this.keepOpen(this.sheetView(power.total));
+    // 回顶锚点只在换面板的那一下给出，随后清空。面板每个 tick 都重设一次，
+    // 锚点一直挂着的话，scroll-view 会不断滚回顶部，长面板往下滑就弹回来。
+    let sheetAnchor = this.data.sheetAnchor;
+    if (sheet.kind && sheet.kind !== this.data.sheet.kind) {
+      sheetAnchor = 'sheet-' + sheet.kind;
+      this.sheetAnchorAt = Date.now();
+    } else if (sheetAnchor && (!sheet.kind || Date.now() - this.sheetAnchorAt >= SHEET_ANCHOR_MS)) {
+      sheetAnchor = '';
+    }
     const patch = {
       bag: { text: pouch && pouch.perHour ? '储物袋 ' + game.formatNumber(pouch.qi) + (pouch.gear ? ' · 装备 ' + pouch.gear : '') : '储物袋', full: !!(pouch && pouch.full) },
       hud: this.hudView(power.total),
@@ -2495,6 +2506,7 @@ Page(Object.assign(starScene(audio), {
       alive: run.phase === 'alive',
       dead: run.phase === 'dead'
     };
+    if (sheetAnchor !== this.data.sheetAnchor) patch.sheetAnchor = sheetAnchor;
     if (tab === 'gear') patch.gear = this.gearPanel();
     if (tab === 'skill') {
       const info = run.phase === 'alive' ? game.tribulationInfo(s) : null;

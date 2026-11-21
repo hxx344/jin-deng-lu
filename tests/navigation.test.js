@@ -96,6 +96,38 @@ test('连看下一机缘不重复首个提示，切去仙星或打开指南不�
   assert.equal(p.data.tip.at, '');
 });
 
+test('面板只在切换的那一下回顶，之后的刷新不再把滚动位置拉回去', () => {
+  const wxml = fs.readFileSync(require.resolve('../pages/index/sheets.wxml'), 'utf8');
+  assert.ok(wxml.includes('scroll-into-view="{{sheetAnchor}}"'));
+  assert.ok(!/scroll-into-view="[^"]*sheet\.kind/.test(wxml));
+
+  const p = openPage(livingSave());
+  const patches = [];
+  const setData = p.setData;
+  p.setData = (patch, ready) => { patches.push(patch); setData(patch, ready); };
+  p.onMain();
+  assert.equal(p.data.sheet.kind, 'event');
+  assert.equal(p.data.sheetAnchor, 'sheet-event');
+  p.refresh();
+  assert.equal(p.data.sheetAnchor, 'sheet-event');
+
+  p.sheetAnchorAt = 0;
+  p.refresh();
+  assert.equal(p.data.sheetAnchor, '');
+  patches.length = 0;
+  p.refresh();
+  p.refresh();
+  assert.equal(p.data.sheet.kind, 'event');
+  assert.ok(patches.every((patch) => !('sheetAnchor' in patch)));
+
+  p.onFallback();
+  assert.equal(p.data.sheet.kind, 'result');
+  assert.equal(p.data.sheetAnchor, 'sheet-result');
+  p.onResultOk();
+  assert.equal(p.data.sheet.kind, '');
+  assert.equal(p.data.sheetAnchor, '');
+});
+
 test('跳过后重开仍然生效，重置存档后重新指引', () => {
   const storage = new Map();
   openPage(undefined, storage).onTipSkip();
