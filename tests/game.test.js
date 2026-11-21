@@ -54,6 +54,15 @@ function setEvent(s, id) {
   s.run.event = { kind: 'event', id: id, rerolls: 0 };
 }
 
+// 从真实翻机缘入口强制抽到指定事件，其余随机数依次用于事件抽取和数值浮动。
+function drawOnlyEvent(s, id, values) {
+  const def = game.EVENTS.find((item) => item.id === id);
+  const typeRoll = { adventure: 0.4, karma: 0.7, idle: 0.9, rare: 0.98 }[def.type];
+  s.run.recent = game.EVENTS.filter((item) => item.type === def.type && item.id !== id).map((item) => item.id);
+  assert.ok(game.drawEvent(s, seq([typeRoll, 0].concat(values || []))));
+  assert.strictEqual(s.run.event.id, id);
+}
+
 // 渡完一整场天劫：逐道雷的必接雷按 method 走，进入余雷后收劫；其余天劫一次结算。返回最后一次结算，lines 为整场合并。
 function crossTrib(s, rng, method) {
   const lines = [];
@@ -533,6 +542,56 @@ test('翻开机缘消耗一次机缘，没有机缘或已有未决事件时不�
   s.run.chance = 0.9;
   assert.strictEqual(game.canDraw(s), false);
   assert.strictEqual(game.drawEvent(s, mulberry(1)), false);
+});
+
+test('机缘数值：同一事件重复遇到会浮动，显示、结算和读档使用同一份结果', () => {
+  const s = born();
+  drawOnlyEvent(s, 'i_dog', [0.999, 0.999]);
+  const first = game.eventView(s);
+  assert.deepStrictEqual(first.options.map((o) => o.desc), ['心魔 -6，记下【摸过村口的狗】', '神 +1', '灵气 +12']);
+  assert.deepStrictEqual(first.options.map((o) => o.years), [1, 1, 1]);
+  assert.deepStrictEqual(game.eventView(s), first);
+
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0);
+  assert.deepStrictEqual(game.eventView(loaded), first);
+  const gain = game.qiRate(loaded) * game.YEAR_SECONDS;
+  const result = game.choose(loaded, 2, () => 0);
+  assert.deepStrictEqual(result.lines, ['灵气 +12']);
+  near(loaded.run.qi, 12 + gain);
+
+  const low = born();
+  drawOnlyEvent(low, 'i_dog');
+  assert.deepStrictEqual(game.eventView(low).options.map((o) => o.desc), ['心魔 -4，记下【摸过村口的狗】', '神 +1', '灵气 +8']);
+
+  const tampered = JSON.parse(JSON.stringify(s));
+  tampered.run.event.options[0].label = '篡改的选项';
+  tampered.run.event.options[0].fx.demon = -999;
+  tampered.run.event.options[2].fx.qi = 99;
+  const safe = game.normalizeState(tampered, s.lastTime, () => 0);
+  assert.strictEqual(safe.run.event.options[0].label, '摸摸它');
+  assert.deepStrictEqual(game.eventView(safe).options.map((o) => o.desc), ['心魔 -5，记下【摸过村口的狗】', '神 +1', '灵气 +10']);
+});
+
+test('机缘数值：成败结果和灵气价格浮动，概率、耗时、1 点效果与见闻序号不变', () => {
+  const s = born();
+  drawOnlyEvent(s, 'a_storm');
+  const view = game.eventView(s);
+  assert.strictEqual(view.options[0].desc, '50% 锋 +2，躯 +1；50% 折寿 7 年');
+  assert.strictEqual(view.options[1].desc, '神 +1');
+  assert.strictEqual(view.options[2].desc, '灵气 +8，心魔 -4');
+  assert.deepStrictEqual(view.options.map((o) => o.years), [1, 1, 2]);
+  assert.strictEqual(s.run.event.options[0].risk.p, 0.5);
+  s.known = {};
+  assert.ok(game.eventView(s).options.every((o) => o.unknown));
+  const result = game.choose(s, 0, () => 0);
+  assert.deepStrictEqual(result.lines, ['成了：锋 +2，躯 +1']);
+  assert.deepStrictEqual(game.attrs(s), { edge: 2, body: 1, mind: 2 });
+  assert.strictEqual(s.known.i_dog, undefined);
+  assert.strictEqual(s.known.a_storm, 1);
+
+  const auction = born();
+  drawOnlyEvent(auction, 'a_auction');
+  assert.strictEqual(game.eventView(auction).options[1].desc, '耗灵气 24，寿元上限 +10 年');
 });
 
 test('选项：说明与结算一致，每次选择才消耗寿元', () => {

@@ -184,6 +184,9 @@ const REALM_LIFE = REALMS.map((realm, i) => TRIBS.slice(0, i).reduce((sum, trib)
 // 没选过的选项只显示牵涉哪几样东西。
 const FX_KINDS = [['qi', '灵气'], ['edge', '锋'], ['body', '躯'], ['mind', '神'], ['demon', '心魔'], ['life', '寿元上限'], ['chance', '机缘'],
   ['speed', '机缘速度'], ['skill', '功法'], ['slot', '功法位'], ['karma', '因果'], ['mark', '经历'], ['unmark', '经历']];
+// 普通机缘的数量效果每次翻开时随机；功法位、装备档次、耗时和成功率不属于数量效果。
+const EVENT_VALUE_SPREAD = 0.2;
+const EVENT_VALUE_KEYS = ['qi', 'edge', 'body', 'mind', 'demon', 'life', 'chance', 'speed', 'forge'];
 
 function findById(list, id) {
   for (let i = 0; i < list.length; i++) {
@@ -569,18 +572,22 @@ function setHeaven(state, level) {
   return true;
 }
 
+function eventOptionIndex(ev, opt) {
+  return opt.sourceIndex === undefined ? findById(EVENTS, ev.id).options.indexOf(opt) : opt.sourceIndex;
+}
+
 // 这个选项以前有没有选过。功法传承一向写明，不算在内。
 function optionKnown(state, opt) {
   const ev = state.run.event;
   if (opt.learn || !ev || ev.kind !== 'event') return true;
-  const index = findById(EVENTS, ev.id).options.indexOf(opt);
+  const index = eventOptionIndex(ev, opt);
   return index < 0 || !!((state.known[ev.id] || 0) & (1 << index));
 }
 
 function learnOption(state, opt) {
   const ev = state.run.event;
   if (opt.learn || !ev || ev.kind !== 'event') return;
-  const index = findById(EVENTS, ev.id).options.indexOf(opt);
+  const index = eventOptionIndex(ev, opt);
   if (index >= 0) state.known[ev.id] = (state.known[ev.id] || 0) | (1 << index);
 }
 
@@ -1076,6 +1083,39 @@ function legacyYears(state) {
   return Math.max(0, LEGACY_YEARS - sumSkills(state.run, 'yearsCut'));
 }
 
+function rollEventValue(value, rng) {
+  if (Number.isInteger(value)) {
+    const magnitude = Math.abs(value);
+    // 1 点效果保持不变，避免随机成 0，也避免只能向上取整造成长期膨胀。
+    if (magnitude <= 1) return value;
+    const spread = Math.max(1, Math.floor(magnitude * EVENT_VALUE_SPREAD));
+    const rolled = magnitude - spread + Math.floor(rng() * (spread * 2 + 1));
+    return value < 0 ? -rolled : rolled;
+  }
+  return Math.round(value * (1 - EVENT_VALUE_SPREAD + rng() * EVENT_VALUE_SPREAD * 2) * 100) / 100;
+}
+
+function rollEventFx(fx, rng) {
+  const rolled = Object.assign({}, fx);
+  EVENT_VALUE_KEYS.forEach((key) => {
+    if (typeof fx[key] === 'number') rolled[key] = rollEventValue(fx[key], rng);
+  });
+  return rolled;
+}
+
+function rollEventOption(opt, index, rng) {
+  const rolled = Object.assign({}, opt, { sourceIndex: index });
+  if (opt.cost) rolled.cost = { qi: rollEventValue(opt.cost.qi, rng) };
+  if (opt.fx) rolled.fx = rollEventFx(opt.fx, rng);
+  if (opt.risk) {
+    rolled.risk = Object.assign({}, opt.risk, {
+      win: rollEventFx(opt.risk.win, rng),
+      lose: rollEventFx(opt.risk.lose, rng)
+    });
+  }
+  return rolled;
+}
+
 function eventDef(state) {
   const run = state.run;
   const ev = run.event;
@@ -1102,7 +1142,7 @@ function eventDef(state) {
   return {
     type: def.stage === 'omen' ? 'omen' : (def.stage === 'event' ? 'sudden' : def.type),
     line: def.line, title: def.title, text: def.text, trigger: def.trigger, stage: def.stage,
-    options: def.options.filter((o) => marksOk(run, o))
+    options: (ev.options || def.options).filter((o) => marksOk(run, o))
   };
 }
 
@@ -1289,7 +1329,7 @@ function rollType(state, rng) {
   return sample(TYPE_WEIGHTS, typeWeights(state), 1, rng)[0][0];
 }
 
-function generateEvent(state, rng, forcedType, excludeId) {
+function generateEventBase(state, rng, forcedType, excludeId) {
   const run = state.run;
   if (!forcedType && run.sudden) {
     const def = EVENTS.filter((e) => e.trigger === run.sudden.id && e.stage === run.sudden.stage)[0];
@@ -1343,6 +1383,15 @@ function generateEvent(state, rng, forcedType, excludeId) {
   }
   // 功法全部满品时没有传承可给，退回闲事。
   return { kind: 'event', id: pick(EVENTS.filter((e) => e.type === 'idle' && !e.trigger && e.id !== excludeId), rng).id };
+}
+
+function generateEvent(state, rng, forcedType, excludeId) {
+  const ev = generateEventBase(state, rng, forcedType, excludeId);
+  if (ev.kind === 'event') {
+    const def = findById(EVENTS, ev.id);
+    ev.options = def.options.map((opt, index) => rollEventOption(opt, index, rng));
+  }
+  return ev;
 }
 
 function canDraw(state) {
@@ -3730,6 +3779,42 @@ function learnable(id) {
   return findById(SKILLS, id) || findById(TOMES, id);
 }
 
+function savedEventValue(base, value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return base;
+  if (Number.isInteger(base)) {
+    const magnitude = Math.abs(base);
+    if (magnitude <= 1 || !Number.isInteger(n) || n * base <= 0) return base;
+    const spread = Math.max(1, Math.floor(magnitude * EVENT_VALUE_SPREAD));
+    return Math.abs(Math.abs(n) - magnitude) <= spread ? n : base;
+  }
+  const low = Math.round(base * (1 - EVENT_VALUE_SPREAD) * 100) / 100;
+  const high = Math.round(base * (1 + EVENT_VALUE_SPREAD) * 100) / 100;
+  return n >= Math.min(low, high) && n <= Math.max(low, high) ? Math.round(n * 100) / 100 : base;
+}
+
+function savedEventFx(base, raw) {
+  const fx = Object.assign({}, base);
+  EVENT_VALUE_KEYS.forEach((key) => {
+    if (typeof base[key] === 'number') fx[key] = savedEventValue(base[key], raw && raw[key]);
+  });
+  return fx;
+}
+
+function savedEventOption(base, raw, index) {
+  const opt = Object.assign({}, base, { sourceIndex: index });
+  raw = raw && typeof raw === 'object' ? raw : {};
+  if (base.cost) opt.cost = { qi: savedEventValue(base.cost.qi, raw.cost && raw.cost.qi) };
+  if (base.fx) opt.fx = savedEventFx(base.fx, raw.fx);
+  if (base.risk) {
+    opt.risk = Object.assign({}, base.risk, {
+      win: savedEventFx(base.risk.win, raw.risk && raw.risk.win),
+      lose: savedEventFx(base.risk.lose, raw.risk && raw.risk.lose)
+    });
+  }
+  return opt;
+}
+
 function normalizeEvent(raw, state) {
   if (!raw || typeof raw !== 'object') return null;
   const rerolls = toCount(raw.rerolls, 1);
@@ -3749,6 +3834,9 @@ function normalizeEvent(raw, state) {
   const def = raw.kind === 'event' ? findById(EVENTS, raw.id) : null;
   if (!def) return null;
   const ev = { kind: 'event', id: def.id, rerolls: rerolls };
+  if (Array.isArray(raw.options) && raw.options.length === def.options.length) {
+    ev.options = def.options.map((opt, index) => savedEventOption(opt, raw.options[index], index));
+  }
   if (def.type === 'fruit') ev.fruit = true;
   if (def.trigger) {
     ev.trigger = def.trigger;
