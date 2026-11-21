@@ -15,6 +15,10 @@ const OFFLINE_NOTICE_SEC = 60;
 const BANNER_MS = 2400;
 const HIDDEN_MODAL = { show: false, title: '', content: '', highlight: '', confirmText: '确定', cancelText: '', danger: false };
 const HIDDEN_SHEET = { kind: '' };
+const NAV_TABS = [
+  { id: 'skill', name: '功法' }, { id: 'gear', name: '装备' }, { id: 'train', name: '历练' },
+  { id: 'star', name: '仙星' }, { id: 'me', name: '轮回' }
+];
 const TIP_KEY = 'jindeng_tip_v1';
 const TIP_INFO = [
   { at: 'hud', text: '寿元只在做选择时流逝，放着不动不会少；灵气和机缘跟着耗掉的寿元涨。寿元耗尽就身死，带着灯芯重来。' },
@@ -249,7 +253,8 @@ Page(Object.assign(starScene(audio), {
     gear: { worn: [], pack: [] },
     gearDot: false,
     tip: { at: '', text: '', next: '' },
-    tab: 'skill',
+    navTabs: NAV_TABS,
+    tab: 'train',
     alive: false,
     dead: false,
     attrs: [],
@@ -257,13 +262,10 @@ Page(Object.assign(starScene(audio), {
     sets: [],
     skills: [],
     skillCount: '',
-    karma: [],
-    marks: [],
     muted: false,
     auto: false,
     autoUnlocked: false,
     autoCost: game.AUTO_LAMP.cost,
-    logs: [],
     lamps: [],
     tomeTiers: [],
     tomes: [],
@@ -612,7 +614,7 @@ Page(Object.assign(starScene(audio), {
     this.chronicleError = '';
     this.shareImage = '';
     this.chronicleToken++;
-    this.setData({ mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.setData({ tab: 'train', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
     this.deadOpen = state.run.phase === 'dead';
     this.replaceHidden = false;
     this.stopAct();
@@ -832,10 +834,8 @@ Page(Object.assign(starScene(audio), {
 
   onAuto() {
     if (!game.autoUnlocked(this.state)) {
-      audio.play('tap');
-      this.setData({ tab: 'lamp' });
-      this.showBanner('花 ' + game.AUTO_LAMP.cost + ' 灯芯点亮「自动机缘」');
-      this.refresh();
+      this.switchTab('me');
+      this.showBanner('进入「灯纹」，花 ' + game.AUTO_LAMP.cost + ' 灯芯点亮「自动机缘」');
       return;
     }
     this.auto = !this.auto;
@@ -1102,7 +1102,7 @@ Page(Object.assign(starScene(audio), {
     const none = { at: '', text: '', next: '' };
     const s = this.state;
     const run = s.run;
-    if (this.tipDone || this.guideOpen || this.data.modal.show) return none;
+    if (this.tipDone || this.guideOpen || this.data.modal.show || this.data.tab !== 'train') return none;
     if (run.phase === 'root') {
       return { at: 'sheet', text: '欢迎。先挑一副这一世的根骨，点下面任意一项。', next: '' };
     }
@@ -1168,7 +1168,7 @@ Page(Object.assign(starScene(audio), {
         sec('机缘之间的联动', [
           '余势：上一回的结果会影响紧接着的下一回，机缘面板上会写明。上一回成了，这一回成功率 +10%；没成，这一回折寿减半；闭关了，这一回少耗 1 年。',
           '功法：同一系凑到 2 门后，不少机缘会多出这一系才有的选项，前面标着“因某系 2 门”，通常比原有选项划算。',
-          '有些选择会记下一段经历，比如入了守骸宗、欠了丹盟的账、养了一个字。经历列在“见闻”页。',
+          '有些选择会记下一段经历，比如入了守骸宗、欠了丹盟的账、养了一个字，往后还会遇到相关的人和事。',
           '经历会带出后续的故事章节，也会让别处的机缘多出或少掉选项。多出来的选项前面标着“因【某经历】”。',
           '几条线会互相牵扯：同一件事，守骸宗弟子和食仙教徒能做的选择不一样。经历只管这一世，轮回后清空。'
         ]),
@@ -1261,7 +1261,7 @@ Page(Object.assign(starScene(audio), {
         ]),
         sec('身死与轮回', [
           '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
-          '灯芯用来点亮“灯纹”页里永久生效的加成，然后重新投胎，挑一副根骨。',
+          '从“轮回”进入“灯纹”，花灯芯点亮永久生效的加成，再回灯前投胎，挑一副根骨。',
           '“灯纹”页底部的藏经阁可以花灯芯请出仙、神、道品功法，品级随机。它们不加数值，而是各改一条规则，品级越高改得越狠。请出后，往后每一世的传承里都可能遇到它。',
           '每次投胎还会抽一张有得有失的命格：早慧、灯下黑或薄命。换一批只换根骨，不换命格。',
           '根骨分凡、良、珍、绝、仙、神六档，底色各不相同。两到五种根骨可能长在同一个人身上，加成相加，种数越多越稀有；另有几副不靠拼凑的稀有根骨。',
@@ -1456,6 +1456,12 @@ Page(Object.assign(starScene(audio), {
   clearScenes() {
     this.cancelStarTurn();
     this.starOpen = false;
+    this.trainOpen = false;
+    this.trainCache = null;
+    this.pathOpen = false;
+    this.arenaOpen = false;
+    this.guideOpen = false;
+    this.cloudOpen = false;
     this.gateOpen = false;
     this.gateCache = null;
     this.pausedFray = null;
@@ -2079,13 +2085,17 @@ Page(Object.assign(starScene(audio), {
 
   onChronicleClose() {
     audio.play('tap');
+    this.closeChronicle();
+    this.refresh();
+  },
+
+  closeChronicle() {
     this.chronicleOpen = false;
     this.chronicleBusy = false;
     this.chronicleToken++;
     this.shareImage = '';
     this.deadOpen = true;
     this.setData({ chronicleCanvas: { show: false, width: 750, height: 1000 } });
-    this.refresh();
   },
 
   onChronicleShare() {
@@ -2160,7 +2170,7 @@ Page(Object.assign(starScene(audio), {
     if (this.cloudOpen) return { kind: 'cloud' };
     if (this.guideOpen) return this.guideView();
     if (this.chronicleOpen && run.phase === 'dead') return this.chronicleView();
-    if (run.phase === 'root') {
+    if (run.phase === 'root' && this.data.tab === 'train') {
       const fate = game.FATES.filter((item) => item.id === run.fate)[0];
       return {
         fate: fate ? { name: fate.name, desc: fate.desc, text: fate.text } : null,
@@ -2260,7 +2270,7 @@ Page(Object.assign(starScene(audio), {
     if (run.phase === 'alive' && run.event && this.eventOpen) {
       return Object.assign({ kind: 'event' }, game.eventView(s));
     }
-    if (run.phase === 'dead' && this.deadOpen) {
+    if (run.phase === 'dead' && this.deadOpen && this.data.tab === 'train') {
       return {
         kind: 'dead',
         text: run.death.text,
@@ -2360,10 +2370,6 @@ Page(Object.assign(starScene(audio), {
       });
       patch.skills = this.skillViews();
       patch.skillCount = run.skills.length + ' / ' + game.maxSkills(s);
-    } else if (tab === 'log') {
-      patch.karma = run.karma.map((k) => ({ name: game.KARMA[k.id] }));
-      patch.marks = run.marks.map((m) => ({ name: game.MARKS[m] }));
-      patch.logs = run.log.map((l, i) => ({ key: i, title: l.title, text: l.text, detail: l.detail || '' })).reverse();
     } else if (tab === 'lamp') {
       patch.lamps = game.LAMPS.map((lamp) => {
         const open = game.lampOpen(s, lamp.id);
@@ -2400,7 +2406,7 @@ Page(Object.assign(starScene(audio), {
         const level = game.tomeLevel(s, tome.id);
         return { id: tome.id, name: tome.name, school: school.name, color: school.color, grade: game.gradeName(level) + '品', desc: game.skillDesc(tome, level) };
       });
-    } else {
+    } else if (tab === 'me') {
       const seen = game.knownProgress(s);
       const best = s.best < 0 ? '无' : game.REALMS[Math.floor(s.best / game.STAGES.length)].name + game.STAGES[s.best % game.STAGES.length].name;
       patch.stats = [
@@ -2409,7 +2415,7 @@ Page(Object.assign(starScene(audio), {
         { label: '累计灯芯', value: game.formatNumber(s.totalWick) },
         { label: '重天', value: (run.heaven ? '这一世在第 ' + run.heaven + ' 重天' : '这一世在凡天') + '，已开到第 ' + s.heavenMax + ' / ' + game.HEAVEN_MAX + ' 重' },
         { label: '逆天渡劫', value: s.defies ? s.defies + ' 次' : '还没有过' },
-        { label: '见闻', value: '机缘选项已见过 ' + seen.known + ' / ' + seen.total + ' 个' },
+        { label: '机缘阅历', value: '机缘选项已见过 ' + seen.known + ' / ' + seen.total + ' 个' },
         { label: '这一世的主修', value: run.path ? game.SCHOOLS[run.path].name + '系（克' + game.SCHOOLS[game.PATH_COUNTER[run.path]].name + '系）' : (run.phase === 'alive' && run.realm >= 1 ? '还没择道' : '-') },
         { label: '这一世的根骨', value: run.phase === 'root' ? '-' : game.rootInfo(run.root).name + '（' + game.ROOT_RARITIES[game.rootInfo(run.root).rarity].name + '骨）' },
         { label: '这一世的命格', value: run.phase === 'root' ? '-' : (game.FATES.filter((f) => f.id === run.fate)[0] || { name: '无（旧世）' }).name },
@@ -2646,6 +2652,12 @@ Page(Object.assign(starScene(audio), {
 
   onSheetClose() {
     audio.play('tap');
+    if (this.data.sheet.kind === 'replace') this.setData({ tab: 'skill' });
+    this.dismissChoices();
+    this.refresh();
+  },
+
+  dismissChoices() {
     this.lampOpen = false;
     this.eventOpen = false;
     this.seaOpen = false;
@@ -2655,7 +2667,6 @@ Page(Object.assign(starScene(audio), {
     this.mergeOpen = false;
     this.bracing = false;
     if (this.state.run.pending) this.replaceHidden = true;
-    this.refresh();
   },
 
   onResultOk() {
@@ -2776,10 +2787,7 @@ Page(Object.assign(starScene(audio), {
   },
 
   onDeadLamp() {
-    audio.play('tap');
-    this.deadOpen = false;
-    this.setData({ tab: 'lamp' });
-    this.refresh();
+    this.switchTab('me');
   },
 
   onReborn() {
@@ -2794,14 +2802,42 @@ Page(Object.assign(starScene(audio), {
     this.chronicleBusy = false;
     this.shareImage = '';
     this.chronicleToken++;
-    this.setData({ tab: 'skill', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+    this.setData({ tab: 'train', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
     this.afterAction();
   },
 
   onTab(e) {
-    if (this.act === 'thunder') return;
+    this.switchTab(e.currentTarget.dataset.tab);
+  },
+
+  switchTab(tab) {
+    if (this.data.modal.show || this.act === 'thunder' || this.boltFalling) return;
+    if (this.result || (this.fray && this.fray.gate)) {
+      this.showBanner(this.result ? '请先收起本次结算' : '等这一场秘境战斗结束');
+      return;
+    }
+    if (tab === this.data.tab && !this.data.sheet.kind) return;
+    if (tab === 'star' && this.starOpen) {
+      if (this.starRules) this.onStarRules();
+      return;
+    }
+    this.dismissChoices();
+    this.guideOpen = false;
+    this.trainOpen = false;
+    this.gateOpen = false;
+    this.arenaOpen = false;
+    this.cloudOpen = false;
+    if (this.chronicleOpen) this.closeChronicle();
+    if (this.starOpen) {
+      this.cancelStarTurn();
+      this.starOpen = false;
+    }
+    this.setData({ tab: tab });
+    if (tab === 'star' && this.state.run.phase === 'alive') {
+      this.onStarOpen();
+      return;
+    }
     audio.play('tap');
-    this.setData({ tab: e.currentTarget.dataset.tab });
     this.refresh();
   },
 
@@ -2886,7 +2922,7 @@ Page(Object.assign(starScene(audio), {
       this.shareImage = '';
       this.chronicleToken++;
       this.deadOpen = false;
-      this.setData({ tab: 'skill', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
+      this.setData({ tab: 'train', mountainName: '', chronicleCanvas: { show: false, width: 750, height: 1000 } });
       this.afterAction();
     });
   }

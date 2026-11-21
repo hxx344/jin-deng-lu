@@ -1,0 +1,208 @@
+<view class="panel-nav {{tab === 'train' || tab === 'star' ? 'tab-hidden' : ''}}">
+  <button wx:if="{{tab === 'lamp'}}" class="panel-back" data-tab="me" bindtap="onTab">‹ 返回</button>
+  <text>{{tab === 'lamp' ? '灯纹' : tab === 'skill' ? '功法' : tab === 'gear' ? '装备' : '轮回'}}</text>
+</view>
+
+<scroll-view scroll-y class="tab-scroll tab-skill {{tab === 'skill' ? '' : 'tab-hidden'}}">
+  <view class="tab-body">
+    <view class="attrs">
+      <view wx:for="{{attrs}}" wx:key="name" class="attr {{item.need ? 'attr-need' : ''}}">
+        <view class="attr-main">
+          <text class="attr-name">{{item.name}}</text>
+          <text class="attr-value">{{item.value}}</text>
+        </view>
+        <text wx:if="{{item.need}}" class="attr-hint">天劫需 {{item.need}}</text>
+      </view>
+    </view>
+    <view wx:if="{{powerSources.length}}" class="power-panel">
+      <view class="power-panel-head">
+        <text>战力构成</text>
+        <text class="power-value">{{hud.power}}</text>
+      </view>
+      <view class="power-sources">
+        <view wx:for="{{powerSources}}" wx:key="id" class="power-source">
+          <text>{{item.label}}</text>
+          <text class="power-source-value">{{item.value}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="section">羁绊</view>
+    <view wx:for="{{sets}}" wx:key="id" class="set">
+      <view class="set-badge" style="background: {{item.color}};">{{item.name}}</view>
+      <view class="set-info">
+        <view class="set-line {{item.on2 ? 'set-on' : ''}}">2 门：{{item.set2}}</view>
+        <view class="set-line {{item.on4 ? 'set-on' : ''}}">4 门：{{item.set4}}</view>
+      </view>
+      <view class="set-count">{{item.count}} 门</view>
+    </view>
+    <view class="section">功法 {{skillCount}}</view>
+    <view wx:if="{{!skills.length}}" class="empty">{{hero.hasScroll ? '可在传承机缘里修习功法。' : '挑好根骨，就能从灯里取第一卷功法。'}}</view>
+    <view wx:for="{{skills}}" wx:key="id" class="card">
+      <view class="badge" style="background: {{item.color}};">{{item.school}}</view>
+      <view class="info">
+        <view class="name">
+          <text>{{item.name}}</text>
+          <text class="tag {{item.arcane ? 'tag-arcane' : (item.tome ? 'tag-tome' : '')}}">{{item.grade}}</text>
+          <text wx:if="{{item.suppressed}}" class="tag tag-suppressed">余波压制</text>
+        </view>
+        <view class="desc">{{item.desc}}</view>
+      </view>
+      <view wx:if="{{item.canMerge}}" class="merge-btn" data-id="{{item.id}}" bindtap="onMerge">合秘法</view>
+    </view>
+  </view>
+</scroll-view>
+
+<scroll-view scroll-y class="tab-scroll tab-gear {{tab === 'gear' ? '' : 'tab-hidden'}}">
+  <view class="tab-body">
+    <view class="power-panel">
+      <view class="power-panel-head">
+        <text>装备分</text>
+        <text class="power-value">{{gear.score}}</text>
+      </view>
+      <view class="gear-bonus">{{gear.bonus}}</view>
+      <view class="gear-bonus gear-note">数值只在历练的战斗里起作用 · 锻材 {{gear.forge}}</view>
+      <view wx:if="{{gear.need}}" class="gear-bonus gear-note {{gear.needShort ? 'gear-short' : ''}}">{{gear.need}}</view>
+    </view>
+    <view class="section">身上</view>
+    <view wx:for="{{gear.worn}}" wx:key="slot" class="card">
+      <view class="badge" style="background: {{item.item ? item.item.color : '#3a332d'}};">{{item.slotName}}</view>
+      <view wx:if="{{item.item}}" class="info">
+        <view class="name">
+          <text>{{item.item.name}}</text>
+          <text class="tag">{{item.item.grade}} · {{item.item.tier}} 阶</text>
+        </view>
+        <view class="desc">{{item.item.text}}</view>
+      </view>
+      <view wx:else class="info">
+        <view class="desc">空着。历练过关会掉装备。</view>
+      </view>
+      <view wx:if="{{item.item && !item.max}}" class="merge-btn {{item.off ? 'gear-btn-off' : ''}}" data-slot="{{item.slot}}" bindtap="onGearEnhance">强化 · {{item.cost}} 锻材</view>
+      <view wx:if="{{item.max}}" class="gear-max">已强化到顶</view>
+    </view>
+    <view class="section gear-head">
+      <text>背包 {{gear.packCount}}</text>
+      <view class="gear-tools">
+        <text wx:if="{{gear.hasBetter}}" class="gear-tool" bindtap="onGearBest">换上更好的</text>
+        <text wx:if="{{gear.hasSpare}}" class="gear-tool" bindtap="onGearSpare">分解用不上的</text>
+      </view>
+    </view>
+    <view wx:if="{{!gear.pack.length}}" class="empty">背包是空的。</view>
+    <view wx:for="{{gear.pack}}" wx:key="uid" class="card">
+      <view class="badge" style="background: {{item.color}};">{{item.slotName}}</view>
+      <view class="info">
+        <view class="name">
+          <text>{{item.name}}</text>
+          <text class="tag">{{item.grade}} · {{item.tier}} 阶</text>
+          <text wx:if="{{item.better}}" class="tag gear-tag-up">更好</text>
+        </view>
+        <view class="desc">{{item.text}}</view>
+      </view>
+      <view class="gear-acts">
+        <view class="merge-btn" data-uid="{{item.uid}}" bindtap="onGearEquip">换上</view>
+        <view class="merge-btn gear-btn-plain" data-uid="{{item.uid}}" bindtap="onGearScrap">分解 +{{item.scrap}}</view>
+      </view>
+    </view>
+  </view>
+</scroll-view>
+
+<scroll-view scroll-y class="tab-scroll tab-lamp {{tab === 'lamp' ? '' : 'tab-hidden'}}">
+  <view class="tab-body">
+    <view class="summary">
+      <image class="summary-icon" src="/assets/wick.svg" mode="aspectFit" />
+      <text>灯芯 {{hud.wick}}。每一世结束时按境界结算，用来点亮永久生效的灯纹。</text>
+    </view>
+    <view wx:for="{{lamps}}" wx:key="id" class="card">
+      <view class="badge badge-lamp">{{item.branch}}</view>
+      <view class="info">
+        <view class="name">
+          <text>{{item.name}}</text>
+          <text class="tag">{{item.levelText}}</text>
+        </view>
+        <view class="desc">{{item.desc}}</view>
+      </view>
+      <view wx:if="{{item.locked}}" class="btn btn-off">
+        <text class="btn-title">尚未开放</text>
+      </view>
+      <view wx:elif="{{item.maxed}}" class="btn btn-off">
+        <text class="btn-title">已点满</text>
+      </view>
+      <view wx:else class="btn {{item.affordable ? '' : 'btn-off'}}" hover-class="btn-hover" hover-stay-time="60" data-id="{{item.id}}" bindtap="onBuyLamp">
+        <text class="btn-title">点亮</text>
+        <view class="btn-cost">
+          <image class="btn-coin" src="/assets/wick.svg" mode="aspectFit" />
+          <text>{{item.costText}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="section">藏经阁 {{tomeCount}}</view>
+    <view class="tome-note">花灯芯请出天品之上的功法，品级随机。它们不加数值，而是各改一条规则。请出后它会出现在往后每一世的传承里；再次请到更高品级时直接替换。</view>
+    <view wx:for="{{tomeTiers}}" wx:key="id" class="card">
+      <view class="badge badge-tome">藏</view>
+      <view class="info">
+        <view class="name"><text>{{item.name}}</text></view>
+        <view class="desc">{{item.desc}}</view>
+      </view>
+      <view wx:if="{{!item.open}}" class="btn btn-off">
+        <text class="btn-title">已收齐</text>
+      </view>
+      <view wx:else class="btn {{item.affordable ? '' : 'btn-off'}}" hover-class="btn-hover" hover-stay-time="60" data-id="{{item.id}}" bindtap="onDrawTome">
+        <text class="btn-title">请出</text>
+        <view class="btn-cost">
+          <image class="btn-coin" src="/assets/wick.svg" mode="aspectFit" />
+          <text>{{item.costText}}</text>
+        </view>
+      </view>
+    </view>
+    <view wx:for="{{tomes}}" wx:key="id" class="card">
+      <view class="badge" style="background: {{item.color}};">{{item.school}}</view>
+      <view class="info">
+        <view class="name">
+          <text>{{item.name}}</text>
+          <text class="tag tag-tome">{{item.grade}}</text>
+        </view>
+        <view class="desc">{{item.desc}}</view>
+      </view>
+    </view>
+  </view>
+</scroll-view>
+
+<scroll-view scroll-y class="tab-scroll tab-me {{tab === 'me' ? '' : 'tab-hidden'}}">
+  <view class="tab-body">
+    <button class="lamp-entry" data-tab="lamp" bindtap="onTab">
+      <image class="lamp-entry-icon" src="/assets/wick.svg" mode="aspectFit" />
+      <text class="lamp-entry-title">灯纹</text><text>可用 {{hud.wick}} 灯芯 ›</text>
+    </button>
+    <view class="stats">
+      <view wx:for="{{stats}}" wx:key="label" class="stat">
+        <text class="stat-label">{{item.label}}</text>
+        <text class="stat-value">{{item.value}}</text>
+      </view>
+    </view>
+    <view wx:if="{{dead}}" class="cloud-entry" hover-class="opt-hover" hover-stay-time="60" bindtap="onChronicle">
+      <view class="cloud-entry-main">
+        <text class="cloud-entry-title">本纪与分享长图</text>
+        <text class="cloud-entry-sub">查看这一世的年表，生成可直接转发的长图</text>
+      </view>
+    </view>
+    <view class="section">墓志铭</view>
+    <view wx:if="{{!epitaphs.length}}" class="empty">你还没有死过。</view>
+    <view wx:for="{{epitaphs}}" wx:key="key" class="log">
+      <view class="log-text">{{item.text}}</view>
+    </view>
+    <view class="cloud-entry" hover-class="opt-hover" hover-stay-time="60" bindtap="onCloud">
+      <view class="cloud-entry-main">
+        <text class="cloud-entry-title">云存档与排行榜</text>
+        <text class="cloud-entry-sub">{{cloud.text}}{{cloud.lastSync ? ' · ' + cloud.lastSync : ''}}</text>
+      </view>
+      <view class="cloud-dot cloud-dot-{{cloud.state}}"></view>
+    </view>
+    <view wx:if="{{alive}}" class="cloud-entry" hover-class="opt-hover" hover-stay-time="60" bindtap="onArena">
+      <view class="cloud-entry-main">
+        <text class="cloud-entry-title">竞技场</text>
+        <text class="cloud-entry-sub">挑战榜上修士，累积论道积分和称号</text>
+      </view>
+    </view>
+    <view wx:if="{{alive}}" class="retire" bindtap="onRetire">坐化，结束这一世</view>
+    <view class="reset" bindtap="onReset">重置存档</view>
+  </view>
+</scroll-view>

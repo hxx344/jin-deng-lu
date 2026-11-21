@@ -1,7 +1,7 @@
 <view wx:if="{{sheet.kind === 'star'}}" class="star-scene" catchtap="noop">
   <view class="star-sky" aria-hidden="true"></view>
   <view class="star-nav">
-    <button class="star-back" bindtap="onStarClose">‹ 返回</button>
+    <button wx:if="{{star.showRules}}" class="star-back" bindtap="onStarRules">‹ 返回星台</button>
     <view class="star-purse"><view class="star-ember"></view><text>香火</text><text class="star-balance">{{star.incense}}</text></view>
   </view>
   <scroll-view scroll-y class="star-scroll">
@@ -67,4 +67,8 @@
       </block>
     </view>
   </scroll-view>
+</view>
+<view wx:elif="{{tab === 'star' && !alive}}" class="star-scene">
+  <view class="star-sky" aria-hidden="true"></view>
+  <view class="star-body"><view class="star-heading">仙星</view><view class="star-note">投胎后可在本世积攒香火，供奉求取装备。</view></view>
 </view>

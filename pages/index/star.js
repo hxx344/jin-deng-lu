@@ -37,13 +37,6 @@ module.exports = function starScene(audio) {
       this.starAuto = false;
     },
 
-    onStarClose() {
-      this.cancelStarTurn();
-      this.starOpen = false;
-      audio.play('tap');
-      this.refresh();
-    },
-
     onStarRules() {
       this.starRules = !this.starRules;
       this.renderStar();
@@ -136,9 +129,7 @@ module.exports = function starScene(audio) {
       const finished = game.finishStarDraw(this.state);
       this.save();
       if (!finished) {
-        this.trainOpen = false;
-        this.setData({ tab: 'gear' });
-        this.onStarClose();
+        this.switchTab('gear');
         this.showBanner('背包已满，整理后回仙星收取暂存装备');
         return;
       }

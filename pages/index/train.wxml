@@ -1,0 +1,243 @@
+<view class="hud">
+  <view class="hud-top">
+    <view class="realm">{{hud.realm}}</view>
+    <view wx:if="{{hud.mode}}" class="mode-tag">{{hud.mode}}</view>
+    <view class="where">{{hud.where}}</view>
+    <view class="wick">
+      <image class="wick-icon" src="/assets/wick.svg" mode="aspectFit" />
+      <text>{{hud.wick}}</text>
+    </view>
+    <view class="help {{muted ? 'help-off' : ''}}" bindtap="onMute">♪</view>
+    <view class="help {{tip.at === 'help' ? 'tip-ring' : ''}}" bindtap="onGuide">?</view>
+  </view>
+  <view class="qi">
+    <text class="qi-num">{{hud.qi}}</text>
+    <view class="qi-side">
+      <text class="qi-cap">/ {{hud.cap}} 灵气</text>
+      <text class="qi-rate">每年 +{{hud.rate}}</text>
+    </view>
+    <view class="power-badge">
+      <text class="power-label">战力</text>
+      <text class="power-value">{{hud.power}}</text>
+    </view>
+  </view>
+  <view class="bar bar-qi">
+    <view class="bar-fill" style="width: {{hud.qiPct}}%;"></view>
+  </view>
+  <view class="hud-stats">
+    <view class="hud-stat {{hud.lifeLow ? 'hud-stat-warn' : ''}}">
+      <view class="hud-stat-label">寿元余</view>
+      <view class="hud-stat-num">{{hud.years}} 年</view>
+    </view>
+    <view class="hud-stat {{hud.demonHigh ? 'hud-stat-warn' : ''}}">
+      <view class="hud-stat-label">心魔</view>
+      <view class="hud-stat-num">{{hud.demon}}</view>
+    </view>
+    <view class="hud-stat">
+      <view class="hud-stat-label">机缘</view>
+      <view class="hud-stat-num">{{hud.chance}}</view>
+    </view>
+    <view class="hud-stat">
+      <view class="hud-stat-label">大机缘</view>
+      <view class="hud-stat-num">{{hud.big}}</view>
+    </view>
+    <view class="hud-stat">
+      <view class="hud-stat-label">灯油</view>
+      <view class="hud-stat-num">{{hud.oil}}</view>
+    </view>
+  </view>
+  <view wx:if="{{hud.aftermath}}" class="chips chips-sub">
+    <view class="chip chip-warn"><text class="chip-num">{{hud.aftermath}}</text></view>
+  </view>
+  <view wx:if="{{tip.at === 'hud'}}" class="tip tip-below" catchtap="noop">
+    <view class="tip-text">{{tip.text}}</view>
+    <view class="tip-row">
+      <text class="tip-skip" bindtap="onTipSkip">跳过指引</text>
+      <text wx:if="{{tip.next}}" class="tip-next" bindtap="onTipNext">{{tip.next}}</text>
+    </view>
+  </view>
+  <view wx:if="{{tip.at === 'help'}}" class="tip tip-below tip-help" catchtap="noop">
+    <view class="tip-text">{{tip.text}}</view>
+    <view class="tip-row">
+      <text class="tip-skip" bindtap="onTipSkip">跳过指引</text>
+      <text wx:if="{{tip.next}}" class="tip-next" bindtap="onTipNext">{{tip.next}}</text>
+    </view>
+  </view>
+</view>
+
+<view class="stage stage-{{actor.layer}} {{actor.storm ? 'stage-storm' : ''}} {{bar.show && !actor.storm ? 'stage-fray' : ''}} {{bar.scene && !actor.storm ? 'stage-gate' : ''}}">
+  <image wx:if="{{bar.scene && !actor.storm}}" class="scene-art" src="/assets/scenes/{{bar.scene}}.svg" mode="aspectFill" />
+  <view class="scene-far"></view>
+  <view class="scene-near"></view>
+  <view class="rib rib-1"></view>
+  <view class="rib rib-2"></view>
+  <view class="rib rib-3"></view>
+  <view class="lamp {{actor.flare ? 'lamp-flare' : ''}}">
+    <view class="lamp-glow"></view>
+    <image class="lamp-img" src="/assets/lamp.svg" mode="aspectFit" />
+  </view>
+  <view wx:if="{{actor.wisp}}" class="wisp"></view>
+  <view wx:if="{{actor.storm}}" class="storm-back">
+    <view class="storm-dark"></view>
+    <view class="storm-rain"></view>
+    <view class="storm-cloud storm-cloud-1"></view>
+    <view class="storm-cloud storm-cloud-2"></view>
+    <view class="storm-cloud storm-cloud-3"></view>
+  </view>
+  <view wx:if="{{actor.show}}" class="actor realm-{{actor.realm}} act-{{actor.action}} {{actor.old ? 'is-old' : ''}} {{actor.demon ? 'is-demon' : ''}} {{actor.devil ? 'is-devil' : ''}} {{actor.ready ? 'is-ready' : ''}}">
+    <view class="a-aura"></view>
+    <view class="a-mist"></view>
+    <view class="a-ring"></view>
+    <view class="a-cloud"></view>
+    <image class="a-bolt" src="/assets/bolt.svg" mode="aspectFit" />
+    <view class="a-shadow"></view>
+    <view class="a-float">
+      <view class="a-body">
+        <view class="a-halo"></view>
+        <view class="a-ribbon a-ribbon-l"></view>
+        <view class="a-ribbon a-ribbon-r"></view>
+        <view class="a-legs"></view>
+        <view class="a-torso">
+          <view class="a-sash" style="background: {{actor.sash}};"></view>
+        </view>
+        <view class="a-head">
+          <view class="a-hair"></view>
+          <view class="a-bun"></view>
+          <view class="a-brow a-brow-l"></view>
+          <view class="a-brow a-brow-r"></view>
+          <view class="a-eye a-eye-l"></view>
+          <view class="a-eye a-eye-r"></view>
+          <view class="a-mouth"></view>
+          <view class="a-beard"></view>
+        </view>
+        <view class="a-arm a-arm-l">
+          <view class="a-hand"></view>
+        </view>
+        <view class="a-arm a-arm-r">
+          <view class="a-sword"></view>
+          <view class="a-hand"></view>
+        </view>
+      </view>
+    </view>
+    <view class="a-dot a-dot-1"></view>
+    <view class="a-dot a-dot-2"></view>
+    <view class="a-dot a-dot-3"></view>
+    <view class="a-prop"></view>
+    <view class="a-slash"></view>
+    <view wx:if="{{actor.bubble}}" class="a-bubble">{{actor.bubble}}</view>
+  </view>
+  <view wx:if="{{bar.show && !actor.storm}}" class="fray">
+    <view wx:if="{{bar.foe}}" class="foe foe-{{bar.foe.state}} {{bar.foe.boss ? 'foe-boss' : ''}}">
+      <view class="foe-aura"></view>
+      <view class="foe-shadow"></view>
+      <view class="foe-move {{bar.foeAct ? 'foe-lunge' + bar.foeAct : ''}}">
+        <view class="foe-bob">
+          <image class="foe-img {{bar.foeHit ? 'foe-hit' + bar.foeHit : ''}}" src="/assets/foes/{{bar.foe.sprite}}.svg" mode="aspectFit" />
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{bar.shot}}" class="shot shot-{{bar.shotKind}} shot-go{{bar.shot}}"></view>
+    <view wx:if="{{bar.meHit}}" class="fray-flash fray-flash{{bar.meHit}}"></view>
+    <view wx:if="{{bar.sweep}}" class="sweep sweep-go{{bar.sweep}}"></view>
+    <view wx:for="{{bar.pops}}" wx:key="key" class="pop pop-{{item.side}} pop-{{item.tone}} {{bar.foe && bar.foe.boss ? 'pop-tall' : ''}}" style="margin-left: {{item.dx}}rpx;">{{item.text}}</view>
+    <view class="fray-top">
+      <view class="fray-side" bindtap="onTrain">
+        <view class="fray-title">
+          <text>{{bar.title}}</text>
+          <view wx:for="{{bar.pips}}" wx:key="key" class="fray-pip {{item.boss ? 'fray-pip-boss' : ''}} {{item.on ? 'fray-pip-on' : ''}} {{item.now ? 'fray-pip-now' : ''}}"></view>
+        </view>
+        <view class="fray-hp">
+          <view class="fray-hp-fill fray-hp-me {{bar.rest ? 'fray-hp-rest' : ''}}" style="width: {{bar.mePct}}%;"></view>
+          <view wx:if="{{bar.shield}}" class="fray-hp-shield" style="width: {{bar.shield}}%;"></view>
+        </view>
+        <view wx:if="{{bar.rest}}" class="fray-note">{{bar.note}}</view>
+      </view>
+      <view class="fray-bag {{bag.full ? 'fray-bag-full' : ''}}" hover-class="opt-hover" bindtap="onBag">{{bag.text}}{{bag.full ? ' · 满' : ''}}</view>
+      <view wx:if="{{bar.foe && bar.foe.state !== 'away'}}" class="fray-side fray-side-foe">
+        <view class="fray-title">
+          <text wx:if="{{bar.foe.tag}}" class="fray-boss-tag">{{bar.foe.tag}}</text>
+          <text class="fray-foe-name">{{bar.foe.name}}</text>
+        </view>
+        <view class="fray-hp">
+          <view class="fray-hp-fill fray-hp-foe" style="width: {{bar.foe.pct}}%;"></view>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{actor.storm}}" class="storm-front">
+    <view class="storm-scorch"></view>
+    <image class="storm-bolt storm-bolt-1" src="/assets/bolt.svg" mode="aspectFit" />
+    <image class="storm-bolt storm-bolt-2" src="/assets/bolt.svg" mode="aspectFit" />
+    <image class="storm-bolt storm-bolt-3" src="/assets/bolt.svg" mode="aspectFit" />
+    <view class="storm-flash"></view>
+  </view>
+  <view wx:if="{{hero.trialWon && !actor.storm && !bar.show}}" class="trial-spoil">
+    <text>试招取胜</text>
+    <text class="trial-link" data-tab="gear" bindtap="onTab">查看兵器 ›</text>
+    <text class="trial-link" bindtap="onTrain">储物袋 ›</text>
+  </view>
+</view>
+
+<button wx:if="{{alive}}" class="train-link" bindtap="onTrain">
+  <view class="train-link-info"><text>{{bar.foe ? bar.foe.name : '历练战况'}}</text><text class="train-link-bag">{{bag.text}}</text></view>
+  <text class="train-link-more">查看战况 ›</text>
+</button>
+
+<view wx:if="{{hero.lamp}}" class="lamp-track {{hero.lampAction ? 'lamp-track-ready' : ''}}" bindtap="onLamp">
+  <view class="lamp-track-left">
+    <text>{{hero.lampName}}</text>
+    <view wx:if="{{hero.hasScroll}}" class="lamp-sparks">
+      <view wx:for="{{sparks}}" wx:key="*this" class="lamp-spark {{item <= hero.sparks ? 'lamp-spark-lit' : ''}}"></view>
+    </view>
+  </view>
+  <text class="lamp-track-hint">{{hero.lampAction ? hero.lampAction + ' ›' : hero.lampHint}}</text>
+</view>
+
+<view class="hero-row">
+  <view class="hero-info">
+    <view class="hero-line">{{hero.line}}</view>
+    <view wx:if="{{alive && hero.term}}" class="hero-term {{hero.termOver ? 'hero-term-over' : ''}}">{{hero.term}}</view>
+  </view>
+  <view wx:if="{{alive}}" class="auto {{autoUnlocked && auto ? 'auto-on' : ''}}" bindtap="onAuto">自动 · {{autoUnlocked ? (auto ? '开' : '关') : autoCost + ' 灯芯'}}</view>
+</view>
+<view class="hero">
+  <view wx:if="{{tip.at === 'main'}}" class="tip tip-above" catchtap="noop">
+    <view class="tip-text">{{tip.text}}</view>
+    <view class="tip-row">
+      <text class="tip-skip" bindtap="onTipSkip">跳过指引</text>
+      <text wx:if="{{tip.next}}" class="tip-next" bindtap="onTipNext">{{tip.next}}</text>
+    </view>
+  </view>
+  <view class="main-btn main-primary {{hero.off ? 'main-btn-off' : ''}} {{tip.at === 'main' ? 'tip-ring' : ''}}" hover-class="btn-hover" hover-stay-time="60" bindtap="onMain">
+    <text class="main-title">{{hero.title}}</text>
+    <text class="main-sub">{{hero.sub}}</text>
+  </view>
+  <view wx:if="{{hero.trib}}" class="main-btn trib-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onTrib">
+    <text class="main-title">{{hero.trib}}</text>
+    <text class="main-sub">{{hero.tribSub}}</text>
+  </view>
+  <view wx:if="{{hero.gate}}" class="main-btn gate-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onGate">
+    <text class="main-title">{{hero.gate}}</text>
+    <text class="main-sub">{{hero.gateSub}}</text>
+  </view>
+  <view wx:if="{{hero.path}}" class="main-btn path-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onPath">
+    <text class="main-title">{{hero.path}}</text>
+    <text class="main-sub">{{hero.pathSub}}</text>
+  </view>
+  <view wx:if="{{hero.sea}}" class="main-btn sea-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onSea">
+    <text class="main-title">{{hero.sea}}</text>
+    <text class="main-sub">登上沉舟</text>
+  </view>
+  <view wx:if="{{hero.big}}" class="main-btn big-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onBig">
+    <text class="main-title">{{hero.big}}</text>
+    <text class="main-sub">{{hero.bigSub}}</text>
+  </view>
+  <view wx:if="{{hero.powder}}" class="main-btn powder-btn {{hero.powderOff ? 'main-btn-off' : ''}}" hover-class="btn-hover" hover-stay-time="60" bindtap="onPowder">
+    <text class="main-title">{{hero.powder}}</text>
+    <text class="main-sub">{{hero.powderSub}}</text>
+  </view>
+</view>
+<view wx:if="{{hero.mountainTitle}}" class="mountain-entry" hover-class="opt-hover" bindtap="onMountain">
+  <text class="mountain-entry-title">{{hero.mountainTitle}}</text>
+  <text class="mountain-entry-sub">{{hero.mountainSub}}</text>
+</view>
