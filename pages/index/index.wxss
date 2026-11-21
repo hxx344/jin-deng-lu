@@ -2851,34 +2851,21 @@
 }
 
 .guide-title {
-  margin: 20rpx 0 10rpx;
+  margin: 24rpx 0 6rpx;
   font-size: 30rpx;
   font-weight: 800;
   color: #ffcf8a;
 }
 
 .guide-line {
-  position: relative;
-  margin-bottom: 10rpx;
-  padding-left: 26rpx;
   font-size: 26rpx;
   line-height: 1.6;
   color: #cfc4b3;
 }
 
-.guide-line::before {
-  content: '';
-  position: absolute;
-  left: 4rpx;
-  top: 16rpx;
-  width: 8rpx;
-  height: 8rpx;
-  border-radius: 50%;
-  background: #8fe6c8;
-}
-
 /* 初次游戏的点击指引 */
 .hud,
+.lamp-track,
 .hero,
 .tabs,
 .sheet {
@@ -2895,7 +2882,6 @@
   border-radius: 22rpx;
   background: #17322b;
   box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.55);
-  animation: tip-bob 1.4s ease-in-out infinite;
 }
 
 .tip::after {
@@ -2979,11 +2965,6 @@
 
 .tip-ring {
   box-shadow: 0 0 0 6rpx #8fe6c8, 0 0 30rpx 10rpx rgba(143, 230, 200, 0.6);
-}
-
-@keyframes tip-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6rpx); }
 }
 
 /* 提示条与弹窗 */

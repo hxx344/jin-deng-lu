@@ -183,7 +183,11 @@
   <text class="train-link-more">查看战况 ›</text>
 </button>
 
-<view wx:if="{{hero.lamp}}" class="lamp-track {{hero.lampAction ? 'lamp-track-ready' : ''}}" bindtap="onLamp">
+<view wx:if="{{hero.lamp}}" class="lamp-track {{hero.lampAction ? 'lamp-track-ready' : ''}} {{tip.at === 'lamp' ? 'tip-ring' : ''}}" bindtap="onLamp">
+  <view wx:if="{{tip.at === 'lamp'}}" class="tip tip-above" catchtap="noop">
+    <view class="tip-text">{{tip.text}}</view>
+    <view class="tip-row"><text class="tip-skip" bindtap="onTipSkip">跳过指引</text></view>
+  </view>
   <view class="lamp-track-left">
     <text>{{hero.lampName}}</text>
     <view wx:if="{{hero.hasScroll}}" class="lamp-sparks">

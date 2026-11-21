@@ -15,16 +15,28 @@ const OFFLINE_NOTICE_SEC = 60;
 const BANNER_MS = 2400;
 const HIDDEN_MODAL = { show: false, title: '', content: '', highlight: '', confirmText: '确定', cancelText: '', danger: false };
 const HIDDEN_SHEET = { kind: '' };
+const HIDDEN_TIP = { at: '', text: '', next: '' };
 const NAV_TABS = [
   { id: 'skill', name: '功法' }, { id: 'gear', name: '装备' }, { id: 'train', name: '历练' },
   { id: 'star', name: '仙星' }, { id: 'me', name: '轮回' }
 ];
 const TIP_KEY = 'jindeng_tip_v1';
 const TIP_INFO = [
-  { at: 'hud', text: '寿元只在做选择时流逝，放着不动不会少；灵气和机缘跟着耗掉的寿元涨。寿元耗尽就身死，带着灯芯重来。' },
-  { at: 'tabs', text: '学到的功法、羁绊和属性都在这几页里。灵气攒满后要渡劫，考的属性会在“功法”页标出来。' },
-  { at: 'help', text: '规则记不清的时候，点右上角的“?”看游戏指南。' }
+  { at: 'hud', text: '这里能看还剩几年寿元。走机缘、静坐会消耗寿元，也会积攒灵气和机缘。离线时寿元不减。' },
+  { at: 'tabs', text: '在「功法」看属性，到「装备」换兵器。「仙星」用香火抽装备，「轮回」里可以点灯纹。' },
+  { at: 'help', text: '以后想查玩法，点「历练」右上角的问号。' }
 ];
+const GAME_GUIDE = {
+  kind: 'guide',
+  sections: [
+    { title: '开局先做什么？', text: '挑根骨，再选一卷灯传功法。角色会自动试招，首胜得兵器和 ' + game.STAR.trialIncense + ' 香火。试招时就能翻机缘。' },
+    { title: '机缘怎么选？', text: '先看每条路要花几年寿元。开卷后，亲历机缘攒满 ' + game.LAMP_INSIGHT + ' 点灯火可顿悟，闭关不添火。机缘用完可点「静坐」，用寿元攒回一次。' },
+    { title: '历练打不过怎么办？', text: '点「查看战况」收储物袋，到「装备」换装、强化。同系功法学到两门可激活羁绊，历练攒的香火可去「仙星」抽装备。' },
+    { title: '渡劫要准备什么？', text: '本境灵气圆满后，在「历练」渡劫。「功法」标出这次考的属性，「装备」列出所需装备分。过了劫期再走机缘，会多耗寿元。' },
+    { title: '秘境、洞府和枯海何时去？', text: '渡劫缺材料就去对应秘境。筑基后期能开洞府。金丹圆满先探枯海，返航后渡元婴劫，到了元婴可在洞府立宗。' },
+    { title: '身死后灯芯怎么用？', text: '一世结束会结算灯芯。进「轮回」点「灯纹」，用灯芯解锁永久加成或自动机缘。' }
+  ]
+};
 const DEFAULT_SASH = '#8a6a4a';
 // 每个临时动作的时长要盖住 wxss 里对应动画的时长，播完才回到常态。
 const ACTIONS = {
@@ -252,7 +264,7 @@ Page(Object.assign(starScene(audio), {
     bag: { text: '', full: false },
     gear: { worn: [], pack: [] },
     gearDot: false,
-    tip: { at: '', text: '', next: '' },
+    tip: HIDDEN_TIP,
     navTabs: NAV_TABS,
     tab: 'train',
     alive: false,
@@ -316,7 +328,7 @@ Page(Object.assign(starScene(audio), {
       tipSeen = false;
     }
     // 已经玩过的存档不再弹指引。
-    this.tipDone = tipSeen || this.state.lives > 0 || this.state.run.choices > 0;
+    this.tipDone = tipSeen || this.state.run.choices > 0;
     this.holdRealm = null;
     this.bracing = false;
     this.wasFull = false;
@@ -598,6 +610,7 @@ Page(Object.assign(starScene(audio), {
     const state = game.normalizeState(row.state, Date.now());
     const savedAt = Number(row.savedAt) || 0;
     this.state = state;
+    if (state.run.choices > 0) this.tipDone = true;
     this.localSavedAt = savedAt;
     this.lastCloudPush = Date.now();
     this.cloudSaveId = row.id || this.cloudSaveId;
@@ -1097,25 +1110,36 @@ Page(Object.assign(starScene(audio), {
     };
   },
 
-  // 初次游戏的点击指引：不遮挡界面，气泡指着该点的地方，玩家点了真的按钮才往下走。
-  tipView() {
-    const none = { at: '', text: '', next: '' };
+  // 操作提示跟随当前显示的面板，收起后再指向能继续这一步的入口。
+  tipView(sheet) {
     const s = this.state;
     const run = s.run;
-    if (this.tipDone || this.guideOpen || this.data.modal.show || this.data.tab !== 'train') return none;
-    if (run.phase === 'root') {
-      return { at: 'sheet', text: '欢迎。先挑一副这一世的根骨，点下面任意一项。', next: '' };
+    if (this.tipDone || s.lives > 0 || this.data.modal.show || this.data.tab !== 'train') return HIDDEN_TIP;
+    if (sheet.kind === 'root') {
+      return { at: 'sheet', text: '看看每副根骨擅长什么，点一副开始这一世。', next: '' };
     }
-    if (run.phase !== 'alive' || run.pending) return none;
-    if (this.result || this.lampOpen || this.fray && this.fray.stage === 1) return none;
-    if (run.event && this.eventOpen) {
-      return run.choices === 0 ? { at: 'sheet', text: '右边是要花的寿元。亲历一项，灯就亮一点。闭关不添火。', next: '' } : none;
+    if (run.phase !== 'alive' || run.pending) return HIDDEN_TIP;
+    if (sheet.kind === 'lamp' && sheet.opening) {
+      return { at: 'sheet', text: '挑一卷作这一世的灯传功法。选好后，角色会用它自动试招。', next: '' };
+    }
+    if (sheet.kind === 'event' && run.choices === 0) {
+      return { at: 'sheet', text: '右边写着每条路要花几年寿元。点你想走的那条路，就能看到结果。', next: '' };
+    }
+    if (sheet.kind === 'result' && this.result.fromEvent && run.choices === 1) {
+      return { at: 'sheet', text: '这里列着这次机缘的得失。看完点「收起」回到历练。', next: '' };
+    }
+    if (sheet.kind || run.trib || game.atSea(run) || (this.fray && this.fray.gate)) return HIDDEN_TIP;
+    if (game.lampReady(s) === 'open') {
+      return { at: 'lamp', text: '点「开卷选招」，取这一世的第一卷功法。', next: '' };
     }
     if (run.choices === 0) {
-      return { at: 'main', text: '翻开一桩机缘，选一条愿意花寿元走的路。', next: '' };
+      if (run.event) return { at: 'main', text: '点「继续机缘」，刚才那几条路还在。', next: '' };
+      if (!game.canDraw(s)) return HIDDEN_TIP;
+      const text = run.battle.cleared ? '试招首胜的香火可以去「仙星」抽装备。点「翻开机缘」继续修行。' : '试招会自动打。你现在就可以点「翻开机缘」。';
+      return { at: 'main', text: text, next: '' };
     }
     const info = TIP_INFO[this.tipStep];
-    return { at: info.at, text: info.text, next: this.tipStep === TIP_INFO.length - 1 ? '开始修行' : '下一步' };
+    return { at: info.at, text: info.text, next: this.tipStep === TIP_INFO.length - 1 ? '知道了' : '下一步' };
   },
 
   finishTip() {
@@ -1142,144 +1166,6 @@ Page(Object.assign(starScene(audio), {
     this.finishTip();
   },
 
-  guideView() {
-    const s = this.state;
-    const run = s.run;
-    // 标题和正文排成一个单层列表，模板里不用嵌套循环。
-    const sec = (title, lines) => [{ head: true, text: title }].concat(lines.map((text) => ({ head: false, text: text })));
-    const rows = [].concat(
-        sec('怎么玩', [
-          '灵气和机缘跟着年岁涨：每耗掉 1 年寿元，灵气和机缘就各涨一截。一世之内不用等，想走多快走多快。',
-          '选根骨后，挑一卷灯传功法，再用它试招。往后亲历三次机缘便能顿悟，精进旧法、合参同门，也可以把灯火拿来冲脉。闭关不添火。每个大境界能悟一次，未用的火可留到下一境。',
-          '普通机缘会记住你选过的路，下一次就能看见它的具体收益。',
-          '寿元只在做选择和静坐时流逝，放着不动、离线都不扣。寿元耗尽就身死，然后带着灯芯重来。'
-        ]),
-        sec('机缘', [
-          '翻一次机缘耗 1 次。每过 ' + yearsText(game.chanceYears(s)) + ' 年寿元攒回 1 次，最多存 ' + game.maxChance(s) + ' 次。投胎时只带上限的三分之一，境界越高攒得越慢，元婴之后尤其慢。',
-          '机缘用尽时主按钮变成“静坐”：一直坐到下一次机缘回来，按钮上写着要耗多少年寿元，灵气跟着涨。所以机缘别乱花，借势、枯海和元婴劫的准备也要用它。',
-          '灯油：现实时间每 ' + game.formatDuration(game.OIL_INTERVAL_SEC) + '攒 1 滴，离线也攒，最多 ' + game.OIL_MAX + ' 滴，换一世也带着。机缘不合心意时，可以在机缘面板上用 1 滴换一个。',
-          '传承：学功法或升品。奇遇：有风险的交易，成功率写在选项上。因果：现在种因，几次选择之后结果。闲事：小得小失。',
-          '手上功法越多，传承、能得功法的事件和给功法的大机缘越少遇到。' + (run.phase === 'root' ? '' : '你现在有 ' + run.skills.length + ' 门，翻到传承的机会约 ' + Math.round(game.legacyShare(s) * 100) + '%。'),
-          '拿不准可以选“闭关不理”，耗 1 年寿元：多半能换一点灵气，也可能一无所获，偶尔还会岔气，散掉一些灵气、涨一点心魔，几率都写在选项上。也可以点“稍后再选”先收起来。',
-          '懒得点就打开主按钮上方的“自动机缘”：开着页面时，他会自己翻开机缘、挑选项、取舍功法。会致命的选项他不碰，没见过后果的选项他也不碰（只会闭关）；择道、渡劫、坐化和投胎仍由你决定。',
-          '有些事件会直接给机缘次数，或提高这一世的机缘积攒速度；当前速度显示在顶部和“轮回”页。',
-          '每做完 ' + game.BIG_EVERY + ' 次机缘得 1 次大机缘：没有选项，点了当场随机落下一件事，不耗寿元。可能是好事（一门功法直接练到天品、灯芯自己长一截、年轻十岁、下一场天劫多两成把握），可能说不准（锋躯神换位置、命格被换、一梦十年），也可能是坏事（功法跌一品、机缘少一半、多一张丹盟的欠条），但不会直接寿尽或入魔。进度和次数跨世保留。'
-        ]),
-        sec('机缘之间的联动', [
-          '余势：上一回的结果会影响紧接着的下一回，机缘面板上会写明。上一回成了，这一回成功率 +10%；没成，这一回折寿减半；闭关了，这一回少耗 1 年。',
-          '功法：同一系凑到 2 门后，不少机缘会多出这一系才有的选项，前面标着“因某系 2 门”，通常比原有选项划算。',
-          '有些选择会记下一段经历，比如入了守骸宗、欠了丹盟的账、养了一个字，往后还会遇到相关的人和事。',
-          '经历会带出后续的故事章节，也会让别处的机缘多出或少掉选项。多出来的选项前面标着“因【某经历】”。',
-          '几条线会互相牵扯：同一件事，守骸宗弟子和食仙教徒能做的选择不一样。经历只管这一世，轮回后清空。'
-        ]),
-        sec('突发与余波', [
-          '筑基后的主动小境界突破、渡劫成功和秘法合成，可能分别引出经脉错乱、天劫余波和功法反噬；大机缘、机缘接近存满或经历累积，也可能引出福极生变与旧债上门。',
-          '每段经历分“征兆”和“突发”两回机缘，不能重抽。处理突发后，余波影响接下来的三次普通机缘；征兆和突发本身不计入这三次。',
-          '余波包括事件灵气奖励 -30%、概率成功率 -10%、秘法暂时失效、机缘间隔 ×1.5，或锋躯神 -10%。顶部和机缘面板会显示剩余次数。',
-          '每世最多三段突发，每段结束后隔四次普通机缘才可再触发。突发链优先于大机缘，大机缘不减少余波和冷却。离线不会新增突发，自动机缘仍会避开致命或入魔选项。'
-        ]),
-        sec('功法与羁绊', [
-          '剑、丹、符、体、运五系，分凡、灵、玄、天四品。重复选中同一门就升品。',
-          '不少功法除了加属性还带特殊效果，比如按心魔加锋、折寿后涨躯、存着机缘不用就变强，说明里都写着。',
-          '同一系凑到 2 门、4 门各触发一条羁绊，效果写在“功法”页。',
-          '一世最多持有 ' + game.maxSkills(s) + ' 门，点亮灯纹“博闻”可以再加；偶尔遇到的“奇缘”也能给这一世加，最多 ' + game.MAX_EXTRA_SLOTS + ' 门。满了再学要换掉一门，可以先收起面板看看羁绊再决定。',
-          '同系两门天品可以在功法卡上合成一门秘法：只占 1 格，全部数值效果约为两者之和的 1.2 倍，不能拆分。',
-          '建议主修一两系凑羁绊，比每系都学一点强。',
-          '择道：引气之后可以定一系主修。主修一系的功法效果 ×' + game.PATH_MAIN + '，被它克制的一系 ×' + game.PATH_WEAK + '（剑克符、符克体、体克运、运克丹、丹克剑），传承里主修的功法也更常见。定了这一世不能改，所以要看这一世天劫考什么再定。'
-        ]),
-        sec('境界与渡劫', [
-          '凡胎、引气、筑基、金丹、元婴，各分前、中、后期。小境界灵气满了自动突破。',
-          '元婴不是头。往后是化神、婴变、问鼎，再是阴虚、阳实、窥涅、净涅、碎涅，再是空涅、空灵、空玄、空劫，最后是踏天，一共 ' + (game.REALMS.length - 1) + ' 个境界。这些境界的天劫照旧考锋、躯、神，但更看装备分，越往后越是这样。',
-          '阴虚劫、空涅劫、踏天劫是三道大关：不看劫相，锋、躯、神三项全考，属性和装备分的要求比前后的天劫高出一截，失败折的寿元也重得多。踏天后期灵气满了还有一场终劫，同样三项全考，渡过才算踏天圆满。',
-          '前三场天劫每一世的“劫相”都不同：有的考两项，有的只考一项但要求高出三成多。主界面和“功法”页会标出这一场考什么、需要多少。',
-          '劫期：每个境界只能从容做一定次数的机缘（主界面写着还剩几次）。过了劫期，每次机缘都多折寿元，越拖越重；多折的寿元是白折的，不涨灵气也不攒机缘。所以不能无限攒属性，要估着劫期决定什么时候渡劫。',
-          '渡劫成功，' + TRIB_CHANCE_TEXT + '，补到上限为止；失败和散功不恢复。',
-          '羁绊、灯纹、功法、大机缘的雷、宗门护阵和装备分富余这些加成，按被考属性的达标程度打折：属性只到要求的一半，这些加成也只算一半。属性堆上去，加成才管用。',
-          '引气劫要一道雷一道雷地接。必接的雷有 3 道，一道比一道难，每道落下前可以硬接、耗 10 次机缘借势（这一道 +10%），或散功。一道没接住，整场就败。',
-          '3 道全过后劫云不会马上散：可以收劫破境，也可以再引余雷淬体，最多 2 道。接住的余雷在收劫时兑成属性、寿元上限或灯芯；没接住照样破境，但淬体所得全丢，还要折寿、涨心魔。贪不贪由你。',
-          '筑基劫、金丹劫和化神起的天劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功。化神起装备不足也会削弱这 15% 的借势加成，零装备时硬抗和借势都不会成功。',
-          '散功必定失败，但不会身死、不涨心魔：折寿 ' + game.SCATTER_YEARS + ' 年，灵气保住一半，散去的修为淬进这场天劫考的每项属性里，各加要求值的 ' + Math.round(game.SCATTER_ATTR * 100) + '%（至少 1）。每个大境界只淬 ' + game.SCATTER_MAX + ' 次，之后再散功不加属性。',
-          '逆天渡劫：成功率不到 ' + Math.round(game.DEFY_CHANCE * 100) + '% 还硬是渡过了，另有加赏：考的属性、寿元上限和灯芯都多得一截，把握越小赏得越多，渡劫面板会先写明。引气劫按接过的每道必接雷的把握连乘来算。',
-          '成功率低就先别渡，多翻几次机缘把被考的属性堆上去；机缘翻不出想要的属性、劫期又快到时，可以散功拿寿元换属性。'
-        ]),
-        sec('枯海与元婴劫', [
-          '金丹圆满后可登上枯海沉舟。守骸宗、食仙教和缄默书院各有一条航线，此前相应的经历能打开新选项。',
-          '每次选择涨一格潮。第三格结算后返航，途中也可携带已有收获返航。稍后再探会保留所在章节。',
-          '返航后渡元婴劫。盐骨关考锋或躯，问名关考神；枯海所得、逃字和丹修各有用处。失败后休养至灵气圆满即可重试。'
-        ]),
-        sec('洞府与宗门', [
-          '筑基后期起可以开辟洞府。开府和修建、扩建聚灵阵、灵田、藏经室、仙树，耗的是历练得来的筑石，外加灵气和少量寿元。',
-          '设施的等级上限跟着大境界走：筑基最高 2 级，每破一个大境界多开一级，至多 8 级。越往上扩建越费筑石，效果也越强。',
-          '仙树要用玉露浇灌：浇一次耗 2 滴，再做 2 次普通机缘结一颗仙果。服下仙果寿元上限 +8 年，仙树每扩建一级再多 4 年；魔修吃了没用。',
-          '洞府开放后，每次普通机缘产出灵材，留给立宗、收徒和山门事务用。',
-          '元婴后可在洞府立宗，招收弟子、提升修为、传授本世功法，并派人巡山或应对寒潮。弟子修为、特长和所学功法会影响结果。',
-          '宗门每阶反哺本世灵气 +8%、渡劫 +2%：守骨每阶渡劫再 +1%，取骸每阶灵气再 +4%，济人每阶机缘积攒 +5%。山外每块领地另使灵气 +2%、渡劫 +1%，失去领地即收回。',
-          '立宗后多出「山外」一页。门人、库藏和山外的小事随每次普通机缘自行增减：声望高、占着盐滩村，门人来得快；门人多、领地多，库藏涨得快；库藏见底门人就不再来。每 4 次机缘门中送一份月例灵材。',
-          '扩张、战役和升阶是送上山的大事，每件给两三个选项：占下无主之地，守住或攻打食仙教的据点，声望、领地和门人够了就立碑升阶。战役比的是宗门战力（品阶、弟子修为与所学、领地、门人），亲自出阵按你的战力再加一截。山门分草庐、山门、宗门、大宗四阶，每升一阶多收一名弟子，弟子修为上限 +1。',
-          '二级藏经室可传授秘法。可以选一位弟子托付传承，下一世洞府开放后（筑基后期）回山取回他保管的功法或秘法。'
-        ]),
-        sec('心魔', [
-          '贪心的选项会涨心魔。每 10 点心魔降低 3% 渡劫成功率。',
-          '满 ' + game.MAX_DEMON + ' 不再立即身死，而是转魔修：灵气产出 ×5，不能渡劫，普通延寿无效，只能耗灵气服散续命（每次 +3 年，一世最多 3 次）。十年后魔躯燃尽，身死灯芯仍 ×1.5。',
-          '有些闲事和因果能降心魔，别全跳过。'
-        ]),
-        sec('战力与竞技场', [
-          '主界面显示当前战力，“功法”页可以查看来源。境界、锋躯神、功法品级、流派羁绊和装备按当前境界的典型构筑校准，五项都达标时贡献相同。单项属性过高后增幅会放缓，三项兼修会加分。',
-          '每渡过一场天劫、破一个大境界，各来源都再乘 ' + game.REALM_POWER_GROWTH + '，一层层叠上去，不再单列一项破境战力；历练里的攻击和气血也跟着乘。',
-          '“轮回”页里的“竞技场”可以挑战榜上玩家。对手战力按历史最高境界和累计灯芯估算，胜率写在按钮上。',
-          '胜了积累论道积分，解锁竞技场称号。对手越强，积分越多。败了折损 3 年寿元。',
-          '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
-        ]),
-        sec('历练', [
-          '开卷后就能在灯前试招。第一关只有一只叼刀的野狗，打赢必得兵器；引气之后继续推关。左上角是你的气血和关数，右上角是对手的气血。',
-          '历练不耗寿元和机缘，也不算进劫期。关卡没有尽头，越往后越硬：寻常的关连打 ' + game.TRAIN_MOBS + ' 只小的，每 ' + game.TRAIN_BOSS_EVERY + ' 关是一个首领。败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再一关一关打回来；重打的关不再掉装备，储物袋也不会因此变慢。',
-          '每过一关，储物袋攒灵气就快一档，过首领关涨得更多。储物袋跟着现实时间攒，关掉游戏也在攒，最多存 ' + game.TRAIN_BAG_HOURS + ' 小时的量；点场景上方的“储物袋”把灵气收进丹田。',
-          '每过一关得 ' + game.TRAIN_STONE + ' 块筑石，过首领关得 ' + game.TRAIN_BOSS_STONE + ' 块筑石和 ' + game.TRAIN_BOSS_DEW + ' 滴玉露；储物袋里每攒一件装备也带 1 块筑石。筑石修洞府，玉露浇仙树，筑基后期洞府开放后用得上。',
-          '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
-          '横推：往后连着 ' + game.SWEEP_MIN + ' 关以上都能赢、每场掉的气血不到 ' + Math.round((1 - game.SWEEP_HP) * 100) + '% 时，他会一剑扫过去，一次最多推 ' + game.SWEEP_MAX + ' 关，推过的关照样掉装备、给筑石和玉露。败退后重打的关不横推。',
-          '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
-        ]),
-        sec('关隘与秘境', [
-          '有五场天劫要先凑齐材料才肯落下来：' + game.GATES.map((gate) => game.TRIBS[gate.trib].name + '要' + gate.material + ' ' + gate.need + ' 份（' + gate.scene + '）').join('，') + '。材料没凑齐，灵气圆满了也渡不了劫。',
-          '人到了那个境界，主按钮旁边会多出秘境的入口。每个秘境有下品、中品、上品三个对手，越往上越难打，打赢给的材料也越多（1、2、3 份）；面板上写着各自的数值和胜率。',
-          '每打一场耗 ' + game.GATE_COST + ' 次机缘，不耗寿元，也不算进劫期。打的时候场景会换成秘境，用的是历练里的那套数值：锋躯神、功法和身上的装备。',
-          '输了什么也拿不到，但那个秘境里的对手会让一步：气血和攻击各降 ' + Math.round(game.GATE_YIELD * 100) + '%，最多让 ' + game.GATE_YIELD_MAX + ' 步。机缘不够打一场时，可以在秘境面板里静坐着攒。',
-          '材料凑齐就一直算数，渡劫失败不用重凑；换一世要从头凑起。'
-        ]),
-        sec('装备', [
-          '历练掉装备：寻常的关过关时有三成机会掉一件，连着 ' + game.TRAIN_DROP_PITY + ' 关没掉下一关必掉；首领关必掉，品级更好。储物袋另外每 20 分钟攒一件，卡关时也有东西拿。',
-          '机缘里也能得装备：铁匠铺、战场、当铺这类奇遇有的选项给一件，补的是身上装备分最低的那个槽位，阶比历练眼下掉的高，品级也更好；“上好的装备”还要再好一截。有的选项给锻材。',
-          '装备分兵、衣、冠、靴、佩、戒六个槽位：兵加攻击，衣加气血，冠加气血和减伤，靴加气血和出手速度，佩攻击气血都加一点并加暴击，戒加攻击和暴击伤害。',
-          '品级有凡、灵、玄、天、仙、神、道七档，品级越高带的词条越多（道品 6 条）；仙品要过了 11 关才会掉，神品 34 关，道品 76 关。越靠后的关掉的装备“阶”越高，数值越大。',
-          '词条有十三种：攻击、气血、暴击、暴击伤害、减伤、出手加快、吸血、反伤、回血、开场护盾、破甲、招式减伤、连击。',
-          '装备的数值只在历练的战斗里起作用，不改锋躯神；装备分会算进战力。',
-          '装备分看品级、强化、词条，也看阶：越靠后的关掉的装备，装备分越高，到了后期每高一阶涨得更多。',
-          '往后的天劫要装备分撑着，前松后紧：筑基劫要 ' + game.TRIBS[1].gear + '，金丹劫要 ' + game.TRIBS[2].gear + '，元婴劫要 ' + game.TRIBS[3].gear + '，化神劫要 ' + game.TRIBS[4].gear + '，往后一路往上加，大关要得格外多（' + game.TRIBS.filter((t) => t.wall).map((t) => t.name + ' ' + t.gear).join('、') + '）；每高一重天再多 ' + Math.round(game.GEAR_HEAVEN * 100) + '%。不够的话成功率按差的比例往下扣：筑基劫一件不穿扣 ' + Math.round(game.GEAR_TRIB_MAX * 100) + '%，金丹劫 ' + Math.round(game.TRIBS[2].gearCut * 100) + '%，元婴劫 ' + Math.round(game.TRIBS[3].gearCut * 100) + '%，化神劫起差多少扣多少；够了就不扣。超过要求还能再加一点成功率：最多 ' + Math.round(game.GEAR_TRIB_BONUS * 100) + '%，每多出要求的 ' + Math.round(game.GEAR_TRIB_HALF * 100) + '%，离这个上限的差距减半，越往上加得越少。所以后面的境界急不来，得先把历练的关往后推、把装备换上去。元婴劫问名关里事先备好的办法不受影响。“装备”页顶上写着眼下这一场要多少。',
-          '在“装备”页换装、强化和分解。强化耗锻材，最高 +' + game.GEAR_MAX_LEVEL + '，不会失败；锻材靠分解用不上的装备得来。背包最多 ' + game.GEAR_PACK_MAX + ' 件，满了之后新掉的直接分解。',
-          '背包里标“更好”的，是战斗数值比身上的高、装备分也不比身上低的；“换上更好的”只换这些，“分解用不上的”只分解两样都不比身上高的。高几阶的新装备数值更高、装备分却不如强化过的旧装备时，两边都不算，要换就自己点“换上”再强化。',
-          '装备和锻材只管这一世。'
-        ]),
-        sec('身死与轮回', [
-          '身死后按境界、羁绊和死法结算灯芯。境界越高越多。',
-          '从“轮回”进入“灯纹”，花灯芯点亮永久生效的加成，再回灯前投胎，挑一副根骨。',
-          '“灯纹”页底部的藏经阁可以花灯芯请出仙、神、道品功法，品级随机。它们不加数值，而是各改一条规则，品级越高改得越狠。请出后，往后每一世的传承里都可能遇到它。',
-          '每次投胎还会抽一张有得有失的命格：早慧、灯下黑或薄命。换一批只换根骨，不换命格。',
-          '根骨分凡、良、珍、绝、仙、神六档，底色各不相同。两到五种根骨可能长在同一个人身上，加成相加，种数越多越稀有；另有几副不靠拼凑的稀有根骨。',
-          '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
-          '寿元快到头又渡不过劫时，可以在“轮回”页主动坐化，直接结算。',
-          '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。',
-          '重天：在已开的最高一重天渡过终劫、修到踏天圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1；第一次到' + game.DEEP_REALMS.map((realm) => game.REALMS[realm].name).join('、') + '也各 +1。首次到化神后开放“铸胚、渡厄、随葬”。投胎时可以选去哪一重。'
-        ]),
-        sec('角色在干什么', [
-          '中间的小人是你这一世的肉身。衣服颜色跟境界走，腰带颜色是你主修的那一系。',
-          '白头发说明寿元不到 10 年了；红眼说明心魔过半；头顶有乌云说明可以渡劫了。',
-          '它朝你招手，是机缘攒满了。',
-          '嫌吵的话，点右上角的“♪”关掉音乐和音效。'
-        ])
-    );
-    return { kind: 'guide', rows: rows.map((row, i) => ({ key: i, head: row.head, text: row.text })) };
-  },
-
   onGuide() {
     if (this.act === 'thunder') return;
     audio.play('tap');
@@ -1289,6 +1175,10 @@ Page(Object.assign(starScene(audio), {
     this.mergeOpen = false;
     this.chronicleOpen = false;
     this.guideOpen = true;
+    if (this.data.tip.at === 'help') {
+      this.finishTip();
+      return;
+    }
     this.refresh();
   },
 
@@ -2168,7 +2058,7 @@ Page(Object.assign(starScene(audio), {
     const s = this.state;
     const run = s.run;
     if (this.cloudOpen) return { kind: 'cloud' };
-    if (this.guideOpen) return this.guideView();
+    if (this.guideOpen) return GAME_GUIDE;
     if (this.chronicleOpen && run.phase === 'dead') return this.chronicleView();
     if (run.phase === 'root' && this.data.tab === 'train') {
       const fate = game.FATES.filter((item) => item.id === run.fate)[0];
@@ -2321,20 +2211,21 @@ Page(Object.assign(starScene(audio), {
     // 天劫动画播完之前不揭晓结果：境界、寿元和结算面板都先不更新。
     if (this.act === 'thunder') {
       // 只在开始时设一次，之后不再触碰节点，免得动画被打断。
-      if (!this.data.actor.storm) this.setData({ actor: this.actorView(), sheet: HIDDEN_SHEET });
+      if (!this.data.actor.storm) this.setData({ actor: this.actorView(), sheet: HIDDEN_SHEET, tip: HIDDEN_TIP });
       return;
     }
     const tab = this.data.tab;
     const a = run.phase !== 'root' || tab === 'skill' ? game.attrs(s) : null;
     const power = game.combatPowerDetails(s, a);
     const pouch = run.phase === 'alive' ? game.trainBag(s) : null;
+    const sheet = this.keepOpen(this.sheetView(power.total));
     const patch = {
       bag: { text: pouch && pouch.perHour ? '储物袋 ' + game.formatNumber(pouch.qi) + (pouch.gear ? ' · 装备 ' + pouch.gear : '') : '储物袋', full: !!(pouch && pouch.full) },
       hud: this.hudView(power.total),
       hero: this.heroView(),
       actor: this.actorView(),
-      tip: this.tipView(),
-      sheet: this.keepOpen(this.sheetView(power.total)),
+      tip: this.tipView(sheet),
+      sheet: sheet,
       autoUnlocked: game.autoUnlocked(s),
       gearDot: run.phase === 'alive' && game.gearHasBetter(s),
       alive: run.phase === 'alive',
@@ -2832,7 +2723,7 @@ Page(Object.assign(starScene(audio), {
       this.cancelStarTurn();
       this.starOpen = false;
     }
-    this.setData({ tab: tab });
+    this.setData({ tab: tab, tip: HIDDEN_TIP });
     if (tab === 'star' && this.state.run.phase === 'alive') {
       this.onStarOpen();
       return;
