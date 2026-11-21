@@ -3,7 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const RATE = 16000;
+let RATE = 16000;
+let top = 0; // 本次合成用到的最高泛音频率
 const OUT = path.resolve(__dirname, '../../assets/audio');
 const TAU = Math.PI * 2;
 
@@ -31,6 +32,9 @@ function tone(out, at, dur, freq, amp, opt) {
   const bend = opt.bend || 0;
   const start = Math.round(at * RATE);
   const n = Math.round(dur * RATE);
+  for (let h = 0; h < harm.length; h++) {
+    if (harm[h]) top = Math.max(top, freq * (1 + Math.max(0, bend)) * (h + 1));
+  }
   let phase = 0;
   for (let i = 0; i < n; i++) {
     const t = i / RATE;
@@ -50,6 +54,7 @@ function tone(out, at, dur, freq, amp, opt) {
 
 // 低通过的噪声，cutoff 越小越闷。
 function noise(out, at, dur, amp, cutoff, env, rand) {
+  top = Infinity;
   const start = Math.round(at * RATE);
   const n = Math.round(dur * RATE);
   const a = Math.min(1, TAU * cutoff / RATE);
@@ -60,7 +65,21 @@ function noise(out, at, dur, amp, cutoff, env, rand) {
   }
 }
 
-function write(name, data, peak) {
+// 小程序主包上限 2 MB，音频占大头。泛音都在 3.6 kHz 以下的声音用 8 kHz 就够，体积减半；
+// 其余（带噪声或高泛音）保持 16 kHz。先按 16 kHz 合成一遍量出最高泛音，再决定用哪个采样率。
+function render(make) {
+  RATE = 16000;
+  top = 0;
+  let data = make();
+  if (top < 3600) {
+    RATE = 8000;
+    data = make();
+  }
+  return data;
+}
+
+function write(name, make, peak) {
+  const data = render(make);
   let max = 0;
   for (let i = 0; i < data.length; i++) max = Math.max(max, Math.abs(data[i]));
   const gain = max > 0 ? peak / max : 1;
@@ -79,7 +98,7 @@ function write(name, data, peak) {
   bytes.writeUInt32LE(data.length * 2, 40);
   for (let i = 0; i < data.length; i++) bytes.writeInt16LE(Math.round(data[i] * gain * 32767), 44 + i * 2);
   fs.writeFileSync(path.join(OUT, name + '.wav'), bytes);
-  console.log(name + '.wav  ' + (data.length / RATE).toFixed(2) + ' 秒  ' + Math.round(bytes.length / 1024) + ' KB');
+  console.log(name + '.wav  ' + (data.length / RATE).toFixed(2) + ' 秒  ' + RATE / 1000 + ' kHz  ' + Math.round(bytes.length / 1024) + ' KB');
 }
 
 const PLUCK = [1, 0.5, 0.28, 0.12, 0.06];
@@ -238,17 +257,17 @@ function thunder() {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
-write('bgm', bgm(), 0.7);
-write('tap', tap(), 0.5);
-write('pick', pick(), 0.6);
-write('good', good(), 0.6);
-write('qi', qi(), 0.5);
-write('bad', bad(), 0.7);
-write('coin', coin(), 0.5);
-write('up', up(), 0.7);
-write('big', big(), 0.8);
-write('born', born(), 0.6);
-write('lamp', lamp(), 0.6);
-write('die', die(), 0.8);
-write('thunder', thunder(), 0.95);
-STAR_CHIMES.forEach((chime) => write('star-' + chime.name, starChime(chime), 0.6));
+write('bgm', bgm, 0.7);
+write('tap', tap, 0.5);
+write('pick', pick, 0.6);
+write('good', good, 0.6);
+write('qi', qi, 0.5);
+write('bad', bad, 0.7);
+write('coin', coin, 0.5);
+write('up', up, 0.7);
+write('big', big, 0.8);
+write('born', born, 0.6);
+write('lamp', lamp, 0.6);
+write('die', die, 0.8);
+write('thunder', thunder, 0.95);
+STAR_CHIMES.forEach((chime) => write('star-' + chime.name, () => starChime(chime), 0.6));
