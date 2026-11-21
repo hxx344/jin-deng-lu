@@ -1236,7 +1236,7 @@ Page({
           '投胎时对候选不满意，可以点“换一批”整批重新随机，每一世 ' + game.ROOT_REROLLS + ' 次。',
           '寿元快到头又渡不过劫时，可以在“轮回”页主动坐化，直接结算。',
           '前几世死得早是正常的，灯纹点起来之后会越走越远。身死面板可以查看带年表的本纪，并生成长图直接转发。',
-          '重天：在已开的最高一重天渡过终劫、修到踏天圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1。投胎时可以选去哪一重。'
+          '重天：在已开的最高一重天渡过终劫、修到踏天圆满再身死（坐化也算），就开出下一重天，共 ' + game.HEAVEN_MAX + ' 重。每高一重：' + game.heavenText(1) + '；枯海里备下的稳妥渡法也不再必过。每开一重，灯纹“' + game.DEEP_LAMPS.map((id) => game.LAMPS.filter((l) => l.id === id)[0].name).join('、') + '”的上限 +1；第一次到' + game.DEEP_REALMS.map((realm) => game.REALMS[realm].name).join('、') + '也各 +1。首次到化神后开放“铸胚、渡厄、随葬”。投胎时可以选去哪一重。'
         ]),
         sec('角色在干什么', [
           '中间的小人是你这一世的肉身。衣服颜色跟境界走，腰带颜色是你主修的那一系。',
@@ -1839,7 +1839,7 @@ Page({
         {
           id: 'endure',
           label: '硬抗 · 成功率 ' + percent(info.chance) + '%',
-          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeBonus + ' 年')) + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
+          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年')) + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
           disabled: false
         },
         {
@@ -1872,7 +1872,7 @@ Page({
       const now = !passed && (extra ? bolts.extra && i - bolts.total === bolts.gains : i === bolts.passed);
       pips.push({ key: i, text: extra ? '余' : String(i + 1), state: passed ? 'done' : (now ? 'now' : 'wait'), extra: extra });
     }
-    const broke = info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeBonus + ' 年';
+    const broke = info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年';
     const options = bolts.extra ? [
       {
         id: 'settle',
@@ -2266,17 +2266,19 @@ Page({
       patch.logs = run.log.map((l, i) => ({ key: i, title: l.title, text: l.text, detail: l.detail || '' })).reverse();
     } else if (tab === 'lamp') {
       patch.lamps = game.LAMPS.map((lamp) => {
+        const open = game.lampOpen(s, lamp.id);
         const maxed = game.lampMaxed(s, lamp.id);
         const cost = game.lampCost(s, lamp.id);
         return {
           id: lamp.id,
           branch: lamp.branch,
           name: lamp.name,
-          desc: lamp.desc + (lamp.max > 1 ? '（每级）' : ''),
-          levelText: game.lampLevel(s, lamp.id) + ' / ' + game.lampMax(s, lamp.id),
-          maxed: maxed,
+          desc: (open || !lamp.need ? '' : '首次到' + game.REALMS[lamp.need].name + '后开放。') + lamp.desc + (lamp.max > 1 ? '（每级）' : ''),
+          levelText: open ? game.lampLevel(s, lamp.id) + ' / ' + game.lampMax(s, lamp.id) : '未开放',
+          locked: !open,
+          maxed: open && maxed,
           costText: game.formatNumber(cost),
-          affordable: !maxed && s.wick >= cost
+          affordable: open && !maxed && s.wick >= cost
         };
       });
       const gradeText = (odds) => odds.map((p, i) => (p ? game.gradeName(game.GRADES.length + 1 + i) + '品 ' + Math.round(p * 100) + '%' : '')).filter(Boolean).join(' · ');
@@ -2659,7 +2661,7 @@ Page({
 
   onBuyLamp(e) {
     const id = e.currentTarget.dataset.id;
-    if (game.lampMaxed(this.state, id)) return;
+    if (!game.lampOpen(this.state, id) || game.lampMaxed(this.state, id)) return;
     if (game.buyLamp(this.state, id)) {
       this.play('bow');
       this.afterAction();

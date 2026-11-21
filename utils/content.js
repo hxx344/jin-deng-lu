@@ -163,17 +163,18 @@ const RARE_ROOTS = [
 const LAYERS = ['尘壤', '骸山', '枯海'];
 
 // cap 和 rate 是丹田容量、灵气产出相对凡胎的倍率；layer 是所在墟层。
+// attr 是该境界的属性基准：进这个境界的那场寻常天劫考的属性值。
 // power 定义该境界的战力基数、单项属性软上限，以及竞技场估算用的典型构筑。
 const REALMS = [
-  { name: '凡胎', cap: 1, rate: 1, layer: 0,
+  { name: '凡胎', cap: 1, rate: 1, layer: 0, attr: 0,
     power: { base: 12, softCap: 24, opponentAttribute: 2, opponentMastery: 0, opponentBonds: 0 } },
-  { name: '引气', cap: 5, rate: 2.5, layer: 0,
+  { name: '引气', cap: 5, rate: 2.5, layer: 0, attr: 16,
     power: { base: 30, softCap: 72, opponentAttribute: 13, opponentMastery: 10, opponentBonds: 4 } },
-  { name: '筑基', cap: 25, rate: 6, layer: 1,
+  { name: '筑基', cap: 25, rate: 6, layer: 1, attr: 48,
     power: { base: 65, softCap: 210, opponentAttribute: 29, opponentMastery: 22, opponentBonds: 6 } },
-  { name: '金丹', cap: 150, rate: 15, layer: 1, fullWick: 120,
+  { name: '金丹', cap: 150, rate: 15, layer: 1, attr: 140, fullWick: 120,
     power: { base: 130, softCap: 300, opponentAttribute: 77, opponentMastery: 42, opponentBonds: 10 } },
-  { name: '元婴', cap: 1000, rate: 45, layer: 2, fullWick: 280,
+  { name: '元婴', cap: 1000, rate: 45, layer: 2, attr: 180, fullWick: 280,
     power: { base: 220, softCap: 450, opponentAttribute: 114, opponentMastery: 72, opponentBonds: 14 } }
 ];
 
@@ -211,7 +212,7 @@ HIGH_REALMS.forEach((row, i) => {
   const step = i + 1;
   const wick = HIGH_WICK * Math.pow(HIGH_WICK_GROWTH, i);
   REALMS.push({
-    name: row[0], cap: 1000 * Math.pow(5, step), rate: 45 * Math.pow(4, step), layer: 2, wide: true,
+    name: row[0], cap: 1000 * Math.pow(5, step), rate: 45 * Math.pow(4, step), layer: 2, attr: row[2], wide: true,
     wick: [Math.round(wick), Math.round(wick * 1.1), Math.round(wick * 1.2)], fullWick: Math.round(wick * 1.27),
     power: {
       // 战力基数每个境界 ×1.45，比后期相对前期的 1.4 倍略高，破境时战力不会往下掉。
@@ -248,13 +249,14 @@ HIGH_REALMS.forEach((row) => {
 // 终劫：踏天后期灵气满了再渡，渡过才算踏天圆满；不破境，也不加寿元。
 TRIBS.push({ name: '终劫', tests: ['edge', 'body', 'mind'], req: 1700, life: 0, failYears: 3000, gear: 2350, gearCut: 1, wall: true, final: true });
 
-// 价格 = cost × 2^已有等级。
+// 价格 = cost × 2^已有等级。need 是第一次走到哪个境界（REALMS 的下标）之后才开放，不写就是一开始就能点。
 const AUTO_LAMP = { id: 'y5', branch: '缘', name: '自动机缘', desc: '永久解锁主界面的自动机缘开关', cost: 100, max: 1 };
 const LAMPS = [
-  { id: 'r1', branch: '根', name: '厚胎', desc: '初始寿元 +10 年', cost: 3, max: 3 },
+  { id: 'r1', branch: '根', name: '厚胎', desc: '初始寿元 +10 年，破境加的寿元 +3%', cost: 3, max: 3 },
   { id: 'r2', branch: '根', name: '择根', desc: '投胎时根骨四选一', cost: 8, max: 1 },
   { id: 'r3', branch: '根', name: '宿慧', desc: '开局自带一门与根骨同系的凡品功法', cost: 10, max: 1 },
-  { id: 'r4', branch: '根', name: '聚气', desc: '灵气产出 +20%', cost: 4, max: 5 },
+  { id: 'r4', branch: '根', name: '聚气', desc: '灵气产出 +20%，与其他加成相乘', cost: 4, max: 5 },
+  { id: 'r5', branch: '根', name: '铸胚', desc: '装备分 +3%', cost: 60, max: 5, need: 5 },
   { id: 'y1', branch: '缘', name: '多缘', desc: '机缘上限 +12', cost: 5, max: 3 },
   { id: 'y2', branch: '缘', name: '回眸', desc: '每世可免费重抽 1 次机缘', cost: 6, max: 2 },
   { id: 'y3', branch: '缘', name: '静修', desc: '“闭关不理”的灵气收益 +100%', cost: 4, max: 2 },
@@ -262,9 +264,11 @@ const LAMPS = [
   AUTO_LAMP,
   { id: 'm1', branch: '忆', name: '前世功法', desc: '身死后可挑一门功法，以凡品带入下一世', cost: 15, max: 1 },
   { id: 'm2', branch: '忆', name: '劫后余生', desc: '渡劫成功率 +3%', cost: 5, max: 5 },
-  { id: 'm3', branch: '忆', name: '道心', desc: '每世开局锋、躯、神各 +1', cost: 4, max: 5 },
+  { id: 'm3', branch: '忆', name: '道心', desc: '每世开局锋、躯、神各 +1，另各加所在境界属性基准的 1%', cost: 4, max: 5 },
   { id: 'm4', branch: '忆', name: '清明', desc: '心魔增长 -10%', cost: 6, max: 3 },
-  { id: 'm5', branch: '忆', name: '博闻', desc: '功法持有上限 +1', cost: 10, max: 4 }
+  { id: 'm5', branch: '忆', name: '博闻', desc: '功法持有上限 +1', cost: 10, max: 4 },
+  { id: 'm6', branch: '忆', name: '渡厄', desc: '大关和终劫失败折的寿元 -10%', cost: 80, max: 3, need: 5 },
+  { id: 'm7', branch: '忆', name: '随葬', desc: '身死时身上装备分最高的一件带入下一世，强化归零', cost: 150, max: 3, need: 5 }
 ];
 
 const KARMA = {

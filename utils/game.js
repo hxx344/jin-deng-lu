@@ -170,8 +170,17 @@ const HEAVEN_TRIB = 0.04;
 const HEAVEN_PREPARED = 0.08;
 const HEAVEN_TERM = 0.05;
 const HEAVEN_WICK = 0.5;
-// 每解锁一重天，这几种灯纹的上限加一级。
+// 这几种灯纹的上限随进度加深：每解锁一重天加一级，第一次走到 DEEP_REALMS 里的境界也各加一级。
 const DEEP_LAMPS = ['r1', 'r4', 'm3'];
+const DEEP_REALMS = ['化神', '阴虚', '空涅', '踏天'].map((name) => REALMS.findIndex((realm) => realm.name === name));
+// 灯纹每级的幅度：聚气的灵气产出、道心按所在境界属性基准加的属性、厚胎多加的破境寿元、铸胚加的装备分、渡厄减的大关折寿。
+const LAMP_QI = 0.2;
+const LAMP_ATTR = 0.01;
+const LAMP_LIFE = 0.03;
+const LAMP_GEAR = 0.03;
+const LAMP_WALL_YEARS = 0.1;
+// REALM_LIFE[i] 是从凡胎破境到第 i 个境界一共加的寿元。
+const REALM_LIFE = REALMS.map((realm, i) => TRIBS.slice(0, i).reduce((sum, trib) => sum + trib.life, 0));
 // 没选过的选项只显示牵涉哪几样东西。
 const FX_KINDS = [['qi', '灵气'], ['edge', '锋'], ['body', '躯'], ['mind', '神'], ['demon', '心魔'], ['life', '寿元上限'], ['chance', '机缘'],
   ['speed', '机缘速度'], ['skill', '功法'], ['slot', '功法位'], ['karma', '因果'], ['mark', '经历'], ['unmark', '经历']];
@@ -606,8 +615,20 @@ function knownProgress(state) {
   return { known: known, total: total };
 }
 
-function lampMax(state, id) {
-  return findById(LAMPS, id).max + (DEEP_LAMPS.indexOf(id) >= 0 ? state.heavenMax : 0);
+function peakRealm(state, atRealm) {
+  const current = atRealm === undefined ? (state.run ? state.run.realm : 0) : atRealm;
+  return Math.max(Math.floor(Math.max(0, state.best) / STAGES.length), current);
+}
+
+function lampOpen(state, id, atRealm) {
+  const lamp = findById(LAMPS, id);
+  return !!lamp && peakRealm(state, atRealm) >= (lamp.need || 0);
+}
+
+function lampMax(state, id, atRealm) {
+  const peak = peakRealm(state, atRealm);
+  const deep = DEEP_LAMPS.indexOf(id) >= 0 ? state.heavenMax + DEEP_REALMS.filter((realm) => peak >= realm).length : 0;
+  return findById(LAMPS, id).max + deep;
 }
 
 function lampMaxed(state, id) {
@@ -776,12 +797,22 @@ function loseLife(run, years) {
   else run.lifeFlat -= years;
 }
 
+// 灯纹“道心”按所在境界给的属性：跟着境界走，不记进 run.stats。
+function lampAttr(state) {
+  return Math.round(REALMS[state.run.realm].attr * LAMP_ATTR * lampLevel(state, 'm3'));
+}
+
+// 灯纹“厚胎”在破境寿元上多加的年数，realm 不给就按眼下的境界算。
+function lampLife(state, realm) {
+  return Math.floor(REALM_LIFE[realm === undefined ? state.run.realm : realm] * LAMP_LIFE * lampLevel(state, 'r1'));
+}
+
 function attrs(state) {
   const run = state.run;
   const out = {};
   const fate = fateInfo(run);
   ATTRS.forEach((k) => {
-    out[k] = run.stats[k] + sumSkills(run, k) + (fate[k] || 0);
+    out[k] = run.stats[k] + sumSkills(run, k) + (fate[k] || 0) + lampAttr(state);
   });
   const demonTens = Math.floor(run.demon / 10);
   out.edge += sumSkills(run, 'storeEdge') * Math.floor(run.chance / STORE_EDGE_PER) + sumSkills(run, 'demonEdge') * demonTens;
@@ -828,19 +859,24 @@ function qiRate(state) {
   const run = state.run;
   if (run.phase !== 'alive') return 0;
   const bonus = (rootOf(run).qi || 0) + sumSkills(run, 'qi') + sumSkills(run, 'skillQi') * run.skills.length +
-    (hasSet(run, 'pill', 2) ? 0.3 : 0) + 0.2 * lampLevel(state, 'r4') + mech(run, 'demonFuel') * Math.floor(run.demon / 10);
+    (hasSet(run, 'pill', 2) ? 0.3 : 0) + mech(run, 'demonFuel') * Math.floor(run.demon / 10);
   const fate = fateInfo(run);
   const demon = run.mode === 'demon' ? 1 + MAX_DEMON * DEMON_QI_RATE : 1;
   const cave = 1 + mountain.arrayBonus(run.cave ? run.cave.array : 0);
-  return REALMS[run.realm].rate * (1 + bonus) * (1 + (fate.qi || 0)) * demon * cave;
+  return REALMS[run.realm].rate * (1 + bonus) * (1 + LAMP_QI * lampLevel(state, 'r4')) * (1 + (fate.qi || 0)) * demon * cave;
+}
+
+function humanLifeCap(state, realm, lifeFlat) {
+  const run = state.run;
+  const fate = fateInfo(run);
+  const flat = BASE_LIFE + 10 * lampLevel(state, 'r1') + lampLife(state, realm) + lifeFlat + sumSkills(run, 'life') + (fate.lifeFlat || 0);
+  return Math.max(1, Math.floor(flat * (hasSet(run, 'body', 2) ? 1.2 : 1) * (1 + (fate.lifeRate || 0))));
 }
 
 function maxLife(state) {
   const run = state.run;
   if (run.mode === 'demon') return Math.max(1, run.fallAge + run.demonLife);
-  const fate = fateInfo(run);
-  const flat = BASE_LIFE + 10 * lampLevel(state, 'r1') + run.lifeFlat + sumSkills(run, 'life') + (fate.lifeFlat || 0);
-  return Math.max(1, Math.floor(flat * (hasSet(run, 'body', 2) ? 1.2 : 1) * (1 + (fate.lifeRate || 0))));
+  return humanLifeCap(state, run.realm, run.lifeFlat);
 }
 
 function yearsLeft(state) {
@@ -2784,7 +2820,8 @@ function wornItems(run) {
 }
 
 function gearScore(state) {
-  return wornItems(state.run).reduce((sum, item) => sum + (item ? gear.score(item) : 0), 0);
+  const base = wornItems(state.run).reduce((sum, item) => sum + (item ? gear.score(item) : 0), 0);
+  return Math.round(base * (1 + LAMP_GEAR * lampLevel(state, 'r5')));
 }
 
 // 得到一件装备：槽位空着就穿上，否则进背包；背包满了当场分解。
@@ -3198,15 +3235,19 @@ function boltView(state, trib, tests, overall) {
 function tribulationTerms(state, trib) {
   const run = state.run;
   const safe = hasSet(run, 'body', 4);
-  const baseYears = safe ? Math.ceil(trib.failYears / 2) : trib.failYears;
+  const baseYears = (safe ? Math.ceil(trib.failYears / 2) : trib.failYears) * (trib.wall ? 1 - LAMP_WALL_YEARS * lampLevel(state, 'm6') : 1);
   const keep = Math.min(MAX_KEEP_QI, 0.5 + sumSkills(run, 'keepQi'));
+  const lifeBonus = trib.life + (hasSet(run, 'pill', 4) ? 15 : 0) + sumSkills(run, 'tribLife');
+  const lifeGain = trib.final || run.mode === 'demon' ? 0 :
+    humanLifeCap(state, run.realm + 1, run.lifeFlat + lifeBonus) - humanLifeCap(state, run.realm, run.lifeFlat);
   return {
     failYears: Math.ceil(baseYears * (1 - Math.min(MAX_TRIB_YEARS_CUT, sumSkills(run, 'tribYears'))) - 1e-9),
     keep: keep,
     keepText: keep === 0.5 ? '灵气散去一半' : '灵气只保住 ' + pctText(keep),
     failDemon: demonGain(state, TRIB_FAIL_DEMON),
     safe: safe,
-    lifeBonus: trib.life + (hasSet(run, 'pill', 4) ? 15 : 0) + sumSkills(run, 'tribLife')
+    lifeBonus: lifeBonus,
+    lifeGain: lifeGain
   };
 }
 
@@ -3229,7 +3270,7 @@ function enterNextRealm(state, info, lines) {
     lines.push('魔躯燃寿已定，不加寿元');
   } else {
     run.lifeFlat += info.lifeBonus;
-    lines.push('寿元上限 +' + info.lifeBonus + ' 年');
+    lines.push('寿元上限 +' + info.lifeGain + ' 年');
   }
   const wick = mech(run, 'wickLive') * 5;
   if (wick) {
@@ -3544,9 +3585,20 @@ function setCarry(state, id) {
   return true;
 }
 
+// 灯纹“随葬”：身上装备分最高的几件带去下一世，强化归零，品级、阶和词条不变。
+function buriedGear(state) {
+  return wornItems(state.run).filter(Boolean).sort((a, b) => gear.score(b) - gear.score(a)).slice(0, lampLevel(state, 'm7'))
+    .map((item) => ({ slot: item.slot, grade: item.grade, tier: item.tier, level: 0, affixes: item.affixes.slice() }));
+}
+
 function reincarnate(state, now, rng) {
   if (state.run.phase !== 'dead') return false;
+  const buried = buriedGear(state);
   state.run = newRun(state, rng);
+  gear.SLOTS.forEach((slot) => {
+    const item = buried.filter((entry) => entry.slot === slot.id)[0];
+    if (item) gearGain(state, item);
+  });
   state.lastTime = now;
   return true;
 }
@@ -3568,6 +3620,11 @@ function chooseRoot(state, id, now, rng) {
   run.rootChoices = [];
   run.rootRolls = 0;
   run.phase = 'alive';
+  const buried = wornItems(run).filter(Boolean);
+  if (buried.length) {
+    const names = buried.map((item) => gear.describe(item).name);
+    run.log.push({ age: 0, title: '随葬', text: '前世的' + names.join('、') + '跟着来了，强化归零。', detail: '' });
+  }
   ATTRS.forEach((k) => {
     run.stats[k] = (root[k] || 0) + lampLevel(state, 'm3');
   });
@@ -3591,7 +3648,7 @@ function lampCost(state, id) {
 }
 
 function buyLamp(state, id) {
-  if (!findById(LAMPS, id) || lampMaxed(state, id)) return false;
+  if (!lampOpen(state, id) || lampMaxed(state, id)) return false;
   const cost = lampCost(state, id);
   if (state.wick < cost) return false;
   state.wick -= cost;
@@ -3712,6 +3769,21 @@ function normalizeSea(run, raw) {
   };
 }
 
+// 投胎阶段只允许随葬带过来的身上装备：强化必须是零，件数不能超过灯纹等级。
+function normalizeRootGear(state, raw) {
+  const out = emptyGear();
+  const saved = normalizeGear(raw);
+  let left = lampLevel(state, 'm7');
+  gear.SLOTS.forEach((slot) => {
+    const item = saved.worn[slot.id];
+    if (!item || item.level || left < 1) return;
+    left--;
+    item.uid = ++out.seq;
+    out.worn[slot.id] = item;
+  });
+  return out;
+}
+
 function normalizeRun(state, raw, rng) {
   const run = newRun(state, rng);
   if (!raw || typeof raw !== 'object') return run;
@@ -3728,6 +3800,7 @@ function normalizeRun(state, raw, rng) {
         run.rootChoices = choices;
         if (raw.rootRolls !== undefined) run.rootRolls = toCount(raw.rootRolls, ROOT_REROLLS);
       }
+      run.gear = normalizeRootGear(state, raw.gear);
     }
     return run;
   }
@@ -3889,9 +3962,11 @@ function normalizeState(raw, now, rng) {
   state.mountainLegacy = mountain.normalizeArchive(raw.mountainLegacy, state.lives, toCount);
   const best = Math.floor(Number(raw.best));
   state.best = Number.isFinite(best) ? clamp(best, -1, WICK_SCORE.length - 1) : -1;
+  // 这一世还没恢复，先把它的境界传给灯纹的开放和上限判断。
+  const rawRealm = raw.run && typeof raw.run === 'object' ? toCount(raw.run.realm, REALMS.length - 1) : 0;
   const lamps = raw.lamps || {};
   LAMPS.forEach((lamp) => {
-    const level = toCount(lamps[lamp.id], lampMax(state, lamp.id));
+    const level = lampOpen(state, lamp.id, rawRealm) ? toCount(lamps[lamp.id], lampMax(state, lamp.id, rawRealm)) : 0;
     if (level) state.lamps[lamp.id] = level;
   });
   const tomes = raw.tomes || {};
@@ -4152,6 +4227,8 @@ module.exports = {
   reincarnate,
   chooseRoot,
   lampCost,
+  peakRealm,
+  lampOpen,
   lampMaxed,
   lampMax,
   TRIB_ASPECTS,
@@ -4164,6 +4241,12 @@ module.exports = {
   PATH_MAIN,
   PATH_WEAK,
   DEEP_LAMPS,
+  DEEP_REALMS,
+  LAMP_QI,
+  LAMP_ATTR,
+  LAMP_LIFE,
+  LAMP_GEAR,
+  LAMP_WALL_YEARS,
   tribPlan,
   tribTerm,
   pathReady,

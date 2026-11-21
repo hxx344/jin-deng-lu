@@ -365,7 +365,10 @@
           </view>
           <view class="desc">{{item.desc}}</view>
         </view>
-        <view wx:if="{{item.maxed}}" class="btn btn-off">
+        <view wx:if="{{item.locked}}" class="btn btn-off">
+          <text class="btn-title">尚未开放</text>
+        </view>
+        <view wx:elif="{{item.maxed}}" class="btn btn-off">
           <text class="btn-title">已点满</text>
         </view>
         <view wx:else class="btn {{item.affordable ? '' : 'btn-off'}}" hover-class="btn-hover" hover-stay-time="60" data-id="{{item.id}}" bindtap="onBuyLamp">

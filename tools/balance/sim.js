@@ -265,7 +265,7 @@ function buyLamps(state) {
   for (;;) {
     let best = null;
     game.LAMPS.forEach((lamp) => {
-      if (game.lampMaxed(state, lamp.id)) return;
+      if (!game.lampOpen(state, lamp.id) || game.lampMaxed(state, lamp.id)) return;
       const cost = game.lampCost(state, lamp.id);
       if (cost <= state.wick && (!best || cost < best.cost)) best = { id: lamp.id, cost: cost };
     });
@@ -619,7 +619,7 @@ function render(data) {
     '',
     '- 每种打法 ' + config.saves + ' 个存档，每个存档连续玩 ' + config.lives + ' 世，随机种子 ' + config.seed + ' 起逐档加一，结果可完全复现。',
     '- 时间：灵气和机缘只随耗掉的寿元涨。有机缘就翻，机缘用完就静坐到下一次机缘回来；每次选择或操作算 ' + config.choiceSeconds + ' 秒。“时长”是这些操作时间加上后文说的等装备时间。',
-    '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。“灯纹全满”把随重天加深的等级也算在内。',
+    '- 灯芯：每世结束后从最便宜的灯纹买起，买到买不起为止。化神后才开放的灯纹没开放时买不了。“灯纹全满”把随重天和境界加深的等级、化神后才开放的灯纹也算在内。',
     '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '后期、灵气满了再渡过' + game.TRIBS[LAST_REALM].name + '，在最高一重做到就解锁下一重。',
     '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
     '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',

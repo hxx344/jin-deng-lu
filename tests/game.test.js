@@ -1111,6 +1111,158 @@ test('灯纹效果：产出、机缘、渡劫、心魔、闭关和开局加成',
   assert.strictEqual(t.run.freeRerolls, 1);
 });
 
+test('灯纹后期缩放：聚气独立相乘，道心随境界加属性，厚胎加破境寿元', () => {
+  const qi = born('pill');
+  qi.lamps.r4 = 2;
+  near(game.qiRate(qi), 1.15 * (1 + 2 * game.LAMP_QI));
+
+  const attrs = born();
+  attrs.lamps.m3 = 5;
+  attrs.run.stats = { edge: 0, body: 0, mind: 0 };
+  attrs.run.realm = 5;
+  assert.deepStrictEqual(game.attrs(attrs), { edge: 12, body: 12, mind: 12 });
+  attrs.run.realm = game.REALMS.length - 1;
+  assert.deepStrictEqual(game.attrs(attrs), { edge: 57, body: 57, mind: 57 });
+  assert.deepStrictEqual(attrs.run.stats, { edge: 0, body: 0, mind: 0 }, '境界加成不重复写进永久属性');
+
+  const life = born();
+  life.lamps.r1 = 3;
+  life.run.stage = 2;
+  life.run.qi = game.qiCap(life);
+  const before = game.maxLife(life);
+  assert.strictEqual(game.tribulationInfo(life).lifeGain, 32);
+  const crossed = crossTrib(life, () => 0);
+  assert.strictEqual(life.run.realm, 1);
+  assert.strictEqual(game.maxLife(life), before + 32);
+  assert.ok(crossed.lines.includes('寿元上限 +32 年'));
+  const realmLife = game.TRIBS.slice(0, game.REALMS.length - 1).reduce((sum, trib) => sum + trib.life, 0);
+  life.run.realm = game.REALMS.length - 1;
+  life.run.lifeFlat = realmLife;
+  const withLamp = game.maxLife(life);
+  life.lamps.r1 = 0;
+  assert.strictEqual(withLamp - game.maxLife(life), 30 + Math.floor(realmLife * 3 * game.LAMP_LIFE));
+});
+
+test('厚胎突破预览：薄命和体系倍率后的实际增量与日志一致', () => {
+  [
+    { fate: 'short', skills: [], expected: 46 },
+    { fate: '', skills: ['bo1', 'bo2'], expected: 79 }
+  ].forEach((setup) => {
+    const s = born();
+    s.run.fate = setup.fate;
+    s.lamps.r1 = 3;
+    give(s, setup.skills);
+    s.run.realm = 1;
+    s.run.stage = 2;
+    s.run.qi = game.qiCap(s);
+    const before = game.maxLife(s);
+    const info = game.tribulationInfo(s);
+    const crossed = crossTrib(s, () => 0);
+    const actual = game.maxLife(s) - before;
+    assert.strictEqual(actual, setup.expected);
+    assert.strictEqual(info.lifeGain, actual);
+    assert.ok(crossed.lines.includes('寿元上限 +' + actual + ' 年'));
+  });
+});
+test('后期灯纹：化神开放，四种境界和重天加深三种灯纹的上限', () => {
+  const s = born();
+  s.wick = 1000000;
+  s.totalWick = 1000000;
+  ['r5', 'm6', 'm7'].forEach((id) => {
+    assert.strictEqual(game.lampOpen(s, id), false);
+    assert.strictEqual(game.buyLamp(s, id), false);
+  });
+  assert.strictEqual(s.wick, 1000000);
+  game.DEEP_REALMS.forEach((realm, i) => {
+    s.run.realm = realm;
+    assert.strictEqual(game.lampMax(s, 'r1'), 3 + i + 1);
+    assert.strictEqual(game.lampMax(s, 'r4'), 5 + i + 1);
+    assert.strictEqual(game.lampMax(s, 'm3'), 5 + i + 1);
+    assert.strictEqual(game.lampMax(s, 'r2'), 1);
+  });
+  ['r5', 'm6', 'm7'].forEach((id) => assert.strictEqual(game.lampOpen(s, id), true));
+  s.heavenMax = 2;
+  assert.strictEqual(game.lampMax(s, 'r1'), 3 + game.DEEP_REALMS.length + 2);
+  assert.ok(game.buyLamp(s, 'r5'));
+  assert.strictEqual(s.lamps.r5, 1);
+  assert.strictEqual(s.wick, 1000000 - 60);
+  assert.deepStrictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0), s);
+});
+
+test('后期灯纹：铸胚加装备分，渡厄只减大关和终劫的失败折寿', () => {
+  const s = born();
+  s.run.realm = 7;
+  s.run.stage = 2;
+  s.run.gear.worn.weapon = { uid: 1, slot: 'weapon', grade: 3, tier: 9, level: 5, affixes: ['atk', 'crit', 'haste'] };
+  s.run.qi = game.qiCap(s);
+  const gearNeed = game.tribGear(s).need;
+  const gearScore = game.gearScore(s);
+  assert.strictEqual(game.tribulationInfo(s).failYears, 400);
+  s.lamps.r5 = 5;
+  s.lamps.m6 = 3;
+  assert.strictEqual(game.tribGear(s).need, gearNeed);
+  assert.strictEqual(game.gearScore(s), Math.round(gearScore * (1 + 5 * game.LAMP_GEAR)));
+  assert.strictEqual(game.tribGear(s).score, game.gearScore(s));
+  assert.strictEqual(game.combatPowerDetails(s).sources.filter((source) => source.id === 'gear')[0].value, game.gearScore(s));
+  assert.strictEqual(game.tribulationInfo(s).failYears, 280);
+
+  s.run.realm = 6;
+  s.run.qi = game.qiCap(s);
+  assert.strictEqual(game.tribulationInfo(s).wall, false);
+  assert.strictEqual(game.tribulationInfo(s).failYears, game.TRIBS[6].failYears);
+
+  s.run.realm = game.REALMS.length - 1;
+  s.run.stage = 2;
+  s.run.qi = game.qiCap(s);
+  s.run.lifeFlat = 5000;
+  const finalInfo = game.tribulationInfo(s);
+  assert.strictEqual(finalInfo.final, true);
+  assert.strictEqual(finalInfo.failYears, 2100);
+  assert.strictEqual(finalInfo.gear.need, game.TRIBS[s.run.realm].gear);
+  assert.strictEqual(finalInfo.gear.score, game.gearScore(s));
+  const failed = game.attemptTribulation(s, () => 0.999999, 'endure');
+  assert.strictEqual(failed.dead, false);
+  assert.strictEqual(s.run.age, 2100);
+  assert.ok(failed.lines.includes('折寿 2100 年'));
+});
+
+test('随葬：装备分最高的几件跨世保留，强化归零，其他装备和背包清空', () => {
+  const gear = require('../utils/gear');
+  const s = born();
+  s.run.realm = 5;
+  s.lamps.m7 = 2;
+  s.run.gear.worn.weapon = { uid: 1, slot: 'weapon', grade: 6, tier: 100, level: 5, affixes: ['atk', 'crit', 'haste', 'hp', 'reduce', 'pierce'] };
+  s.run.gear.worn.armor = { uid: 2, slot: 'armor', grade: 3, tier: 9, level: 5, affixes: ['hp', 'reduce', 'crit'] };
+  s.run.gear.worn.crown = { uid: 3, slot: 'crown', grade: 0, tier: 1, level: 0, affixes: [] };
+  s.run.gear.pack = [{ uid: 4, slot: 'boots', grade: 2, tier: 20, level: 3, affixes: ['haste', 'hp'] }];
+  s.run.gear.forge = 20;
+  const expected = Object.values(s.run.gear.worn).filter(Boolean).sort((a, b) => gear.score(b) - gear.score(a)).slice(0, 2);
+  assert.ok(game.retire(s));
+  assert.ok(game.reincarnate(s, 0, () => 0));
+  assert.strictEqual(s.run.phase, 'root');
+  expected.forEach((item) => {
+    const carried = s.run.gear.worn[item.slot];
+    assert.ok(carried, item.slot + ' 应随葬');
+    assert.strictEqual(carried.grade, item.grade);
+    assert.strictEqual(carried.tier, item.tier);
+    assert.strictEqual(carried.level, 0);
+    assert.deepStrictEqual(carried.affixes, item.affixes);
+    assert.notStrictEqual(carried.affixes, item.affixes);
+  });
+  assert.strictEqual(s.run.gear.worn.crown, null);
+  assert.deepStrictEqual(s.run.gear.pack, []);
+  assert.strictEqual(s.run.gear.forge, 0);
+  assert.strictEqual(game.lampOpen(s, 'm7'), true, '到过的化神在投胎后仍算数');
+  assert.deepStrictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0), s);
+  assert.ok(game.chooseRoot(s, s.run.rootChoices[0], 0, () => 0));
+  assert.strictEqual(s.run.log[0].title, '随葬');
+
+  const plain = born();
+  plain.run.gear.worn.weapon = { uid: 1, slot: 'weapon', grade: 3, tier: 9, level: 5, affixes: ['atk', 'crit', 'haste'] };
+  game.retire(plain);
+  game.reincarnate(plain, 0, () => 0);
+  assert.strictEqual(plain.run.gear.worn.weapon, null);
+});
 test('前世功法：身死后挑一门，以凡品带入下一世', () => {
   const s = born();
   give(s, ['bo6', 'sw1'], 3);
@@ -1162,7 +1314,7 @@ test('存档校验：逐字段修正越界和非法的值', () => {
   assert.strictEqual(s.lives, 2);
   assert.strictEqual(s.best, game.REALMS.length * game.STAGES.length - 1);
   assert.strictEqual(s.lastTime, 7000);
-  assert.deepStrictEqual(s.lamps, { r1: 3, m3: 2 });
+  assert.deepStrictEqual(s.lamps, { r1: 7, m3: 2 });
   assert.deepStrictEqual(s.epitaphs, ['a', 'b']);
   assert.strictEqual(s.carry, '');
   const run = s.run;
@@ -1287,7 +1439,7 @@ test('内容完整性：功法、事件、因果和灯纹的数据都能被规�
   });
   assert.strictEqual(new Set(game.SKILLS.map((k) => k.id)).size, 40);
   assert.strictEqual(new Set(game.SKILLS.map((k) => k.name)).size, 40);
-  assert.strictEqual(game.LAMPS.length, 14);
+  assert.strictEqual(game.LAMPS.length, 17);
   assert.strictEqual(game.TRIBS.length, game.REALMS.length);
 });
 
