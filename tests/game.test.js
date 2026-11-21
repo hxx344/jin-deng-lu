@@ -410,7 +410,7 @@ test('静坐：劫期逾期照样多折寿，寿尽时坐死', () => {
   assert.strictEqual(old.run.death.cause, 'age');
   assert.strictEqual(game.canMeditate(old), false);
 });
-test('机缘收紧：投胎只带上限的三分之一，境界越高攒得越慢', () => {
+test('机缘收紧：投胎只带上限的三分之一，境界越高攒得越慢，元婴之后涨得更陡', () => {
   const s = born();
   assert.strictEqual(game.maxChance(s), 60);
   assert.strictEqual(s.run.chance, 20);
@@ -420,8 +420,15 @@ test('机缘收紧：投胎只带上限的三分之一，境界越高攒得越�
   s.run.chance = 0;
   // 元婴攒一次要 8.7 年，静坐一次坐满 9 年
   assert.strictEqual(game.meditateYears(s), 9);
+  // 元婴之后每个大境界 ×1.3：化神约 11.4 年，踏天约 265 年，是原先 ×1.15 时的近五倍
+  assert.strictEqual(game.CHANCE_HIGH_GROWTH, 1.3);
+  s.run.realm = 5;
+  near(game.chanceYears(s), 5 * Math.pow(1.15, 4) * 1.3);
+  s.run.realm = game.REALMS.length - 1;
+  near(game.chanceYears(s), 5 * Math.pow(1.15, 4) * Math.pow(1.3, 13));
+  assert.ok(game.chanceYears(s) > 4.5 * 5 * Math.pow(1.15, 17));
+  assert.strictEqual(game.meditateYears(s), 265);
 });
-
 test('翻开机缘消耗一次机缘，没有机缘或已有未决事件时不能再翻', () => {
   const s = born();
   assert.strictEqual(game.drawEvent(s, mulberry(1)), true);
@@ -463,18 +470,49 @@ test('选项：说明与结算一致，每次选择才消耗寿元', () => {
   assert.strictEqual(s.run.age, 2);
 });
 
-test('保底选项“闭关不理”：耗 1 年并过 1 年时间，另得一成丹田容量的灵气', () => {
+test('保底选项“闭关不理”：耗 1 年并过 1 年时间，六成得一成丹田容量的灵气，也可能一无所获或岔气', () => {
   const s = born();
   setEvent(s, 'a_voice');
-  assert.deepStrictEqual(game.eventView(s).fallback, { label: '闭关不理', desc: '灵气 +10', years: 1, fatal: false });
+  assert.deepStrictEqual(game.eventView(s).fallback, { label: '闭关不理', desc: '60% 灵气 +10；25% 一无所获；15% 岔气，灵气 -10，心魔 +2', years: 1, fatal: false });
   const gain = game.qiRate(s) * game.YEAR_SECONDS;
-  const r = game.choose(s, -1, () => 0);
+  const r = game.choose(s, -1, () => 0.59);
   assert.strictEqual(r.label, '闭关不理');
   near(s.run.qi, 10 + gain);
   assert.strictEqual(s.run.age, 1);
   assert.strictEqual(s.run.demon, 0);
-});
 
+  // 一无所获：只有这一年自己涨的灵气
+  const none = born();
+  setEvent(none, 'a_voice');
+  const quiet = game.choose(none, -1, () => 0.6);
+  assert.deepStrictEqual(quiet.lines, ['心绪不宁，一无所获']);
+  assert.deepStrictEqual(quiet.tags, ['seclude']);
+  near(none.run.qi, gain);
+  assert.strictEqual(none.run.demon, 0);
+  assert.strictEqual(none.run.age, 1);
+  assert.strictEqual(none.run.wake, 'rest');
+
+  // 岔气：散掉一成丹田容量的灵气，心魔 +2
+  const bad = born();
+  bad.run.qi = 50;
+  setEvent(bad, 'a_voice');
+  const slip = game.choose(bad, -1, () => 0.85);
+  assert.deepStrictEqual(slip.lines, ['岔了气：灵气 -10，心魔 +2']);
+  assert.deepStrictEqual(slip.tags, ['seclude', 'lose', 'demon+']);
+  near(bad.run.qi, 50 + gain - 10);
+  assert.strictEqual(bad.run.demon, 2);
+
+  // 岔气不会把心魔推满
+  const dry = born();
+  dry.run.demon = 99;
+  setEvent(dry, 'a_voice');
+  assert.strictEqual(game.eventView(dry).fallback.desc, '60% 灵气 +10；25% 一无所获；15% 岔气，灵气 -10');
+  const out = game.choose(dry, -1, () => 0.99);
+  assert.deepStrictEqual(out.lines, ['岔了气：灵气 -10']);
+  near(dry.run.qi, gain - 10);
+  assert.strictEqual(dry.run.demon, 99);
+  assert.strictEqual(dry.run.mode, 'human');
+});
 test('需要灵气的选项：不够时不可选且不产生任何变化，够时扣除', () => {
   const s = born();
   setEvent(s, 'a_auction');
@@ -955,7 +993,7 @@ test('灯纹效果：产出、机缘、渡劫、心魔、闭关和开局加成',
   near(game.tribulationInfo(s).chance, 0.15 + 0.7 * 0.0625 + 0.09 * 0.0625);
   setEvent(s, 'a_feast');
   assert.strictEqual(game.eventView(s).options[0].desc, '躯 +5，心魔 +11，记下【尝过仙肉】');
-  assert.strictEqual(game.eventView(s).fallback.desc, '灵气 +20');
+  assert.strictEqual(game.eventView(s).fallback.desc, '60% 灵气 +20；25% 一无所获；15% 岔气，灵气 -10，心魔 +1');
   game.choose(s, 0, () => 0);
   assert.strictEqual(s.run.demon, 11);
   assert.strictEqual(game.tribulationInfo(s).failDemon, 7);
@@ -1578,7 +1616,7 @@ test('特殊功法：传承耗寿、闭关、产出、机缘、渡劫和灯芯�
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 1 }], rerolls: 0 };
   const v = game.eventView(s);
   assert.strictEqual(v.options[0].years, 1);
-  assert.strictEqual(v.fallback.desc, '灵气 +20');
+  assert.strictEqual(v.fallback.desc, '60% 灵气 +20；25% 一无所获；15% 岔气，灵气 -10，心魔 +2');
 
   s = born();
   give(s, ['pi5', 'lu2', 'lu8']);
@@ -1838,11 +1876,11 @@ test('自动机缘：花 100 灯芯一次解锁，读档和轮回后可用', () 
 test('自动机缘：挑估分最高的选项，会致命或入魔的不选，没有稳妥选项时留给玩家', () => {
   const s = withAuto(born());
   setEvent(s, 'a_trial');
-  // 稳拿的“试老方子”和闭关打平时选前者；要赌折寿的“试新丹”不如它
+  // 稳拿的“试老方子”最划算；要赌折寿的“试新丹”不如它
   assert.strictEqual(game.autoPick(s), 1);
-  // 只剩 2 年：耗 2 年的选项都会寿尽，剩下的里闭关最划算
+  // 只剩 2 年：耗 2 年的选项都会寿尽，剩下的里稳拿的“卖废纸”比可能岔气的闭关划算
   s.run.age = 58;
-  assert.strictEqual(game.autoPick(s), -1);
+  assert.strictEqual(game.autoPick(s), 2);
   // 只剩 1 年：连闭关都会寿尽，机缘原样留着
   s.run.age = 59;
   assert.strictEqual(game.autoPick(s), null);

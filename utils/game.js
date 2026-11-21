@@ -45,6 +45,9 @@ const BASE_MAX_CHANCE = 60;
 const START_CHANCE_SHARE = 1 / 3;
 // 每高一个大境界，攒一次机缘要过的年数乘这么多，和破境加的寿元一起涨。
 const CHANCE_REALM_GROWTH = 1.15;
+// 元婴之后每高一个大境界改乘这么多：后期寿元以千年计，机缘不能还按几十年一次给。
+const CHANCE_HIGH_REALM = 4;
+const CHANCE_HIGH_GROWTH = 1.3;
 // 灯油按现实时间积攒，离线也攒，跨世保留；一滴换一次机缘重抽。
 const OIL_INTERVAL_SEC = 900;
 const OIL_MAX = 6;
@@ -72,6 +75,11 @@ const TOME_WEIGHT = 0.5;
 const LEGACY_YEARS = 3;
 const FALLBACK_YEARS = 1;
 const FALLBACK_QI = 0.1;
+// “闭关不理”不保证有收获：这么大的机会入定得灵气，这么大的机会一无所获，剩下的是岔气。
+// 岔气散掉一成丹田容量的灵气并涨心魔，但不会把心魔推满。
+const FALLBACK_GAIN_P = 0.6;
+const FALLBACK_NONE_P = 0.25;
+const FALLBACK_DEMON = 2;
 const TRIB_FAIL_DEMON = 10;
 const MAX_DEMON = 100;
 // 突发只由主动行为触发。每世最多三次，突发结束后隔四次普通机缘才可再触发。
@@ -844,10 +852,15 @@ function maxChance(state) {
   return BASE_MAX_CHANCE + LAMP_CHANCE * lampLevel(state, 'y1') + (rootOf(run).chance || 0) + (hasSet(run, 'luck', 4) ? LUCK_SET_CHANCE : 0) + sumSkills(run, 'store');
 }
 
+// 境界越高，攒一次机缘要过的年数越多；元婴之后涨得更陡。
+function chanceRealmSlow(realm) {
+  return Math.pow(CHANCE_REALM_GROWTH, Math.min(realm, CHANCE_HIGH_REALM)) * Math.pow(CHANCE_HIGH_GROWTH, Math.max(0, realm - CHANCE_HIGH_REALM));
+}
+
 function chanceInterval(state) {
   const run = state.run;
   const slow = run.aftermath && run.aftermath.id === 'fortune' ? 1.5 : 1;
-  return CHANCE_INTERVAL_SEC * Math.pow(CHANCE_REALM_GROWTH, run.realm) / (1 + 0.15 * lampLevel(state, 'y4')) / (hasSet(run, 'luck', 4) ? 1.25 : 1) /
+  return CHANCE_INTERVAL_SEC * chanceRealmSlow(run.realm) / (1 + 0.15 * lampLevel(state, 'y4')) / (hasSet(run, 'luck', 4) ? 1.25 : 1) /
     (1 + sumSkills(run, 'speed')) / (1 + run.speed + (fateInfo(run).speed || 0)) * slow;
 }
 
@@ -1076,6 +1089,23 @@ function fallbackYears(state) {
   return (mech(state.run, 'freeSeclude') ? 0 : FALLBACK_YEARS) + tribTerm(state).years;
 }
 
+// 闭关岔气时散掉的灵气和涨的心魔。
+function fallbackSlip(state) {
+  const run = state.run;
+  return {
+    qi: qiAmount(state, FALLBACK_QI),
+    demon: run.mode === 'demon' ? 0 : clamp(demonGain(state, FALLBACK_DEMON), 0, MAX_DEMON - 1 - run.demon)
+  };
+}
+
+function fallbackDesc(state) {
+  const slip = fallbackSlip(state);
+  const gain = Math.round(FALLBACK_GAIN_P * 100);
+  const none = Math.round(FALLBACK_NONE_P * 100);
+  return gain + '% 灵气 +' + formatNumber(qiRewardAmount(state, fallbackQi(state))) + '；' + none + '% 一无所获；' +
+    (100 - gain - none) + '% 岔气，灵气 -' + formatNumber(slip.qi) + (slip.demon ? '，心魔 +' + slip.demon : '');
+}
+
 function rerollsLeft(state) {
   const run = state.run;
   if (!run.event || run.event.fruit || run.event.trigger) return 0;
@@ -1107,7 +1137,7 @@ function eventView(state) {
     }),
     fallback: {
       label: '闭关不理',
-      desc: '灵气 +' + formatNumber(qiRewardAmount(state, fallbackQi(state))),
+      desc: fallbackDesc(state),
       years: fallbackYears(state),
       fatal: fallbackYears(state) >= left
     },
@@ -1855,7 +1885,20 @@ function choose(state, index, rng) {
     run.age += years;
     passYears(state, years - overdue, lines, tags);
     tags.push('seclude');
-    addQiWithLines(state, qiRewardAmount(state, fallbackQi(state)), lines, tags);
+    const roll = rng();
+    if (roll < FALLBACK_GAIN_P) {
+      addQiWithLines(state, qiRewardAmount(state, fallbackQi(state)), lines, tags);
+    } else if (roll < FALLBACK_GAIN_P + FALLBACK_NONE_P) {
+      lines.push('心绪不宁，一无所获');
+    } else {
+      const slip = fallbackSlip(state);
+      const lost = Math.min(run.qi, slip.qi);
+      run.qi -= lost;
+      run.demon += slip.demon;
+      lines.push('岔了气：灵气 -' + formatNumber(Math.round(lost)) + (slip.demon ? '，心魔 +' + slip.demon : ''));
+      tags.push('lose');
+      if (slip.demon) tags.push('demon+');
+    }
   } else {
     const opt = def.options[index];
     if (!opt) return null;
@@ -2131,7 +2174,10 @@ function autoPick(state) {
     }
   });
   if (fallbackYears(state) < choiceYearsLeft(state)) {
-    const score = (isFull(state) ? 0 : 10 * fallbackQi(state) * (run.aftermath && run.aftermath.id === 'meridian' ? 0.7 : 1)) - fallbackYears(state) * autoYearWeight(state);
+    const slip = fallbackSlip(state);
+    const gain = isFull(state) ? 0 : 10 * fallbackQi(state) * (run.aftermath && run.aftermath.id === 'meridian' ? 0.7 : 1);
+    const score = FALLBACK_GAIN_P * gain - (1 - FALLBACK_GAIN_P - FALLBACK_NONE_P) * (10 * FALLBACK_QI + slip.demon * (run.demon >= 50 ? 0.8 : 0.4)) -
+      fallbackYears(state) * autoYearWeight(state);
     if (score > bestScore) best = -1;
   }
   return best;
@@ -3734,6 +3780,11 @@ module.exports = {
   DEMON_YEARS,
   DEMON_QI_RATE,
   CHANCE_INTERVAL_SEC,
+  CHANCE_HIGH_REALM,
+  CHANCE_HIGH_GROWTH,
+  FALLBACK_GAIN_P,
+  FALLBACK_NONE_P,
+  FALLBACK_DEMON,
   START_CHANCE_SHARE,
   CHANCE_REALM_GROWTH,
   BIG_EVERY,
