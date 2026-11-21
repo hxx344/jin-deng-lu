@@ -119,7 +119,14 @@ const WAKES = {
   rest: { name: '养精蓄锐', text: '上一回闭关养足了精神：这一回的选项少耗 1 年寿元' }
 };
 const WAKE_WIN = 0.1;
-const TYPE_WEIGHTS = [['legacy', 0.25], ['adventure', 0.36], ['karma', 0.23], ['idle', 0.12], ['rare', 0.04]];
+const TYPE_WEIGHTS = [['legacy', 0.36], ['adventure', 0.3], ['karma', 0.2], ['idle', 0.1], ['rare', 0.04]];
+// 已有功法越多，和功法有关的好事越少遇到：传承、带“得功法”选项的事件、给功法的大机缘，
+// 权重都除以 1 + 门数 × SKILL_FADE。指定必出传承的手段（剑系羁绊、说书先生、重抽传承）不受影响。
+const SKILL_FADE = 0.2;
+const SKILL_EVENTS = {};
+EVENTS.forEach((e) => {
+  if (e.options.some((o) => (o.fx && o.fx.skill) || (o.risk && o.risk.win && o.risk.win.skill))) SKILL_EVENTS[e.id] = true;
+});
 const TYPE_NAMES = { legacy: '传承', adventure: '奇遇', karma: '因果', fruit: '因果', idle: '闲事', rare: '奇缘', story: '故事', omen: '征兆', sudden: '突发' };
 const ATTRS = ['edge', 'body', 'mind'];
 const ATTR_NAMES = { edge: '锋', body: '躯', mind: '神' };
@@ -1209,13 +1216,23 @@ function seedsPendingKarma(run, ev) {
   return false;
 }
 
-function rollType(rng) {
-  let r = rng();
-  for (let i = 0; i < TYPE_WEIGHTS.length; i++) {
-    if (r < TYPE_WEIGHTS[i][1]) return TYPE_WEIGHTS[i][0];
-    r -= TYPE_WEIGHTS[i][1];
-  }
-  return TYPE_WEIGHTS[0][0];
+function skillFade(state) {
+  return 1 / (1 + SKILL_FADE * state.run.skills.length);
+}
+
+function typeWeights(state) {
+  const fade = skillFade(state);
+  return TYPE_WEIGHTS.map((item) => (item[0] === 'legacy' ? item[1] * fade : item[1]));
+}
+
+// 眼下翻开一次普通机缘是传承的机会（不算故事章节和因果结果先占掉的部分）。
+function legacyShare(state) {
+  const weights = typeWeights(state);
+  return weights[0] / weights.reduce((sum, w) => sum + w, 0);
+}
+
+function rollType(state, rng) {
+  return sample(TYPE_WEIGHTS, typeWeights(state), 1, rng)[0][0];
 }
 
 function generateEvent(state, rng, forcedType, excludeId) {
@@ -1247,11 +1264,11 @@ function generateEvent(state, rng, forcedType, excludeId) {
     } else if (stories.length && rng() < STORY_CHANCE) {
       type = 'story';
     } else {
-      type = rollType(rng);
+      type = rollType(state, rng);
     }
   } else if (type === 'story' && !stories.length) {
     // 重抽故事时没有别的章节可给，就当普通机缘重抽。
-    type = rollType(rng);
+    type = rollType(state, rng);
   }
   // 额外功法位加满后没有奇缘可给，当闲事处理。
   if (type === 'rare' && !EVENTS.some((e) => e.type === 'rare' && eligible(e))) type = 'idle';
@@ -1259,7 +1276,8 @@ function generateEvent(state, rng, forcedType, excludeId) {
     let pool = EVENTS.filter((e) => e.type === type && eligible(e));
     const fresh = pool.filter((e) => run.recent.indexOf(e.id) < 0);
     if (fresh.length) pool = fresh;
-    if (pool.length) return { kind: 'event', id: pick(pool, rng).id };
+    const fade = skillFade(state);
+    if (pool.length) return { kind: 'event', id: sample(pool, pool.map((e) => (SKILL_EVENTS[e.id] ? fade : 1)), 1, rng)[0].id };
   }
   const offers = legacyOffers(state, rng);
   if (offers.length) {
@@ -1531,7 +1549,8 @@ function drawBig(state, rng) {
   const before = snapshot(state);
   const beforeStage = run.realm * STAGES.length + run.stage;
   const pool = bigPool(state);
-  const ev = sample(pool, pool.map((item) => item.weight), 1, rng)[0];
+  const fade = skillFade(state);
+  const ev = sample(pool, pool.map((item) => item.weight * (item.skill ? fade : 1)), 1, rng)[0];
   const lines = [];
   const tags = ['big'];
   state.big -= 1;
@@ -3783,6 +3802,9 @@ module.exports = {
   DEMON_QI_RATE,
   CHANCE_INTERVAL_SEC,
   TYPE_WEIGHTS,
+  SKILL_FADE,
+  skillFade,
+  legacyShare,
   TOME_WEIGHT,
   LEGACY_FINE_CHANCE,
   CHANCE_HIGH_REALM,

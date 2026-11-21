@@ -429,35 +429,93 @@ test('机缘收紧：投胎只带上限的三分之一，境界越高攒得越�
   assert.ok(game.chanceYears(s) > 4.5 * 5 * Math.pow(1.15, 17));
   assert.strictEqual(game.meditateYears(s), 265);
 });
-test('功法出现得更少：传承占四分之一，新功法一成半直接是灵品，藏经阁功法的权重是普通功法的五分之一', () => {
+test('已有功法越多，和功法有关的好事越少遇到：传承、给功法的事件和大机缘的权重都按门数打折', () => {
   const weights = {};
   game.TYPE_WEIGHTS.forEach((item) => { weights[item[0]] = item[1]; });
-  assert.deepStrictEqual(weights, { legacy: 0.25, adventure: 0.36, karma: 0.23, idle: 0.12, rare: 0.04 });
-  near(game.TYPE_WEIGHTS.reduce((sum, item) => sum + item[1], 0), 1);
+  assert.deepStrictEqual(weights, { legacy: 0.36, adventure: 0.3, karma: 0.2, idle: 0.1, rare: 0.04 });
+  assert.strictEqual(game.SKILL_FADE, 0.2);
   assert.strictEqual(game.TOME_WEIGHT, 0.2);
   assert.strictEqual(game.LEGACY_FINE_CHANCE, 0.15);
 
-  const s = goldCore();
-  const rng = mulberry(7);
-  let legacy = 0;
-  let offers = 0;
-  let fine = 0;
-  const total = 4000;
-  for (let i = 0; i < total; i++) {
-    s.run.event = null;
-    s.run.chance = 5;
-    s.run.karma = [];
-    assert.ok(game.drawEvent(s, rng));
-    if (s.run.event.kind !== 'legacy') continue;
-    legacy++;
-    s.run.event.offers.forEach((offer) => {
-      offers++;
-      if (offer.level === 2) fine++;
-    });
+  const ids = ['sw1', 'sw2', 'pi1', 'pi2', 'ta1', 'ta2', 'bo1', 'bo2', 'lu1', 'lu2', 'lu3', 'lu4'];
+  const withSkills = (n) => {
+    const s = goldCore();
+    s.run.skills = [];
+    s.lamps.m5 = 4;
+    give(s, ids.slice(0, n), 1);
+    assert.strictEqual(s.run.skills.length, n);
+    return s;
+  };
+  // 一门没有时不打折，之后每多一门，权重的分母加 0.2
+  near(game.skillFade(withSkills(0)), 1);
+  near(game.skillFade(withSkills(5)), 0.5);
+  near(game.legacyShare(withSkills(0)), 0.36);
+  near(game.legacyShare(withSkills(4)), 0.2 / 0.84);
+  near(game.legacyShare(withSkills(8)), 0.36 / 2.6 / (0.64 + 0.36 / 2.6));
+  let last = 1;
+  for (let n = 0; n <= 12; n++) {
+    const share = game.legacyShare(withSkills(n));
+    assert.ok(share < last);
+    last = share;
   }
-  // 故事章节会先占掉一部分，所以传承只会比四分之一少
-  assert.ok(legacy / total > 0.17 && legacy / total < 0.28, '传承占比 ' + legacy / total);
-  assert.ok(fine / offers > 0.1 && fine / offers < 0.2, '灵品占比 ' + fine / offers);
+
+  const content = require('../utils/content');
+  const gives = (id) => content.EVENTS.find((e) => e.id === id).options.some((o) => (o.fx && o.fx.skill) || (o.risk && o.risk.win.skill));
+  const tally = (n) => {
+    const s = withSkills(n);
+    const skills = JSON.stringify(s.run.skills);
+    const rng = mulberry(7);
+    const out = { legacy: 0, event: 0, fine: 0, offers: 0 };
+    const total = 4000;
+    for (let i = 0; i < total; i++) {
+      s.run.event = null;
+      s.run.chance = 5;
+      s.run.karma = [];
+      s.run.recent = [];
+      s.run.skills = JSON.parse(skills);
+      assert.ok(game.drawEvent(s, rng));
+      if (s.run.event.kind !== 'legacy') {
+        if (gives(s.run.event.id)) out.event++;
+        continue;
+      }
+      out.legacy++;
+      s.run.event.offers.forEach((offer) => {
+        if (s.run.skills.some((item) => item.id === offer.id)) return;
+        out.offers++;
+        if (offer.level === 2) out.fine++;
+      });
+    }
+    return { legacy: out.legacy / total, event: out.event / total, fine: out.fine / out.offers };
+  };
+  const none = tally(0);
+  const many = tally(8);
+  // 故事章节会先占掉一部分，所以传承只会比算出来的略少
+  assert.ok(none.legacy > 0.28 && none.legacy < 0.39, '没有功法时传承占比 ' + none.legacy);
+  assert.ok(many.legacy > 0.12 && many.legacy < 0.21, '八门功法时传承占比 ' + many.legacy);
+  assert.ok(many.event < none.event * 0.75, '给功法的事件 ' + none.event + ' → ' + many.event);
+  assert.ok(none.fine > 0.1 && none.fine < 0.2, '灵品占比 ' + none.fine);
+
+  // 大机缘：仙蜕、缺的那一页、说书先生这三件给功法的好事同样打折
+  assert.deepStrictEqual(content.BIG_EVENTS.filter((ev) => ev.skill).map((ev) => ev.id), ['relic', 'bond', 'teller']);
+  const big = (n) => {
+    const s = withSkills(n);
+    const skills = JSON.stringify(s.run.skills);
+    const rng = mulberry(11);
+    let hit = 0;
+    const total = 3000;
+    for (let i = 0; i < total; i++) {
+      const t = JSON.parse(JSON.stringify(s));
+      t.run.skills = JSON.parse(skills);
+      t.big = 1;
+      const r = game.drawBig(t, rng);
+      assert.ok(r);
+      if (content.BIG_EVENTS.find((ev) => ev.title === r.label).skill) hit++;
+    }
+    return hit / total;
+  };
+  const few = big(1);
+  const lots = big(8);
+  assert.ok(lots < few * 0.75, '给功法的大机缘 ' + few + ' → ' + lots);
 });
 test('翻开机缘消耗一次机缘，没有机缘或已有未决事件时不能再翻', () => {
   const s = born();

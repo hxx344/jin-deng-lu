@@ -301,12 +301,12 @@ const LEGACY_INTROS = [
 // 大机缘：不给选项，随机落下一件。tone 为 good / wild / bad，分别是好事、说不准的事和坏事；
 // weight 是抽到的权重。每件事的实际效果和能否出现由 game.js 里同名的条目决定。
 const BIG_EVENTS = [
-  { id: 'relic', tone: 'good', weight: 12, title: '树上挂着的仙蜕', text: '一张仙人蜕下的旧皮挂在树杈上，怀里还揣着他没练完的东西。你替他练完了。' },
-  { id: 'bond', tone: 'good', weight: 10, title: '缺的那一页', text: '风把一页残卷拍在你脸上。你认得这笔迹：正是你手里那套功法缺的那一页。' },
+  { id: 'relic', tone: 'good', skill: true, weight: 12, title: '树上挂着的仙蜕', text: '一张仙人蜕下的旧皮挂在树杈上，怀里还揣着他没练完的东西。你替他练完了。' },
+  { id: 'bond', tone: 'good', skill: true, weight: 10, title: '缺的那一页', text: '风把一页残卷拍在你脸上。你认得这笔迹：正是你手里那套功法缺的那一页。' },
   { id: 'wick', tone: 'good', weight: 8, title: '灯芯自己长了', text: '夜里灯芯自己长出一截。灯里那个人没有叹气，这还是头一回。' },
   { id: 'youth', tone: 'good', weight: 8, title: '漏刻倒流', text: '守漏人睡着了，水往上走了一整夜。你醒来一照镜子，白头发少了几根。' },
   { id: 'thunder', tone: 'good', weight: 8, title: '一道没主的雷', text: '雷泽漏下来一道没人管的天劫，劈歪了，正劈在你头上。你没死，它倒认了你，说下回替你挡一挡。' },
-  { id: 'teller', tone: 'good', weight: 7, title: '说书先生讲到了你', text: '茶馆里的说书先生正讲到你。按他的本子，下一回你该得一场传承，听客们都等着。' },
+  { id: 'teller', tone: 'good', skill: true, weight: 7, title: '说书先生讲到了你', text: '茶馆里的说书先生正讲到你。按他的本子，下一回你该得一场传承，听客们都等着。' },
   { id: 'peer', tone: 'good', weight: 7, title: '拾荒人认了同行', text: '拾荒人看你捡东西的手法，认定你是同行，把哪条路上破烂多全告诉了你。' },
   { id: 'rotate', tone: 'wild', weight: 8, title: '装错了', text: '你睡得太沉，魂魄出去逛了一圈，回来时把锋、躯、神装错了位置。' },
   { id: 'fate', tone: 'wild', weight: 6, title: '拿错的命纸', text: '算命的收摊时，把你的命纸和隔壁摊主的弄混了。他说反正都是纸。' },
