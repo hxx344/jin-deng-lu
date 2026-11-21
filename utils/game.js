@@ -399,6 +399,7 @@ function createState(now, rng) {
     known: {},
     // 历练过到第几关的最高纪录，跨世保留。
     trainBest: 0,
+    defies: 0,
     run: null
   };
   state.run = newRun(state, rng || Math.random);
@@ -2854,6 +2855,26 @@ function fillBag(state, seconds) {
   if (run.battle.cleared > 0) run.battle.loot = Math.min(TRAIN_LOOT_MAX, run.battle.loot + seconds / TRAIN_LOOT_SEC);
 }
 
+// 第 stage 关头一回打过的所得：记最远一关，可能掉一件装备（第 1 关试招必掉兵器），得筑石和香火，首领关另得玉露。
+function clearReward(state, stage, roll) {
+  const run = state.run;
+  const boss = trainBoss(stage);
+  run.battle.cleared = stage;
+  state.trainBest = Math.max(state.trainBest, stage);
+  let drop = null;
+  if (stage === 1 || boss || run.gear.dry >= TRAIN_DROP_PITY || roll() < TRAIN_DROP) {
+    run.gear.dry = 0;
+    drop = gearGain(state, gear.roll(stage, roll, boss, stage === 1 ? 'weapon' : undefined));
+  } else {
+    run.gear.dry++;
+  }
+  const stone = mountain.addStone(run, boss ? TRAIN_BOSS_STONE : TRAIN_STONE);
+  const dew = boss ? mountain.addDew(run, TRAIN_BOSS_DEW) : 0;
+  const incense = stage === 1 ? STAR.trialIncense : (boss ? STAR.bossIncense : STAR.clearIncense);
+  run.incense += incense;
+  return { boss: boss, drop: drop, stone: stone, dew: dew, incense: incense };
+}
+
 // 过了第 stage 关：储物袋攒得更快，可能掉一件装备。只有首领关记一条见闻，免得刷屏。
 // 败退之后重打的关只往前挪一关，again 为真，什么都不给。
 function trainClear(state, stage, rng) {
@@ -2866,21 +2887,12 @@ function trainClear(state, stage, rng) {
     return { stage: stage, boss: boss, name: name, perHour: qiRewardAmount(state, trainRate(state)), drop: null, again: true };
   }
   if (run.battle.cleared >= TRAIN_MAX) return null;
-  run.battle.cleared = stage;
-  state.trainBest = Math.max(state.trainBest, stage);
+  const got = clearReward(state, stage, rng || Math.random);
   const perHour = qiRewardAmount(state, trainRate(state));
-  const roll = rng || Math.random;
-  let drop = null;
-  if (stage === 1 || boss || run.gear.dry >= TRAIN_DROP_PITY || roll() < TRAIN_DROP) {
-    run.gear.dry = 0;
-    drop = gearGain(state, gear.roll(stage, roll, boss, stage === 1 ? 'weapon' : undefined));
-  } else {
-    run.gear.dry++;
-  }
-  const stone = mountain.addStone(run, boss ? TRAIN_BOSS_STONE : TRAIN_STONE);
-  const dew = boss ? mountain.addDew(run, TRAIN_BOSS_DEW) : 0;
-  const incense = stage === 1 ? STAR.trialIncense : (boss ? STAR.bossIncense : STAR.clearIncense);
-  run.incense += incense;
+  const drop = got.drop;
+  const stone = got.stone;
+  const dew = got.dew;
+  const incense = got.incense;
   if (stage === 1) {
     run.log.push({ age: run.age, title: '试招', text: '击退' + name + '，拾得' + drop.item.grade + drop.item.name + '、香火 ' + incense, detail: '' });
     run.log = run.log.slice(-MAX_LOG);
@@ -2890,6 +2902,54 @@ function trainClear(state, stage, rng) {
     run.log = run.log.slice(-MAX_LOG);
   }
   return { stage: stage, boss: boss, name: name, perHour: perHour, drop: drop, stone: stone, dew: dew, incense: incense };
+}
+
+// 横推：从眼下这一关起，连着 SWEEP_MIN 关以上都能赢、而且每场掉的气血不到 1 - SWEEP_HP 时，一口气推过去，至多 SWEEP_MAX 关。
+// 每关按一场试打来判（寻常的关打一只小怪，首领关打首领），不过关就照常一关一关打。
+// 推过的关和打过的一样给东西，掉落、筑石、玉露合在一起结算，只记一条见闻。败退后重打的那几关不横推。
+const SWEEP_MIN = 3;
+const SWEEP_MAX = 10;
+const SWEEP_HP = 0.75;
+const SWEEP_SECONDS = 3;
+
+function trainSweep(state, rng) {
+  const run = state.run;
+  const start = trainStage(state);
+  // 第 1 关是凡胎的试招，照常打；引气之前不横推。
+  if (start < 2 || run.realm < TRAIN_REALM || run.battle.back > 0 || run.battle.cleared >= TRAIN_MAX) return null;
+  const roll = rng || Math.random;
+  let end = start - 1;
+  while (end - start + 1 < SWEEP_MAX && end < TRAIN_MAX) {
+    const fight = battle.simulate(trainFighter(state), trainFoe(state, end + 1), roll);
+    if (!fight.win || fight.me.hp < fight.me.max * SWEEP_HP) break;
+    end++;
+  }
+  if (end - start + 1 < SWEEP_MIN) return null;
+  const drops = [];
+  const bosses = [];
+  let stone = 0;
+  let dew = 0;
+  let incense = 0;
+  for (let stage = start; stage <= end; stage++) {
+    const got = clearReward(state, stage, roll);
+    if (got.drop) drops.push(got.drop);
+    if (got.boss) bosses.push(trainFoe(state, stage).name);
+    stone += got.stone;
+    dew += got.dew;
+    incense += got.incense;
+  }
+  const perHour = qiRewardAmount(state, trainRate(state));
+  const better = drops.filter((drop) => drop.better || drop.worn).length;
+  const parts = [];
+  if (bosses.length) parts.push('斩了' + bosses.join('、'));
+  if (drops.length) parts.push('装备 ' + drops.length + ' 件' + (better ? '（' + better + ' 件比身上的好）' : ''));
+  if (stone) parts.push('筑石 ' + stone + ' 块');
+  if (dew) parts.push('玉露 ' + dew + ' 滴');
+  if (incense) parts.push('香火 ' + incense);
+  run.log.push({ age: run.age, title: '历练', text: '一路横推，从第 ' + start + ' 关推到第 ' + end + ' 关' + (parts.length ? '：' + parts.join('，') : '') +
+    '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
+  run.log = run.log.slice(-MAX_LOG);
+  return { from: start, to: end, count: end - start + 1, bosses: bosses, drops: drops, better: better, stone: stone, dew: dew, incense: incense, perHour: perHour, seconds: SWEEP_SECONDS };
 }
 
 // 第 stage 关败了：往回退 TRAIN_RETREAT 关，最多退到第 1 关。返回退到了第几关。
@@ -3562,6 +3622,36 @@ function tribulationChance(state, ratio) {
   return clamp(tribulationParts(state, ratio).reduce((sum, part) => sum + part.value, 0), min, 0.98);
 }
 
+// 逆天渡劫：成功率不到 DEFY_CHANCE 还渡过了，另有加赏；把握越小赏得越多，成功率趋近 0 时翻倍。
+// 考的属性各加要求值的 DEFY_ATTR，寿元上限加这场天劫破境寿元的 DEFY_LIFE（终劫和魔修不加），灯芯加这个境界后期身死所得的 DEFY_WICK。
+// 逐道雷的天劫按实际接过的每道必接雷的成功率连乘来判。
+const DEFY_CHANCE = 0.3;
+const DEFY_ATTR = 0.1;
+const DEFY_LIFE = 0.2;
+const DEFY_WICK = 0.25;
+
+function defyReward(state, info, chance) {
+  if (!(chance > 0 && chance < DEFY_CHANCE)) return null;
+  const run = state.run;
+  const mult = 2 - chance / DEFY_CHANCE;
+  const score = WICK_SCORE[run.realm * STAGES.length + STAGES.length - 1] * (1 + HEAVEN_WICK * run.heaven);
+  return {
+    attr: Math.max(1, Math.round(info.req * DEFY_ATTR * mult)),
+    life: info.final || run.mode === 'demon' ? 0 : Math.round(TRIBS[run.realm].life * DEFY_LIFE * mult),
+    wick: Math.max(1, Math.round(score * DEFY_WICK * mult))
+  };
+}
+
+// 破境之后再发逆天的赏。reward 要在破境前用当时的境界算好。
+function grantDefy(state, info, chance, reward, lines) {
+  const run = state.run;
+  info.tests.forEach((k) => { run.stats[k] += reward.attr; });
+  run.lifeFlat += reward.life;
+  gainLiveWick(state, reward.wick);
+  state.defies++;
+  lines.push('逆天而行（成功率 ' + pctText(chance) + '）：' + boltRewardText(info.tests, reward));
+}
+
 function boltRewardText(tests, reward) {
   const parts = [];
   if (reward.attr) parts.push(tests.map((k) => ATTR_NAMES[k]).join('、') + (tests.length > 1 ? '各 +' : ' +') + reward.attr);
@@ -3811,16 +3901,24 @@ function tribulationInfo(state) {
     gear: gear,
     gate: gate,
     parts: tribulationParts(state, ratio),
+    defyChance: DEFY_CHANCE,
     // 逐道雷渡到一半时不再看灵气和魔修身份，否则这场劫既渡不完也退不出。关隘的材料没凑齐，这场劫落不下来。
     ready: run.phase === 'alive' && !run.pending && (!!run.trib || ((run.mode !== 'demon' || demonOk) && tribQiReady(state) && !(gate && gate.short)))
   });
   if (trib.bolts) {
+    // 逆天按整场算：已经接过的几道的成功率连乘，再乘剩下的必接雷全过的把握。
+    const odds = (run.trib && run.trib.odds) || 1;
     // chance 和 borrowChance 改成“剩下的必接雷全过”的把握，渡到余雷时是下一道余雷的把握。
     info.bolts = boltView(state, trib, plan.tests, info.chance);
     info.chance = info.bolts.left;
     info.borrowChance = info.bolts.leftBorrow;
     info.borrowReady = run.chance >= BOLT_BORROW_CHANCE;
     info.borrowCost = BOLT_BORROW_CHANCE;
+    info.defy = info.bolts.extra ? null : defyReward(state, info, odds * info.chance);
+    info.defyBorrow = info.bolts.extra ? null : defyReward(state, info, odds * info.borrowChance);
+  } else {
+    info.defy = defyReward(state, info, info.chance);
+    info.defyBorrow = defyReward(state, info, info.borrowChance);
   }
   return info;
 }
@@ -3848,9 +3946,16 @@ function attemptBolt(state, rng, method, info) {
   const trib = TRIBS[run.realm];
   const lines = [];
   const before = snapshot(state);
-  const out = { name: info.name, method: method, success: false, chance: 0, lines: lines, dead: false, done: true, broke: false, bolt: bolts.index, extra: bolts.extra };
+  const out = { name: info.name, method: method, success: false, chance: 0, lines: lines, dead: false, done: true, broke: false, bolt: bolts.index, extra: bolts.extra, defy: null };
+  const session = run.trib || { bolt: 0, gains: 0, odds: 1 };
   const settle = (gains) => {
+    const odds = session.odds === undefined ? 1 : session.odds;
+    const defy = defyReward(state, info, odds);
     enterNextRealm(state, info, lines);
+    if (defy) {
+      grantDefy(state, info, odds, defy, lines);
+      out.defy = { chance: odds, reward: defy };
+    }
     trib.extra.slice(0, gains).forEach((reward) => {
       info.tests.forEach((k) => { run.stats[k] += reward.attr || 0; });
       run.lifeFlat += reward.life || 0;
@@ -3873,9 +3978,9 @@ function attemptBolt(state, rng, method, info) {
       run.chance -= BOLT_BORROW_CHANCE;
       lines.push('借势：机缘 -' + BOLT_BORROW_CHANCE + '，这一道成功率 +' + pctText(BOLT_BORROW_TRIB));
     }
-    const session = run.trib || { bolt: 0, gains: 0 };
     out.success = rng() < chance;
     if (!bolts.extra && out.success) {
+      session.odds = (session.odds === undefined ? 1 : session.odds) * chance;
       session.bolt++;
       run.trib = session;
       lines.push('接住了第 ' + session.bolt + ' 道雷');
@@ -3912,7 +4017,7 @@ function attemptBolt(state, rng, method, info) {
   run.trib = null;
   run.tribBoon = 0;
   if (out.broke) maybeSudden(state, rng, 'thunder');
-  const head = method === 'scatter' ? '散功，渡劫失败：' : (out.broke ? '渡劫成功：' : '渡劫失败：');
+  const head = method === 'scatter' ? '散功，渡劫失败：' : (out.defy ? '逆天渡劫：' : (out.broke ? '渡劫成功：' : '渡劫失败：'));
   run.log.push({ age: run.age, title: info.name, text: head + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   out.dead = checkDeath(state, 'trib');
@@ -3937,22 +4042,28 @@ function attemptTribulation(state, rng, method) {
     lines.push('借势：机缘 -' + BORROW_CHANCE + '，成功率 +' + pctText(BORROW_TRIB));
   }
   let success = false;
+  let defy = null;
   if (method === 'scatter') {
     scatterQi(state, info, lines);
   } else {
     success = rng() < chance;
     if (success) {
+      const reward = defyReward(state, info, chance);
       enterNextRealm(state, info, lines);
+      if (reward) {
+        grantDefy(state, info, chance, reward, lines);
+        defy = { chance: chance, reward: reward };
+      }
     } else {
       failTribulation(state, info, lines);
     }
   }
   if (success) maybeSudden(state, rng, 'thunder');
   const methodName = method === 'borrow' ? '借势' : (method === 'scatter' ? '散功' : '硬抗');
-  run.log.push({ age: run.age, title: info.name, text: methodName + (success ? '，渡劫成功：' : '，渡劫失败：') + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log.push({ age: run.age, title: info.name, text: methodName + (defy ? '，逆天渡劫：' : (success ? '，渡劫成功：' : '，渡劫失败：')) + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   const dead = checkDeath(state, 'trib');
-  return { name: info.name, method: method, success: success, chance: chance, lines: lines, dead: dead, done: true, broke: success };
+  return { name: info.name, method: method, success: success, chance: chance, lines: lines, dead: dead, done: true, broke: success, defy: defy };
 }
 
 function retire(state) {
@@ -4353,7 +4464,8 @@ function normalizeRun(state, raw, rng) {
   if (boltTrib && raw.trib && typeof raw.trib === 'object') {
     const bolt = toCount(raw.trib.bolt, boltTrib.bolts.length);
     const gains = bolt === boltTrib.bolts.length ? toCount(raw.trib.gains, boltTrib.extra.length - 1) : 0;
-    if (bolt) run.trib = { bolt: bolt, gains: gains };
+    const odds = Number(raw.trib.odds);
+    if (bolt) run.trib = { bolt: bolt, gains: gains, odds: odds >= 0 && odds <= 1 ? odds : 1 };
   }
   run.event = normalizeEvent(raw.event, state);
   if (run.event && run.event.trigger && !run.sudden) run.sudden = { id: run.event.trigger, stage: run.event.stage };
@@ -4425,6 +4537,7 @@ function normalizeState(raw, now, rng) {
   state.arenaPoints = toCount(raw.arenaPoints);
   state.run = normalizeRun(state, raw.run, rng);
   state.trainBest = Math.max(toCount(raw.trainBest, TRAIN_MAX), state.run.battle.cleared);
+  state.defies = toCount(raw.defies, 1e6);
   // 挑好的前世功法在身死后、投胎选灵根前都要保留。
   const phase = state.run.phase;
   const carried = phase === 'dead' ? !!skillEntry(state.run, raw.carry) && !!findById(SKILLS, raw.carry) : phase === 'root' && !!findById(SKILLS, raw.carry);
@@ -4603,6 +4716,10 @@ module.exports = {
   arenaStanding,
   ARENA_MAX,
   TRAIN_MOBS,
+  SWEEP_MIN,
+  SWEEP_MAX,
+  SWEEP_HP,
+  DEFY_CHANCE,
   TRAIN_BOSS_EVERY,
   TRAIN_RETREAT,
   TRAIN_BAG_HOURS,
@@ -4622,6 +4739,8 @@ module.exports = {
   trainWaves,
   trainEncounter,
   trainClear,
+  trainSweep,
+  defyReward,
   trainLose,
   trainRate,
   trainBag,

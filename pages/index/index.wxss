@@ -4622,3 +4622,50 @@ button.sheet-btn::after {
   font-size: 24rpx;
   color: #ff9c8f;
 }
+
+/* 横推：一道剑光从左往右斜扫过场景。 */
+.sweep {
+  position: absolute;
+  left: -40%;
+  bottom: 60rpx;
+  width: 60%;
+  height: 26rpx;
+  border-radius: 13rpx;
+  opacity: 0;
+  transform: rotate(-12deg);
+  background: linear-gradient(90deg, rgba(255, 240, 200, 0) 0%, rgba(255, 236, 170, 0.9) 70%, #fffbe8 100%);
+  box-shadow: 0 0 30rpx rgba(255, 220, 140, 0.8);
+}
+
+.sweep-go1 {
+  animation: sweep-a 0.9s ease-out;
+}
+
+.sweep-go2 {
+  animation: sweep-b 0.9s ease-out;
+}
+
+@keyframes sweep-a {
+  0% { opacity: 0; left: -40%; }
+  15% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; left: 110%; }
+}
+
+@keyframes sweep-b {
+  0% { opacity: 0; left: -40%; }
+  15% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; left: 110%; }
+}
+
+/* 逆天渡劫的结算标题和那一行加赏。 */
+.sheet-title-defy {
+  color: #f2c14e;
+  text-shadow: 0 0 16rpx rgba(242, 193, 78, 0.6);
+}
+
+.result-line-defy {
+  color: #f2c14e;
+  font-weight: 600;
+}

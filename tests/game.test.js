@@ -1009,6 +1009,8 @@ test('渡劫：灵气圆满才能渡，成功率由考核属性、心魔和羁�
 
 test('渡劫成功：进入下一境界，加寿元，灵气归零', () => {
   const s = born();
+  // 把握高于逆天的线，免得混进逆天的加赏。
+  s.run.stats = { edge: 0, body: 16, mind: 16 };
   s.run.stage = 2;
   s.run.qi = 250;
   const info = game.tribulationInfo(s);
@@ -1328,6 +1330,7 @@ test('灯纹后期缩放：聚气独立相乘，道心随境界加属性，厚�
   assert.deepStrictEqual(attrs.run.stats, { edge: 0, body: 0, mind: 0 }, '境界加成不重复写进永久属性');
 
   const life = born();
+  life.run.stats = { edge: 0, body: 16, mind: 16 };
   life.lamps.r1 = 3;
   life.run.stage = 2;
   life.run.qi = game.qiCap(life);
@@ -1355,6 +1358,7 @@ test('厚胎突破预览：薄命和体系倍率后的实际增量与日志一�
     s.lamps.r1 = 3;
     give(s, setup.skills);
     s.run.realm = 1;
+    s.run.stats = { edge: 999, body: 999, mind: 999 };
     s.run.stage = 2;
     s.run.qi = game.qiCap(s);
     const before = game.maxLife(s);
@@ -3052,6 +3056,8 @@ test('散功淬体：被考属性各加要求值的 8%，每个大境界只淬�
 
 // 引气劫必接的雷全用随机数 0 接住，停在余雷阶段。
 function toExtra(s) {
+  // 把握高于逆天的线，余雷的测试不掺逆天的加赏。
+  s.run.stats = { edge: 0, body: 16, mind: 16 };
   for (let i = 0; i < game.TRIBS[0].bolts.length; i++) {
     const r = game.attemptTribulation(s, () => 0, 'endure');
     assert.ok(r.success && !r.done);
@@ -3083,7 +3089,8 @@ test('引气劫逐道雷：三道必接雷的成功率相乘等于整场成功�
     const r = game.attemptTribulation(s, () => cur.bolts.chance - 1e-9, 'endure');
     assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, extra: r.extra }, { success: true, done: false, broke: false, bolt: i + 1, extra: false });
     near(r.chance, cur.bolts.chance);
-    assert.deepStrictEqual(s.run.trib, { bolt: i + 1, gains: 0 });
+    assert.deepStrictEqual(s.run.trib, { bolt: i + 1, gains: 0, odds: s.run.trib.odds });
+    near(s.run.trib.odds, product);
     assert.strictEqual(s.run.realm, 0);
     assert.strictEqual(s.run.log.length, logs);
   });
@@ -3175,7 +3182,7 @@ test('引气劫逐道雷：渡到一半可以散功，必接阶段不能收劫�
 
   const e = toExtra(lateStage(born()));
   assert.strictEqual(game.attemptTribulation(e, () => 0, 'scatter'), null);
-  assert.deepStrictEqual(e.run.trib, { bolt: 3, gains: 0 });
+  assert.deepStrictEqual(e.run.trib, { bolt: 3, gains: 0, odds: e.run.trib.odds });
 });
 
 test('引气劫余雷：直接收劫破境，接住余雷收劫时拿奖励，接满两道自动收劫', () => {
@@ -3203,7 +3210,7 @@ test('引气劫余雷：直接收劫破境，接住余雷收劫时拿奖励，�
   r = game.attemptTribulation(s, () => 0, 'endure');
   assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, extra: r.extra }, { success: true, done: false, broke: false, bolt: 1, extra: true });
   assert.deepStrictEqual(r.lines, ['接住了第 1 道余雷', reward + '（收劫时到手）']);
-  assert.deepStrictEqual(s.run.trib, { bolt: 3, gains: 1 });
+  assert.deepStrictEqual(s.run.trib, { bolt: 3, gains: 1, odds: s.run.trib.odds });
   assert.deepStrictEqual(s.run.stats, stats);
   assert.deepStrictEqual(game.tribulationInfo(s).bolts.held, [reward]);
   assert.strictEqual(game.tribulationInfo(s).bolts.index, 2);
@@ -3248,6 +3255,7 @@ test('引气劫余雷：没接住照样破境，但已接余雷的奖励全失�
 
 test('引气劫渡到一半：不能翻机缘、用大机缘或静坐，读档后接着渡，非法的 trib 存档字段被丢弃', () => {
   const s = lateStage(born());
+  s.run.stats = { edge: 0, body: 16, mind: 16 };
   s.big = 1;
   game.attemptTribulation(s, () => 0, 'endure');
   const chance = s.run.chance;
@@ -3262,13 +3270,13 @@ test('引气劫渡到一半：不能翻机缘、用大机缘或静坐，读档�
   s.run.chance = chance;
 
   const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0);
-  assert.deepStrictEqual(loaded.run.trib, { bolt: 1, gains: 0 });
+  assert.deepStrictEqual(loaded.run.trib, { bolt: 1, gains: 0, odds: s.run.trib.odds });
   assert.deepStrictEqual(game.tribulationInfo(loaded).bolts, game.tribulationInfo(s).bolts);
   game.attemptTribulation(loaded, () => 0, 'endure');
   game.attemptTribulation(loaded, () => 0, 'endure');
   game.attemptTribulation(loaded, () => 0, 'endure');
   const again = game.normalizeState(JSON.parse(JSON.stringify(loaded)), loaded.lastTime, () => 0);
-  assert.deepStrictEqual(again.run.trib, { bolt: 3, gains: 1 });
+  assert.deepStrictEqual(again.run.trib, { bolt: 3, gains: 1, odds: loaded.run.trib.odds });
   const stats = Object.assign({}, again.run.stats);
   const r = game.attemptTribulation(again, () => 0, 'settle');
   assert.strictEqual(r.broke, true);
@@ -3288,8 +3296,10 @@ test('引气劫渡到一半：不能翻机缘、用大机缘或静坐，读档�
   assert.strictEqual(load('x'), null);
   assert.strictEqual(load([1]), null);
   assert.strictEqual(load({ bolt: 1, gains: 0 }, 1), null);
-  assert.deepStrictEqual(load({ bolt: 1, gains: 1 }), { bolt: 1, gains: 0 });
-  assert.deepStrictEqual(load({ bolt: 99, gains: 99 }), { bolt: 3, gains: 1 });
+  assert.deepStrictEqual(load({ bolt: 1, gains: 1 }), { bolt: 1, gains: 0, odds: 1 });
+  assert.deepStrictEqual(load({ bolt: 99, gains: 99 }), { bolt: 3, gains: 1, odds: 1 });
+  assert.deepStrictEqual(load({ bolt: 2, gains: 0, odds: 0.25 }), { bolt: 2, gains: 0, odds: 0.25 });
+  assert.deepStrictEqual(load({ bolt: 2, gains: 0, odds: 7 }), { bolt: 2, gains: 0, odds: 1 });
 });
 test('秘法：同系两门天品归一，效果总和乘 1.2，读档后仍合法', () => {
   const s = born();
@@ -4015,6 +4025,7 @@ test('藏经阁·运：活着攒灯芯、成功奖励再结算、前几次必成
   assert.strictEqual(s.run.stage, 1);
   assert.strictEqual(s.wick, 2);
   lateStage(s);
+  s.run.stats = { edge: 0, body: 16, mind: 16 };
   assert.ok(crossTrib(s, () => 0, 'endure').success);
   assert.strictEqual(s.wick, 12);
   assert.strictEqual(s.totalWick, 12);
@@ -4280,4 +4291,60 @@ test('关隘：听雨剑按扣费前的机缘档位参战，和面板里的胜�
   assert.strictEqual(s.run.chance, 9);
   assert.strictEqual(fought.atk, before.atk);
   assert.ok(fought.atk > game.trainFighter(s).atk);
+});
+
+test('逆天渡劫：把握不到三成还渡过了另有加赏，把握越小赏得越多，高把握没有', () => {
+  const low = born();
+  low.run.realm = 1;
+  low.run.stats = { edge: 8, body: 8, mind: 0 };
+  lateStage(low);
+  const info = game.tribulationInfo(low);
+  assert.ok(info.chance > 0 && info.chance < game.DEFY_CHANCE);
+  assert.ok(info.defy);
+  const small = game.defyReward(low, info, 0.01);
+  const edge = game.defyReward(low, info, game.DEFY_CHANCE - 0.01);
+  assert.ok(small.attr > edge.attr && small.life > edge.life && small.wick >= edge.wick);
+  assert.strictEqual(game.defyReward(low, info, game.DEFY_CHANCE), null);
+  assert.strictEqual(game.defyReward(low, info, 0), null);
+
+  const stats = Object.assign({}, low.run.stats);
+  const flat = low.run.lifeFlat;
+  const wick = low.wick;
+  const r = game.attemptTribulation(low, () => 0, 'endure');
+  assert.strictEqual(r.success, true);
+  assert.deepStrictEqual(r.defy, { chance: info.chance, reward: info.defy });
+  info.tests.forEach((k) => assert.strictEqual(low.run.stats[k], stats[k] + info.defy.attr));
+  assert.strictEqual(low.run.lifeFlat, flat + info.lifeBonus + info.defy.life);
+  assert.strictEqual(low.wick, wick + info.defy.wick);
+  assert.strictEqual(low.defies, 1);
+  assert.ok(r.lines[r.lines.length - 1].indexOf('逆天而行') === 0);
+  assert.ok(low.run.log[low.run.log.length - 1].text.indexOf('逆天渡劫') >= 0);
+  assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(low)), low.lastTime, () => 0).defies, 1);
+
+  const high = born();
+  high.run.realm = 1;
+  high.run.stats = { edge: 999, body: 999, mind: 999 };
+  lateStage(high);
+  assert.strictEqual(game.tribulationInfo(high).defy, null);
+  const ok = game.attemptTribulation(high, () => 0, 'endure');
+  assert.strictEqual(ok.success, true);
+  assert.strictEqual(ok.defy, null);
+  assert.strictEqual(high.defies, 0);
+});
+
+test('逆天渡劫：逐道雷按接过的每道必接雷的成功率连乘来判', () => {
+  const s = lateStage(born());
+  const info = game.tribulationInfo(s);
+  assert.ok(info.chance < game.DEFY_CHANCE);
+  assert.deepStrictEqual(info.defy, game.defyReward(s, info, info.chance));
+  const r = crossTrib(s, () => 0, 'endure');
+  assert.strictEqual(r.broke, true);
+  near(r.defy.chance, info.chance);
+  assert.strictEqual(s.defies, 1);
+
+  // 借势把一道雷的把握抬过了线：整场连乘到三成以上就不算逆天。
+  const sure = lateStage(born());
+  sure.run.stats = { edge: 0, body: 16, mind: 16 };
+  assert.strictEqual(game.tribulationInfo(sure).defy, null);
+  assert.strictEqual(crossTrib(sure, () => 0, 'endure').defy, null);
 });

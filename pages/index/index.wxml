@@ -139,6 +139,7 @@
       </view>
       <view wx:if="{{bar.shot}}" class="shot shot-{{bar.shotKind}} shot-go{{bar.shot}}"></view>
       <view wx:if="{{bar.meHit}}" class="fray-flash fray-flash{{bar.meHit}}"></view>
+      <view wx:if="{{bar.sweep}}" class="sweep sweep-go{{bar.sweep}}"></view>
       <view wx:for="{{bar.pops}}" wx:key="key" class="pop pop-{{item.side}} pop-{{item.tone}} {{bar.foe && bar.foe.boss ? 'pop-tall' : ''}}" style="margin-left: {{item.dx}}rpx;">{{item.text}}</view>
       <view class="fray-top">
         <view class="fray-side" bindtap="onTrain">
@@ -719,11 +720,11 @@
 
       <block wx:elif="{{sheet.kind === 'result'}}">
         <view class="sheet-type">{{sheet.title}}</view>
-        <view class="sheet-title">{{sheet.label}}</view>
+        <view class="sheet-title {{sheet.defy ? 'sheet-title-defy' : ''}}">{{sheet.label}}</view>
         <view wx:if="{{sheet.impact}}" class="result-impact">{{sheet.impact}}</view>
         <view wx:if="{{sheet.text}}" class="sheet-text">{{sheet.text}}</view>
         <scroll-view scroll-y class="sheet-body">
-          <view wx:for="{{sheet.lines}}" wx:key="key" class="result-line">{{item.text}}</view>
+          <view wx:for="{{sheet.lines}}" wx:key="key" class="result-line {{item.hot ? 'result-line-defy' : ''}}">{{item.text}}</view>
         </scroll-view>
         <view wx:if="{{sheet.lampProgress}}" class="result-sparks">
           <text>{{hero.lampName}}</text>

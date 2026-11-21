@@ -93,6 +93,8 @@ const FRAY_REST = 40;
 // 秘境里败了之后停这么多拍再出结算。
 const FRAY_GATE_LOSE = 12;
 const FRAY_POPS = 5;
+// 横推：一道剑光扫过场景的拍数。
+const FRAY_SWEEP = 14;
 const FRAY_MY_HITS = ['hit', 'crit', 'double', 'extra', 'execute', 'thorns'];
 const HIDDEN_BAR = { show: false };
 const TRIB_CHANCE_TEXT = '机缘恢复上限的 ' + Math.round(game.TRIB_CHANCE_SHARE * 100) + '%';
@@ -102,6 +104,10 @@ const gearShortText = (g) => (g.short ? '装备分 ' + g.score + ' / ' + g.need 
   : (g.bonus >= 0.005 ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 +' + percent(g.bonus) + '%。' : ''));
 const scatterDesc = (info) => '折寿 ' + info.scatterYears + ' 年，不涨心魔，灵气固定保住一半；' +
   (info.scatterAttr ? '散去的修为淬进肉身：' + info.scatterText + '（本境界还能淬 ' + info.scatterLeft + ' 次）。' : '本境界已淬满 ' + game.SCATTER_MAX + ' 次，再散功不加属性。');
+// 成功率低于逆天的线时，提一句渡过了另有什么赏。
+const defyDesc = (info, reward) => (reward ? '把握不到 ' + percent(info.defyChance) + '%，渡过即是逆天，另得：' +
+  [info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '各 +' : ' +') + reward.attr]
+    .concat(reward.life ? ['寿元上限 +' + reward.life + ' 年'] : [], ['灯芯 +' + reward.wick]).join('，') + '。' : '');
 const FIDGETS = ['yawn', 'look', 'doze', 'scratch'];
 const FIDGET_MIN_MS = 7000;
 const FIDGET_SPAN_MS = 8000;
@@ -1193,6 +1199,7 @@ Page(Object.assign(starScene(audio), {
           '3 道全过后劫云不会马上散：可以收劫破境，也可以再引余雷淬体，最多 2 道。接住的余雷在收劫时兑成属性、寿元上限或灯芯；没接住照样破境，但淬体所得全丢，还要折寿、涨心魔。贪不贪由你。',
           '筑基劫、金丹劫和化神起的天劫可选硬抗、耗 30 次机缘借势（成功率 +15%），或散功。化神起装备不足也会削弱这 15% 的借势加成，零装备时硬抗和借势都不会成功。',
           '散功必定失败，但不会身死、不涨心魔：折寿 ' + game.SCATTER_YEARS + ' 年，灵气保住一半，散去的修为淬进这场天劫考的每项属性里，各加要求值的 ' + Math.round(game.SCATTER_ATTR * 100) + '%（至少 1）。每个大境界只淬 ' + game.SCATTER_MAX + ' 次，之后再散功不加属性。',
+          '逆天渡劫：成功率不到 ' + Math.round(game.DEFY_CHANCE * 100) + '% 还硬是渡过了，另有加赏：考的属性、寿元上限和灯芯都多得一截，把握越小赏得越多，渡劫面板会先写明。引气劫按接过的每道必接雷的把握连乘来算。',
           '成功率低就先别渡，多翻几次机缘把被考的属性堆上去；机缘翻不出想要的属性、劫期又快到时，可以散功拿寿元换属性。'
         ]),
         sec('枯海与元婴劫', [
@@ -1229,6 +1236,7 @@ Page(Object.assign(starScene(audio), {
           '每过一关，储物袋攒灵气就快一档，过首领关涨得更多。储物袋跟着现实时间攒，关掉游戏也在攒，最多存 ' + game.TRAIN_BAG_HOURS + ' 小时的量；点场景上方的“储物袋”把灵气收进丹田。',
           '每过一关得 ' + game.TRAIN_STONE + ' 块筑石，过首领关得 ' + game.TRAIN_BOSS_STONE + ' 块筑石和 ' + game.TRAIN_BOSS_DEW + ' 滴玉露；储物袋里每攒一件装备也带 1 块筑石。筑石修洞府，玉露浇仙树，筑基后期洞府开放后用得上。',
           '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
+          '横推：往后连着 ' + game.SWEEP_MIN + ' 关以上都能赢、每场掉的气血不到 ' + Math.round((1 - game.SWEEP_HP) * 100) + '% 时，他会一剑扫过去，一次最多推 ' + game.SWEEP_MAX + ' 关，推过的关照样掉装备、给筑石和玉露。败退后重打的关不横推。',
           '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
         ]),
         sec('关隘与秘境', [
@@ -1588,8 +1596,8 @@ Page(Object.assign(starScene(audio), {
     }
     let f = this.fray;
     let dirty = false;
-    // 败了当场就退关，调息那一阵还照原来这一关演完。
-    if (!f || (f.stage !== stage && f.phase !== 'rest')) {
+    // 败了当场就退关，调息那一阵还照原来这一关演完；横推已经记了过关，剑光也演完再换关。
+    if (!f || (f.stage !== stage && f.phase !== 'rest' && f.phase !== 'sweep')) {
       f = this.fray = {
         stage: stage, wave: 0, waves: game.trainWaves(stage), phase: 'gap', wait: FRAY_GAP, fight: null, next: 0, step: 0,
         me: 1, max: 1, foe: 0, shield: 0, pops: [], key: 0, meHit: 0, foeHit: 0, foeAct: 0, shot: 0, shotKind: 'hit'
@@ -1623,10 +1631,14 @@ Page(Object.assign(starScene(audio), {
         dirty = true;
         if (f.phase === 'enter') {
           f.phase = 'fight';
+        } else if (f.phase === 'sweep') {
+          this.fray = null;
+          return;
         } else if (f.phase === 'fall' && f.fight.last) {
           this.frayClear(f);
           return;
         } else if (f.phase === 'gap') {
+          if (f.wave === 0 && this.fraySweep(f)) return;
           this.frayNext(f);
         } else if (f.phase === 'rest' && f.stage !== stage) {
           this.fray = null;
@@ -1661,7 +1673,31 @@ Page(Object.assign(starScene(audio), {
     f.wait = FRAY_ENTER;
   },
 
-  // 这一关最后一个倒下了：记过关，下一拍换下一关。
+  // 新的一关开打前先看能不能横推：能就一剑扫过去，合起来出一条横幅。
+  fraySweep(f) {
+    const r = game.trainSweep(this.state, Math.random);
+    if (!r) return false;
+    f.phase = 'sweep';
+    f.wait = FRAY_SWEEP;
+    f.fight = null;
+    f.pops = [{ key: ++f.key, side: 'foe', text: '横推 ' + r.count + ' 关', tone: 'crit', dx: 0 }];
+    f.sweep = (f.sweep === 1 ? 2 : 1);
+    f.sweepText = '第 ' + r.from + '–' + r.to + ' 关';
+    const parts = [];
+    if (r.bosses.length) parts.push('斩' + r.bosses.join('、'));
+    if (r.drops.length) parts.push('装备 ' + r.drops.length + ' 件' + (r.better ? '（' + r.better + ' 件更好）' : ''));
+    if (r.stone) parts.push('筑石 +' + r.stone);
+    if (r.dew) parts.push('玉露 +' + r.dew);
+    if (r.incense) parts.push('香火 +' + r.incense);
+    audio.play('good');
+    this.showBanner('一剑横推 · 第 ' + r.from + '–' + r.to + ' 关' + (parts.length ? ' · ' + parts.join(' · ') : '') + ' · 储物袋每小时 +' + game.formatNumber(r.perHour));
+    if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
+    this.setData({ bar: this.barView(f) });
+    this.afterAction();
+    return true;
+  },
+
+  // 这一关最后一个倒下了：记过关，下一拍换下一关。寻常的关只在掉了装备时出横幅。
   frayClear(f) {
     const r = game.trainClear(this.state, f.stage, Math.random);
     this.fray = null;
@@ -1823,7 +1859,7 @@ Page(Object.assign(starScene(audio), {
     return {
       show: true,
       scene: f.gate || '',
-      title: f.gate ? f.scene : (f.stage === 1 ? '试招' : '第 ' + f.stage + ' 关'),
+      title: f.gate ? f.scene : (f.phase === 'sweep' ? f.sweepText : (f.stage === 1 ? '试招' : '第 ' + f.stage + ' 关')),
       pips: f.gate ? [] : pips,
       rest: rest,
       note: rest ? (f.gate ? '没打过' : '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中')) : '',
@@ -1842,6 +1878,7 @@ Page(Object.assign(starScene(audio), {
       foeAct: f.foeAct,
       shot: f.phase === 'fight' || f.phase === 'fall' ? f.shot : 0,
       shotKind: f.shotKind,
+      sweep: f.phase === 'sweep' ? f.sweep : 0,
       pops: f.pops
     };
   },
@@ -1871,13 +1908,13 @@ Page(Object.assign(starScene(audio), {
         {
           id: 'endure',
           label: '硬抗 · 成功率 ' + percent(info.chance) + '%',
-          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年')) + '，' + TRIB_CHANCE_TEXT + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
+          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年')) + '，' + TRIB_CHANCE_TEXT + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。' + defyDesc(info, info.defy),
           disabled: false
         },
         {
           id: 'borrow',
           label: '借势 · 成功率 ' + percent(info.borrowChance) + '%',
-          desc: '先耗 ' + info.borrowCost + ' 次机缘，成功率 +' + percent(Math.max(0, info.borrowChance - info.chance)) + '%（装备不足会压低借势）；其余成败结果与硬抗相同。',
+          desc: '先耗 ' + info.borrowCost + ' 次机缘，成功率 +' + percent(Math.max(0, info.borrowChance - info.chance)) + '%（装备不足会压低借势）；其余成败结果与硬抗相同。' + defyDesc(info, info.defyBorrow),
           disabled: !info.borrowReady,
           note: info.borrowReady ? '当前机缘 ' + Math.floor(this.state.run.chance) + ' 次' : '机缘不足 ' + info.borrowCost + ' 次'
         },
@@ -1951,7 +1988,7 @@ Page(Object.assign(starScene(audio), {
       title: info.name + (info.aspect ? '「' + info.aspect + '」' : ''),
       step: bolts.extra ? '余雷 第 ' + bolts.index + ' / ' + bolts.extraTotal + ' 道' : '第 ' + bolts.index + ' / ' + bolts.total + ' 道雷',
       text: '考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '，各需 ' : '，需 ') + info.req +
-        (bolts.extra ? '。必接的雷已经过了，劫云还没散。' : '。必接的雷一道比一道难，剩下的全过的把握是 ' + percent(info.chance) + '%。'),
+        (bolts.extra ? '。必接的雷已经过了，劫云还没散。' : '。必接的雷一道比一道难，剩下的全过的把握是 ' + percent(info.chance) + '%。' + defyDesc(info, info.defy)),
       pips: pips,
       parts: info.parts.map((part, i) => ({ key: i, label: part.label, value: (part.value > 0 ? '+' : '') + Math.round(part.value * 100) + '%', bad: part.value < 0 })),
       last: this.boltLast || '',
@@ -2166,8 +2203,9 @@ Page(Object.assign(starScene(audio), {
         kind: 'result',
         title: r.title,
         label: r.label,
+        defy: !!r.defy,
         text: r.text || '',
-        lines: r.lines.map((text, i) => ({ key: i, text: text })),
+        lines: r.lines.map((text, i) => ({ key: i, text: text, hot: text.indexOf('逆天而行') === 0 })),
         impact: r.impact || '',
         lampProgress: r.fromEvent && run.phase === 'alive' && run.lamp.school && !run.lamp.spent && run.lamp.sparks < game.LAMP_INSIGHT,
         okText: r.dead ? '……' : (run.pending ? '取舍功法' : '收起'),
@@ -2370,6 +2408,7 @@ Page(Object.assign(starScene(audio), {
         { label: '身死时的最高境界', value: best },
         { label: '累计灯芯', value: game.formatNumber(s.totalWick) },
         { label: '重天', value: (run.heaven ? '这一世在第 ' + run.heaven + ' 重天' : '这一世在凡天') + '，已开到第 ' + s.heavenMax + ' / ' + game.HEAVEN_MAX + ' 重' },
+        { label: '逆天渡劫', value: s.defies ? s.defies + ' 次' : '还没有过' },
         { label: '见闻', value: '机缘选项已见过 ' + seen.known + ' / ' + seen.total + ' 个' },
         { label: '这一世的主修', value: run.path ? game.SCHOOLS[run.path].name + '系（克' + game.SCHOOLS[game.PATH_COUNTER[run.path]].name + '系）' : (run.phase === 'alive' && run.realm >= 1 ? '还没择道' : '-') },
         { label: '这一世的根骨', value: run.phase === 'root' ? '-' : game.rootInfo(run.root).name + '（' + game.ROOT_RARITIES[game.rootInfo(run.root).rarity].name + '骨）' },
@@ -2699,11 +2738,13 @@ Page(Object.assign(starScene(audio), {
     this.boltLast = '';
     let label = result.broke ? '雷散了，你还站着' : (method === 'scatter' ? '修为散了，命还在' : '你被劈了下来');
     if (result.broke && result.extra && !result.success) label = '余雷没接住，但境界已经破了';
+    if (result.defy) label = '逆天而行：只有 ' + percent(result.defy.chance) + '% 的把握，你还是站着出来了';
     this.playTribulation({
       title: result.name,
       label: label,
       lines: result.lines,
-      dead: result.dead
+      dead: result.dead,
+      defy: !!result.defy
     }, before, result.broke && (!result.extra || result.success) ? 'ascend' : (result.dead ? this.deathAct() : 'hurt'));
   },
 

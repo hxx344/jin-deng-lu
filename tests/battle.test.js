@@ -998,3 +998,44 @@ test('旧档按本世关数补香火一次，同世读档保留未揭牌，轮�
   assert.deepStrictEqual([newborn.run.incense, newborn.run.starDry, newborn.run.starGoldDry, newborn.run.starCards.length], [0, 0, 0, 0]);
   assert.ok(!game.starDraw(newborn, 1, () => 0));
 });
+
+test('横推：连着三关以上都能几乎不掉血地赢，一口气推过去，所得照给并只记一条见闻', () => {
+  const weak = cultivator(1, 1, 1);
+  weak.run.battle.cleared = 30;
+  assert.strictEqual(game.trainSweep(weak, () => 0.5), null);
+
+  const s = cultivator(400, 400, 400);
+  // 第 1 关是试招，照常打，不横推。
+  assert.strictEqual(game.trainSweep(s, () => 0.5), null);
+  assert.ok(game.trainClear(s, 1, () => 0.5));
+  const logs = s.run.log.length;
+  const incense = s.run.incense;
+  const r = game.trainSweep(s, () => 0.5);
+  assert.ok(r);
+  assert.strictEqual(r.from, 2);
+  assert.strictEqual(r.count, game.SWEEP_MAX);
+  const to = 1 + game.SWEEP_MAX;
+  assert.strictEqual(r.to, to);
+  assert.strictEqual(s.run.battle.cleared, to);
+  assert.strictEqual(s.trainBest, to);
+  assert.strictEqual(game.trainStage(s), to + 1);
+  // 第 5、10 关是首领：必掉装备、得玉露。
+  assert.strictEqual(r.bosses.length, 2);
+  assert.ok(r.drops.length >= 2);
+  assert.ok(r.stone > 0 && r.dew > 0);
+  assert.ok(r.incense > 0);
+  assert.strictEqual(s.run.incense, incense + r.incense);
+  assert.strictEqual(s.run.log.length, logs + 1);
+  assert.ok(s.run.log[s.run.log.length - 1].text.indexOf('横推') >= 0);
+  assert.ok(Math.abs(game.trainRate(s) - game.trainRate(s, to)) < 1e-12);
+
+  // 败退后重打的关不横推。
+  game.trainLose(s, game.trainStage(s));
+  assert.strictEqual(game.trainSweep(s, () => 0.5), null);
+
+  // 凡胎试招赢了之后不往下推。
+  const mortal = cultivator(400, 400, 400);
+  mortal.run.realm = 0;
+  mortal.run.battle.cleared = 1;
+  assert.strictEqual(game.trainSweep(mortal, () => 0.5), null);
+});

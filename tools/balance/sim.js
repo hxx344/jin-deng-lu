@@ -329,6 +329,12 @@ function train(state, clock, seconds, manage, star) {
   while (clock.spare > 0) {
     const stage = game.trainStage(state);
     if (!stage) break;
+    const sweep = game.trainSweep(state, clock.trainRng);
+    if (sweep) {
+      clock.spare -= sweep.seconds + TRAIN_GAP;
+      if (manage) tidy();
+      continue;
+    }
     let won = true;
     for (let wave = 0; won && wave < game.trainWaves(stage); wave++) {
       const fight = game.trainEncounter(state, wave, clock.trainRng);
