@@ -1218,11 +1218,67 @@ const TRAIN_FOES = [
   { id: 'scavenger', sprite: 'scavenger', mob: '拾荒人', name: '拾荒人的头儿', text: '他说这片破烂归他管，包括你。', interval: 1.6, reduce: 0.1, resist: 0.4,
     skill: { name: '这也是我的', every: 5, mult: 2 } }
 ];
-// 道途的克制：主修左边一系时，右边一系的功法效果减半。
+// 关隘：这几场天劫要先凑齐材料才肯落下。材料只在对应的秘境里打赢对手才有，每打一场耗机缘。
+// trib 是 TRIBS 的下标，人在这个境界时秘境开着；need 是要凑的材料数。
+// foes 从下品到上品：stage 是它相当于历练第几关的首领，gain 是打赢给几份材料，其余和 TRAIN_FOES 的写法一样。
+// 对手的图在 assets/foes/<对手 id>.svg，场景的图在 assets/scenes/<关隘 id>.svg。
+const GATES = [
+  { id: 'paper', trib: 1, scene: '纸人巷', material: '纸灰', need: 4,
+    text: '办丧事的一条街，人早走光了，纸扎的还在照常营业。筑基要拿纸灰垫底，灰得从它们身上烧。',
+    foes: [
+      { id: 'paperboy', tier: '下品', name: '送信的纸童', text: '帖子上没有字，它还是坚持要你签收。', stage: 2, gain: 1, interval: 1.5,
+        skill: { name: '递帖子', every: 6, mult: 1.8 } },
+      { id: 'paperbearer', tier: '中品', name: '抬空轿的纸轿夫', text: '轿子里没有人，他说这趟还是得算钱。', stage: 4, gain: 2, interval: 1.9, reduce: 0.15,
+        skill: { name: '起轿', every: 7, mult: 2 } },
+      { id: 'papercollector', tier: '上品', name: '讨债的纸人', text: '它记着整条街的账，头一笔就是你的。', stage: 7, gain: 3, interval: 1.6, resist: 0.3,
+        skill: { name: '连本带利', every: 6, mult: 2.2 } }
+    ] },
+  { id: 'salt', trib: 3, scene: '盐骨滩', material: '盐晶', need: 6,
+    text: '枯海退潮后露出来的滩，船和骨头都结了壳。元婴劫的潮认盐晶，没有它，船不肯为你停。',
+    foes: [
+      { id: 'saltcrab', tier: '下品', name: '背盐壳的蟹', text: '它横着走了一辈子，没觉得哪里不对。', stage: 22, gain: 1, interval: 1.5, reduce: 0.2,
+        skill: { name: '横着来', every: 6, mult: 1.8 } },
+      { id: 'saltfigure', tier: '中品', name: '盐化的俑', text: '原先是个等船的人，等得久了点。', stage: 31, gain: 2, interval: 2, reduce: 0.25,
+        skill: { name: '再等等', every: 7, mult: 2.1 } },
+      { id: 'saltferryman', tier: '上品', name: '龙舟的艄公', text: '船早沉了，他还在收过河钱。', stage: 40, gain: 3, interval: 1.7, reduce: 0.1, resist: 0.35,
+        skill: { name: '过河钱', every: 6, mult: 2.3 } }
+    ] },
+  { id: 'ink', trib: 6, scene: '无字城', material: '残墨', need: 8,
+    text: '城里的字都逃了，剩下的墨没处去，自己成了精。问鼎要落款，落款要墨。',
+    foes: [
+      { id: 'inkblot', tier: '下品', name: '爬墙的错字', text: '它知道自己写错了，所以不让人看。', stage: 52, gain: 1, interval: 1.4, resist: 0.3,
+        skill: { name: '涂掉重写', every: 6, mult: 1.8 } },
+      { id: 'inkbrush', tier: '中品', name: '改卷的朱笔', text: '卷子早没了，它见什么都想批一个“阅”。', stage: 60, gain: 2, interval: 1.6, resist: 0.2,
+        skill: { name: '已阅', every: 6, mult: 2.1 } },
+      { id: 'inkstele', tier: '上品', name: '不肯落款的碑', text: '立了三千年，至今不肯说是给谁立的。', stage: 68, gain: 3, interval: 2.1, reduce: 0.3, resist: 0.4,
+        skill: { name: '无可奉告', every: 7, mult: 2.4 } }
+    ] },
+  { id: 'kiln', trib: 11, scene: '涅火窑', material: '窑烬', need: 10,
+    text: '一座烧人不烧柴的老窑。碎涅之前，先得从窑里讨一把别人烧剩的烬。',
+    foes: [
+      { id: 'kilncrow', tier: '下品', name: '衔火的灰鸦', text: '它叼着一粒炭到处问：这是谁掉的。', stage: 86, gain: 1, interval: 1.4,
+        skill: { name: '谁掉的', every: 5, mult: 1.8 } },
+      { id: 'kilnworker', tier: '中品', name: '把自己烧了的窑工', text: '他说这一窑火候刚好，就是忘了出来。', stage: 95, gain: 2, interval: 1.8, reduce: 0.2,
+        skill: { name: '添把火', every: 6, mult: 2.2 } },
+      { id: 'kilnfire', tier: '上品', name: '看窑的老火', text: '窑主死了很久，它一直没等到有人喊熄火。', stage: 104, gain: 3, interval: 1.6, reduce: 0.15, resist: 0.4,
+        skill: { name: '开窑', every: 6, mult: 2.4 } }
+    ] },
+  { id: 'tomb', trib: 16, scene: '天道坟', material: '天屑', need: 12,
+    text: '天道埋在这里，碑上一个字也没有。踏天之前，得从坟上带走几片它掉下来的屑。',
+    foes: [
+      { id: 'tombbeast', tier: '下品', name: '守陵的石兽', text: '没人告诉它，里头那位已经不需要守了。', stage: 110, gain: 1, interval: 1.9, reduce: 0.3,
+        skill: { name: '闲人免进', every: 7, mult: 2 } },
+      { id: 'tombthunder', tier: '中品', name: '哭丧的雷', text: '它劈了一辈子人，如今只会哭。', stage: 120, gain: 2, interval: 1.5, resist: 0.3,
+        skill: { name: '一声干嚎', every: 5, mult: 2.2 } },
+      { id: 'tombshadow', tier: '上品', name: '天道的影子', text: '本尊不在了，影子还留在原地，不知道该跟谁。', stage: 132, gain: 3, interval: 1.6, reduce: 0.2, resist: 0.5,
+        skill: { name: '天意如此', every: 6, mult: 2.5 } }
+    ] }
+];// 道途的克制：主修左边一系时，右边一系的功法效果减半。
 const PATH_COUNTER = { sword: 'talisman', talisman: 'body', body: 'luck', luck: 'pill', pill: 'sword' };
 
 module.exports = {
   TRAIN_FOES,
+  GATES,
   TRIB_ASPECTS,
   PATH_COUNTER,
   SCHOOL_IDS,

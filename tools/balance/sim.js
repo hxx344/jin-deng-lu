@@ -278,6 +278,8 @@ function buyLamps(state) {
 const TRAIN_GAP = 2;
 const TRAIN_REST = 4;
 const GEAR_STALL = 4;
+// 灵气还没圆满时，秘境里胜率到这个数才去打。
+const GATE_ODDS = 0.5;
 function tidyGear(state) {
   game.gearEquipBest(state);
   game.gearScrapSpare(state);
@@ -313,13 +315,13 @@ function train(state, clock, seconds, manage) {
 
 // 跑完一世，返回这一世的记录。
 function playLife(state, policy, rng, config, clock) {
-  const life = { tribs: [], capped: false, waited: game.REALMS.map(() => 0), spent: game.REALMS.map(() => 0) };
+  const life = { tribs: [], gates: {}, capped: false, waited: game.REALMS.map(() => 0), spent: game.REALMS.map(() => 0) };
   const start = clock.now;
-  const tick = (seconds) => {
+  const tick = (seconds, pauseTrain) => {
     clock.now += seconds * 1000;
     life.spent[state.run.realm] += seconds / 60;
     game.advance(state, clock.now);
-    if (state.run.phase === 'alive') train(state, clock, seconds, !!policy.gear);
+    if (!pauseTrain && state.run.phase === 'alive') train(state, clock, seconds, !!policy.gear);
   };
   clock.spare = 0;
   const tribRecord = (name, success) => ({ name: name, success: success, gear: game.gearScore(state), cleared: state.run.battle.cleared });
@@ -359,6 +361,38 @@ function playLife(state, policy, rng, config, clock) {
         if (stall >= GEAR_STALL) life.waited[realm] = patience;
       }
     },
+    // 秘境：关隘的材料没凑齐时去打，返回这一步的秒数和是否暂停历练，没去返回 0。随手玩有机缘就随便挑一个打；
+    // 挂机玩和认真玩挑“胜率 × 材料”最高的，胜率过半才去；灵气已经圆满、只差材料时先等历练（占等装备的耐心），等不动了照打。
+    // 只差材料、机缘又不够打一场时静坐着攒。
+    gate() {
+      const view = game.gateView(state);
+      if (!view) return 0;
+      const seen = life.gates[view.id] || (life.gates[view.id] = { fights: 0, wins: 0, done: false });
+      if (view.done) {
+        seen.done = true;
+        return 0;
+      }
+      const full = game.isFull(state);
+      if (view.reason) return full && view.saving && game.meditate(state) ? { seconds: config.choiceSeconds } : 0;
+      let foe = pick(view.foes, rng);
+      if (policy.gear) {
+        foe = view.foes.slice().sort((a, b) => b.chance * b.gain - a.chance * a.gain)[0];
+        if (foe.chance < GATE_ODDS) {
+          if (!full) return 0;
+          // 灵气满了还打不过：和等装备一样先让历练多打一会儿，耐心用完再硬着头皮上。
+          const realm = state.run.realm;
+          if (life.waited[realm] < (config.gearPatience[policy.id] || 0) && game.trainStage(state)) {
+            life.waited[realm]++;
+            return { seconds: 60 };
+          }
+        }
+      }
+      const result = game.gateFight(state, foe.id, rng);
+      if (!result) return 0;
+      seen.fights++;
+      if (result.win) seen.wins++;
+      return { seconds: result.fight.seconds + TRAIN_GAP + (result.win ? 0 : TRAIN_REST), pauseTrain: true };
+    },
     yuanTrial(method, step) {
       const realm = state.run.realm;
       const record = tribRecord(game.TRIBS[realm].name, false);
@@ -381,6 +415,11 @@ function playLife(state, policy, rng, config, clock) {
     if (game.isPerfect(state) && run.realm === LAST_REALM) {
       game.retire(state);
       break;
+    }
+    const fought = sim.gate();
+    if (fought) {
+      tick(fought.seconds, fought.pauseTrain);
+      continue;
     }
     if (policy.gear) sim.gearWait();
     if (policy.act(state, rng, sim)) {
@@ -471,7 +510,7 @@ function median(list) {
 }
 
 function summarize(saves, config) {
-  const out = { lives: {}, firstReach: {}, tribs: {}, capped: 0 };
+  const out = { lives: {}, firstReach: {}, tribs: {}, gates: {}, capped: 0 };
   config.reportLives.forEach((n) => {
     const lives = saves.map((save) => save[n - 1]);
     const reach = {};
@@ -518,6 +557,19 @@ function summarize(saves, config) {
     out.tribs[trib.name] = { perLife: round(tries.length / all.length, 2), success: tries.length ? share(tries, (item) => item.success) : null,
       gear: tries.length ? median(tries.map((item) => item.gear)) : null, cleared: tries.length ? median(tries.map((item) => item.cleared)) : null,
       stay: stays.length ? round(median(stays)) : null, firstSaves: firsts.length, firstPass: firsts.length ? share(firsts, passed) : null };
+  });
+  // 关隘：到过 = 有一世活着走到这个关隘所在的境界；凑齐 = 那一世把材料凑够了。
+  game.GATES.forEach((def) => {
+    const met = saves.map((save) => save.filter((life) => life.gates[def.id]).map((life) => life.gates[def.id])).filter((list) => list.length);
+    const visits = [].concat.apply([], met);
+    const fights = visits.reduce((sum, item) => sum + item.fights, 0);
+    out.gates[def.id] = {
+      met: round(100 * met.length / saves.length),
+      pass: met.length ? share(met, (list) => list.some((item) => item.done)) : null,
+      done: visits.length ? share(visits, (item) => item.done) : null,
+      fights: visits.length ? round(fights / visits.length) : null,
+      win: fights ? round(100 * visits.reduce((sum, item) => sum + item.wins, 0) / fights) : null
+    };
   });
   out.capped = all.filter((life) => life.capped).length;
   return out;
@@ -577,6 +629,7 @@ function render(data) {
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
     '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒并退回 ' + game.TRAIN_RETREAT + ' 关。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
     '- 等装备：灵气满了、装备分还不够这一场天劫的要求时，挂机玩最多停 ' + config.gearPatience.idle + ' 分钟、认真玩最多停 ' + config.gearPatience.careful + ' 分钟，只让历练接着打；连着 ' + GEAR_STALL + ' 分钟装备分没涨就不等了。等的时间算进时长。随手玩不等。',
+    '- 秘境：人在有关隘的境界、材料没凑齐时，机缘够 ' + game.GATE_COST + ' 次就进秘境打。随手玩三个对手里随便挑；挂机玩和认真玩挑“胜率 × 材料”最高的，胜率到 ' + Math.round(GATE_ODDS * 100) + '% 才去；灵气圆满后只差材料、胜率还不到时，先停下来让历练接着打（和等装备共用耐心），等不动了照打。只差材料、机缘又不够打一场时静坐着攒。一场占掉它自己的时长加 ' + TRAIN_GAP + ' 秒，败了多歇 ' + TRAIN_REST + ' 秒。',
     '- 没有覆盖：竞技场、宗门与弟子（含跨世传承）、机缘重抽与灯油、散功保命、主动降重天。',
     ''
   ];
@@ -614,6 +667,12 @@ function render(data) {
       Object.keys(result.tribs).map((name) => {
         const item = result.tribs[name];
         return [name, item.perLife, pct(item.success), orDash(item.gear), orDash(item.cleared), orDash(item.stay), item.firstPass === null ? '—' : item.firstPass + '%（' + item.firstSaves + '）'];
+      })), '');
+    out.push('**关隘**（到过 = 有一世活着走到关隘所在的境界；后三列只算到过的那些世）', '');
+    out.push(table(['关隘', '秘境', config.lives + ' 世内到过的存档', '到过的存档里凑齐过材料的', '到过的那一世凑齐材料', '那一世平均打几场', '胜率'],
+      game.GATES.map((def) => {
+        const item = result.gates[def.id];
+        return [game.TRIBS[def.trib].name, def.scene, pct(item.met), pct(item.pass), pct(item.done), orDash(item.fights), pct(item.win)];
       })), '');
   });
   return out.join('\n');

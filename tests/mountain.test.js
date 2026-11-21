@@ -13,6 +13,8 @@ function cultivator(realm) {
   assert.ok(game.chooseRoot(state, state.run.rootChoices[0], NOW, rng));
   state.run.realm = realm;
   state.run.lifeFlat = 400;
+  // 山门用例隔离关隘：材料按凑齐算。
+  game.GATES.forEach((gate) => { state.run.gate.mats[gate.id] = gate.need; });
   return state;
 }
 

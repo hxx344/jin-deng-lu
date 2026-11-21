@@ -4477,3 +4477,49 @@ button.sheet-btn::after {
   75% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-66rpx) scale(1); }
 }
+
+/* 秘境：打关隘材料时场景换成秘境的图 */
+.scene-art {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: scene-art-in 0.5s ease-out both;
+}
+
+@keyframes scene-art-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.stage-gate .scene-far,
+.stage-gate .scene-near,
+.stage-gate .rib {
+  display: none;
+}
+
+.gate-btn {
+  background: linear-gradient(180deg, #f0c9a6, #b0623c);
+  box-shadow: 0 6rpx 0 #6e3419;
+  color: #2e1408;
+}
+
+.gate-foe {
+  flex-shrink: 0;
+  width: 96rpx;
+  height: 96rpx;
+  margin-right: 16rpx;
+}
+
+.gate-gain {
+  color: #ffd98a;
+}
+
+.gate-reason {
+  padding: 20rpx 0 8rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #ff9c8f;
+}

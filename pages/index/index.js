@@ -89,6 +89,8 @@ const FRAY_ENTER = 7;
 const FRAY_FALL = 7;
 const FRAY_GAP = 5;
 const FRAY_REST = 40;
+// 秘境里败了之后停这么多拍再出结算。
+const FRAY_GATE_LOSE = 12;
 const FRAY_POPS = 5;
 const FRAY_MY_HITS = ['hit', 'crit', 'double', 'extra', 'execute', 'thorns'];
 const HIDDEN_BAR = { show: false };
@@ -320,7 +322,10 @@ Page({
     this.arenaOpen = false;
     this.trainOpen = false;
     this.trainCache = null;
+    this.gateOpen = false;
+    this.gateCache = null;
     this.fray = null;
+    this.pausedFray = null;
     this.frayTimer = null;
     this.cloudSyncing = false;
     this.cloudLoggingIn = false;
@@ -580,6 +585,7 @@ Page({
     this.lastCloudPush = Date.now();
     this.cloudSaveId = row.id || this.cloudSaveId;
     this.result = null;
+    this.clearGate();
     this.eventOpen = false;
     this.seaOpen = false;
     this.mountainPanel = '';
@@ -837,7 +843,7 @@ Page({
       this.autoStuck = false;
       return;
     }
-    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.trainOpen || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
+    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.trainOpen || this.gateOpen || (this.fray && this.fray.gate) || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
     // 没有稳妥选项的机缘留给玩家，等他处理完再接着走。
     if (this.autoStuck && run.event) return;
     this.autoStuck = false;
@@ -985,11 +991,11 @@ Page({
       line = '魔修：灵气产出 ×' + (1 + game.MAX_DEMON * game.DEMON_QI_RATE) + '，不能渡劫。普通延寿无效，只能服散续命。';
     } else if (info) {
       line = info.name + (info.aspect ? '「' + info.aspect + '」' : '') + ' · 考' + info.tests.map((k) => game.ATTR_NAMES[k]).join('、') + (info.tests.length > 1 ? '各 ' : ' ') + info.req +
-        (info.gear.short ? ' · 装备分 ' + info.gear.score + '/' + info.gear.need : '') + ' · 成功率 ' + percent(info.chance) + '%';
+        (info.gear.short ? ' · 装备分 ' + info.gear.score + '/' + info.gear.need : '') + (info.gate && info.gate.short ? ' · ' + info.gate.material + ' ' + info.gate.have + '/' + info.gate.need : '') + ' · 成功率 ' + percent(info.chance) + '%';
     } else if (boarding) {
       line = '枯海沉舟 · 潮位 ' + run.sea.tide + ' / ' + game.SEA_TIDE_LIMIT;
     } else if (yuan) {
-      line = yuan.ready ? '元婴劫 · ' + yuan.name + (yuan.gear.short ? ' · 装备分 ' + yuan.gear.score + '/' + yuan.gear.need : '') : (full ? '了结手中的机缘或功法，然后再渡元婴劫。' : '休养回满灵气，再渡元婴劫。');
+      line = yuan.ready ? '元婴劫 · ' + yuan.name + (yuan.gear.short ? ' · 装备分 ' + yuan.gear.score + '/' + yuan.gear.need : '') : (yuan.gate && yuan.gate.short ? '元婴劫要先凑齐' + yuan.gate.material + '（' + yuan.gate.have + '/' + yuan.gate.need + '），去' + yuan.gate.scene + '打。' : (full ? '了结手中的机缘或功法，然后再渡元婴劫。' : '休养回满灵气，再渡元婴劫。'));
     } else if (run.realm === game.SEA_REALM) {
       line = full ? (seaEntry ? '金丹圆满。烬灯照出一条通往枯海的航路。' : '金丹圆满。了结手中的机缘或功法，然后入枯海。') : '金丹后期灵气圆满后，可入枯海。';
     } else {
@@ -1038,7 +1044,10 @@ Page({
           (run.cave && run.cave.fruit && run.mode !== 'demon' ? '仙果熟了 · 可服用' : '')));
     const term = game.tribTerm(s);
     const path = !boarding && game.pathReady(s);
+    const gate = !boarding && !run.trib ? game.tribGate(s) : null;
     return {
+      gate: gate && gate.short ? gate.scene : '',
+      gateSub: gate ? gate.material + ' ' + gate.have + ' / ' + gate.need : '',
       term: run.mode === 'demon' ? '' : (term.overdue ? '劫期已过 ' + (term.used - term.term) + ' 次：每次机缘多折 ' + term.years + ' 年寿元' : '劫期：这一境界还能从容做 ' + term.left + ' 次机缘'),
       termOver: term.overdue,
       path: path ? '择道' : '',
@@ -1197,6 +1206,13 @@ Page({
           '每过一关得 ' + game.TRAIN_STONE + ' 块筑石，过首领关得 ' + game.TRAIN_BOSS_STONE + ' 块筑石和 ' + game.TRAIN_BOSS_DEW + ' 滴玉露；储物袋里每攒一件装备也带 1 块筑石。筑石修洞府，玉露浇仙树，筑基后期洞府开放后用得上。',
           '锋定攻击，躯定气血和减伤，神定出手快慢和暴击。五系功法各有打法：剑系追加一剑，丹系回血，符系开场贴符，体系反伤，运系偶尔一下算两下；同系凑到 2 门、4 门还有加成。心魔越重，打人越疼，挨打也越疼。',
           '点左上角的关数可以看眼前这一关和下一个首领的胜率。关卡和储物袋只管这一世，换一世从第 1 关打起。'
+        ]),
+        sec('关隘与秘境', [
+          '有五场天劫要先凑齐材料才肯落下来：' + game.GATES.map((gate) => game.TRIBS[gate.trib].name + '要' + gate.material + ' ' + gate.need + ' 份（' + gate.scene + '）').join('，') + '。材料没凑齐，灵气圆满了也渡不了劫。',
+          '人到了那个境界，主按钮旁边会多出秘境的入口。每个秘境有下品、中品、上品三个对手，越往上越难打，打赢给的材料也越多（1、2、3 份）；面板上写着各自的数值和胜率。',
+          '每打一场耗 ' + game.GATE_COST + ' 次机缘，不耗寿元，也不算进劫期。打的时候场景会换成秘境，用的是历练里的那套数值：锋躯神、功法和身上的装备。',
+          '输了什么也拿不到，但那个秘境里的对手会让一步：气血和攻击各降 ' + Math.round(game.GATE_YIELD * 100) + '%，最多让 ' + game.GATE_YIELD_MAX + ' 步。机缘不够打一场时，可以在秘境面板里静坐着攒。',
+          '材料凑齐就一直算数，渡劫失败不用重凑；换一世要从头凑起。'
         ]),
         sec('装备', [
           '历练掉装备：寻常的关过关时有三成机会掉一件，连着 ' + game.TRAIN_DROP_PITY + ' 关没掉下一关必掉；首领关必掉，品级更好。储物袋另外每 20 分钟攒一件，卡关时也有东西拿。',
@@ -1361,6 +1377,7 @@ Page({
     this.arenaOpen = false;
     this.tribOpen = false;
     this.mergeOpen = false;
+    this.gateOpen = false;
     this.trainCache = null;
     this.trainOpen = true;
     this.refresh();
@@ -1372,8 +1389,168 @@ Page({
     this.refresh();
   },
 
+  // 秘境面板：材料凑了多少、三个对手的数值和胜率。胜率要跑几十场模拟，结果缓存到下一次状态变化。
+  gateSheet() {
+    const s = this.state;
+    if (!this.gateCache) this.gateCache = game.gateView(s);
+    const v = this.gateCache;
+    if (!v) return null;
+    const playing = !!(this.fray && this.fray.gate);
+    return {
+      kind: 'gate',
+      title: v.scene + ' · ' + v.material + ' ' + v.have + ' / ' + v.need,
+      text: v.text,
+      note: (v.done ? v.material + '已经凑齐，' + v.trib + '可以落下来了。' : v.trib + '要先凑齐 ' + v.need + ' 份' + v.material + '才肯落下来，渡劫失败不用重凑。') +
+        '每打一场耗 ' + v.cost + ' 次机缘，不耗寿元，也不算进劫期；输了什么也拿不到，但这里的对手会让一步（气血和攻击各 −' + percent(v.yieldStep) + '%，最多让 ' + v.yieldMax + ' 步' +
+        (v.yielded ? '，已让 ' + v.yielded + ' 步' : '') + '）。眼下有机缘 ' + Math.floor(s.run.chance) + ' 次。',
+      sit: v.saving ? '机缘不够打一场。静坐 ' + v.saveYears + ' 年，等下一次机缘回来。' : '',
+      sitOff: v.saveYears >= game.yearsLeft(s),
+      off: !!v.reason || playing,
+      reason: playing ? '这一场还没打完' : v.reason,
+      foes: v.foes.map((foe) => ({
+        id: foe.id,
+        name: foe.name,
+        tier: foe.tier,
+        text: foe.text,
+        sub: '气血 ' + game.formatNumber(foe.hp) + ' · 攻击 ' + game.formatNumber(foe.atk) + ' · 会使「' + foe.skill + '」 · 相当于历练第 ' + foe.stage + ' 关的首领',
+        gain: '打赢得' + v.material + ' ' + foe.gain + ' 份',
+        pct: percent(foe.chance)
+      }))
+    };
+  },
+
+  // 换档或重开时，旧那一世的秘境面板、战斗和被暂停的历练都不能带过去。
+  clearGate() {
+    this.gateOpen = false;
+    this.gateCache = null;
+    this.pausedFray = null;
+    this.fray = null;
+    this.setData({ bar: HIDDEN_BAR });
+  },
+
+  onGate() {
+    const run = this.state.run;
+    if (this.act === 'thunder' || run.phase !== 'alive' || !game.tribGate(this.state)) return;
+    audio.play('tap');
+    this.guideOpen = false;
+    this.cloudOpen = false;
+    this.arenaOpen = false;
+    this.trainOpen = false;
+    this.tribOpen = false;
+    this.bracing = false;
+    this.mergeOpen = false;
+    this.eventOpen = false;
+    this.gateCache = null;
+    this.gateOpen = true;
+    this.refresh();
+  },
+
+  onGateClose() {
+    audio.play('tap');
+    this.gateOpen = false;
+    this.refresh();
+  },
+
+  // 机缘不够打一场时，在秘境面板里静坐着攒。
+  onGateSit() {
+    const sat = game.meditate(this.state);
+    if (!sat) {
+      audio.play('bad');
+      return;
+    }
+    if (sat.dead) {
+      this.gateOpen = false;
+      this.finishChoice(sat);
+      return;
+    }
+    this.play('seclude');
+    this.afterAction();
+  },
+
+  // 进秘境打一场：规则层当场算完，这里收起面板，把场景换成秘境，按时间轴演完再出结算。
+  onGateFight(e) {
+    if (this.act === 'thunder') return;
+    if (this.fray && this.fray.gate) {
+      this.showBanner('这一场还没打完');
+      return;
+    }
+    const r = game.gateFight(this.state, e.currentTarget.dataset.id, Math.random);
+    if (!r) {
+      audio.play('bad');
+      this.showBanner(game.gateReason(this.state) || '眼下打不了');
+      return;
+    }
+    audio.play('tap');
+    const fight = r.fight;
+    this.gateOpen = false;
+    this.pausedFray = this.fray;
+    this.fray = {
+      gate: fight.gate, scene: fight.scene, result: r, stage: 0, wave: 0, waves: 1, phase: 'enter', wait: FRAY_ENTER, fight: fight, next: 0, step: 0,
+      me: fight.me.max, max: fight.me.max, foe: fight.foe.max, shield: 0, pops: [], key: 0, meHit: 0, foeHit: 0, foeAct: 0, shot: 0, shotKind: 'hit'
+    };
+    this.setData({ bar: this.barView(this.fray) });
+    this.afterAction();
+  },
+
+  // 秘境里的一场：入场、照时间轴打完、倒下或败退，然后出结算，场景回到历练。
+  gateTick(f) {
+    let dirty = false;
+    if (f.phase === 'fight') {
+      const timeline = f.fight.timeline;
+      f.step += 1;
+      while (f.next < timeline.length && timeline[f.next].t * 10 <= f.step + 1e-6) {
+        this.frayEvent(f, timeline[f.next++]);
+        dirty = true;
+      }
+      if (f.next >= timeline.length) {
+        dirty = true;
+        f.phase = f.fight.win ? 'fall' : 'rest';
+        f.wait = f.fight.win ? FRAY_FALL : FRAY_GATE_LOSE;
+      }
+    } else {
+      f.wait -= 1;
+      if (f.wait <= 0) {
+        if (f.phase !== 'enter') {
+          this.gateDone(f);
+          return;
+        }
+        f.phase = 'fight';
+        dirty = true;
+      }
+    }
+    if (dirty) this.setData({ bar: this.barView(f) });
+  },
+
+  gateDone(f) {
+    const r = f.result;
+    const paused = this.pausedFray;
+    this.pausedFray = null;
+    if (this.state.run.phase !== 'alive' || this.act === 'thunder') {
+      this.fray = null;
+      this.setData({ bar: HIDDEN_BAR });
+      return;
+    }
+    this.fray = paused || null;
+    this.setData({ bar: this.fray ? this.barView(this.fray) : HIDDEN_BAR });
+    const more = game.tribGate(this.state);
+    this.result = { title: r.title, label: r.label, text: r.text, lines: r.lines, dead: false, gate: true, nextGate: more && more.short ? '回' + f.scene : '' };
+    this.eventOpen = false;
+    this.play(r.win ? 'cheer' : 'hurt');
+    this.afterAction();
+  },
   // 场景里的历练。规则层一次算完一场，这里按时间轴演出来；渡劫的雷落完之前先停着。
   frayTick() {
+    if (this.fray && this.fray.gate) {
+      // 打到一半渡劫或身死：这一场已经结算过，不再演。
+      if (this.act === 'thunder' || this.state.run.phase !== 'alive') {
+        this.pausedFray = null;
+        this.fray = null;
+        this.setData({ bar: HIDDEN_BAR });
+      } else {
+        this.gateTick(this.fray);
+      }
+      return;
+    }
     const stage = game.trainStage(this.state);
     if (!stage || this.act === 'thunder') {
       if (this.fray || this.data.bar.show) {
@@ -1613,16 +1790,18 @@ Page({
     const rest = f.phase === 'rest';
     return {
       show: true,
-      title: '第 ' + f.stage + ' 关',
-      pips: pips,
+      scene: f.gate || '',
+      title: f.gate ? f.scene : '第 ' + f.stage + ' 关',
+      pips: f.gate ? [] : pips,
       rest: rest,
-      note: rest ? '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中') : '',
+      note: rest ? (f.gate ? '没打过' : '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中')) : '',
       mePct: rest ? 100 : pct(f.me, f.max),
       shield: rest ? 0 : pct(f.shield, f.max),
       foe: fight ? {
         name: fight.foe.name,
         sprite: fight.sprite,
         boss: fight.boss,
+        tag: f.gate ? fight.tier : (fight.boss ? '首领' : ''),
         pct: pct(f.foe, fight.foe.max),
         state: { enter: 'in', fight: 'on', fall: 'out', rest: 'away' }[f.phase]
       } : null,
@@ -1944,6 +2123,7 @@ Page({
       let nextText = '';
       if (!r.dead) {
         if (r.nextTrib) nextText = r.nextTrib;
+        else if (r.gate) nextText = r.nextGate;
         else if (r.nextMountain && !run.pending && game.mountainReady(s)) nextText = '返回山门';
         else if (r.voyage && game.atSea(run)) nextText = '继续探索';
         else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
@@ -1961,6 +2141,10 @@ Page({
     }
     if (this.arenaOpen && run.phase === 'alive') return this.arenaView(power);
     if (this.trainOpen && run.phase === 'alive') return this.trainSheet();
+    if (this.gateOpen && run.phase === 'alive') {
+      const gate = this.gateSheet();
+      if (gate) return gate;
+    }
     if (this.seaOpen) {
       const sea = game.seaView(s);
       if (sea) return Object.assign({ kind: 'sea' }, sea);
@@ -2139,6 +2323,7 @@ Page({
 
   afterAction() {
     this.trainCache = null;
+    this.gateCache = null;
     this.refresh();
     this.save();
   },
@@ -2345,6 +2530,7 @@ Page({
       audio.play('tap');
       this.refresh();
     } else if (result && result.nextTrib) this.onTrib();
+    else if (result && result.gate) this.onGate();
     else this.onMain();
   },
 
@@ -2452,6 +2638,7 @@ Page({
     if (!game.reincarnate(this.state, Date.now(), Math.random)) return;
     audio.play('tap');
     this.stopAct();
+    this.clearGate();
     this.deadOpen = false;
     this.seaOpen = false;
     this.mountainPanel = '';
@@ -2531,6 +2718,7 @@ Page({
     }, function () {
       this.state = game.createState(Date.now());
       this.stopAct();
+      this.clearGate();
       this.tipDone = false;
       this.tipStep = 0;
       try {

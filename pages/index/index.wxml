@@ -66,7 +66,8 @@
     </view>
   </view>
 
-  <view class="stage stage-{{actor.layer}} {{actor.storm ? 'stage-storm' : ''}} {{bar.show && !actor.storm ? 'stage-fray' : ''}}">
+  <view class="stage stage-{{actor.layer}} {{actor.storm ? 'stage-storm' : ''}} {{bar.show && !actor.storm ? 'stage-fray' : ''}} {{bar.scene && !actor.storm ? 'stage-gate' : ''}}">
+    <image wx:if="{{bar.scene && !actor.storm}}" class="scene-art" src="/assets/scenes/{{bar.scene}}.svg" mode="aspectFill" />
     <view class="scene-far"></view>
     <view class="scene-near"></view>
     <view class="rib rib-1"></view>
@@ -154,7 +155,7 @@
         <view class="fray-bag {{bag.full ? 'fray-bag-full' : ''}}" hover-class="opt-hover" bindtap="onBag">{{bag.text}}{{bag.full ? ' · 满' : ''}}</view>
         <view wx:if="{{bar.foe && bar.foe.state !== 'away'}}" class="fray-side fray-side-foe">
           <view class="fray-title">
-            <text wx:if="{{bar.foe.boss}}" class="fray-boss-tag">首领</text>
+            <text wx:if="{{bar.foe.tag}}" class="fray-boss-tag">{{bar.foe.tag}}</text>
             <text class="fray-foe-name">{{bar.foe.name}}</text>
           </view>
           <view class="fray-hp">
@@ -194,6 +195,10 @@
     <view wx:if="{{hero.trib}}" class="main-btn trib-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onTrib">
       <text class="main-title">{{hero.trib}}</text>
       <text class="main-sub">{{hero.tribSub}}</text>
+    </view>
+    <view wx:if="{{hero.gate}}" class="main-btn gate-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onGate">
+      <text class="main-title">{{hero.gate}}</text>
+      <text class="main-sub">{{hero.gateSub}}</text>
     </view>
     <view wx:if="{{hero.path}}" class="main-btn path-btn" hover-class="btn-hover" hover-stay-time="60" bindtap="onPath">
       <text class="main-title">{{hero.path}}</text>
@@ -782,6 +787,40 @@
         </scroll-view>
       </block>
 
+      <block wx:elif="{{sheet.kind === 'gate'}}">
+        <view class="sheet-top">
+          <view class="sheet-type">秘境</view>
+          <view class="sheet-close" bindtap="onGateClose">关闭</view>
+        </view>
+        <view class="sheet-title">{{sheet.title}}</view>
+        <view class="sheet-text">{{sheet.text}}</view>
+        <view class="train-me">{{sheet.note}}</view>
+        <scroll-view scroll-y class="sheet-body cloud-body">
+          <view wx:if="{{sheet.sit}}" class="rank-row">
+            <view class="rank-info">
+              <text class="rank-name">机缘不足</text>
+              <text class="rank-realm">{{sheet.sit}}</text>
+            </view>
+            <view class="arena-btn {{sheet.sitOff ? 'arena-btn-off' : ''}}" bindtap="onGateSit">
+              <text class="arena-btn-title">静坐</text>
+            </view>
+          </view>
+          <view wx:for="{{sheet.foes}}" wx:key="id" class="rank-row">
+            <image class="gate-foe" src="/assets/foes/{{item.id}}.svg" mode="aspectFit" />
+            <view class="rank-info">
+              <text class="rank-name">{{item.tier}} · {{item.name}}</text>
+              <text class="rank-realm">{{item.text}}</text>
+              <text class="rank-realm">{{item.sub}}</text>
+              <text class="rank-realm gate-gain">{{item.gain}}</text>
+            </view>
+            <view class="arena-btn {{sheet.off ? 'arena-btn-off' : ''}}" data-id="{{item.id}}" bindtap="onGateFight">
+              <text class="arena-btn-title">挑战</text>
+              <text class="arena-btn-sub">胜率 {{item.pct}}%</text>
+            </view>
+          </view>
+          <view wx:if="{{sheet.reason}}" class="gate-reason">{{sheet.reason}}</view>
+        </scroll-view>
+      </block>
       <block wx:elif="{{sheet.kind === 'cloud'}}">
         <view class="sheet-top">
           <view class="sheet-type">云存档</view>

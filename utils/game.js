@@ -34,6 +34,7 @@ const PATH_COUNTER = content.PATH_COUNTER;
 const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
 const TRAIN_FOES = content.TRAIN_FOES;
+const GATES = content.GATES;
 
 const BASE_QI_CAP = 100;
 const BASE_LIFE = 60;
@@ -347,6 +348,8 @@ function newRun(state, rng) {
     // 历练：cleared 是这一世过的最远一关，back 是败了之后眼下比它退回了几关，bag 是储物袋里攒着的灵气（按丹田容量的比例记），loot 是储物袋里攒着的装备件数。
     battle: { cleared: 0, back: 0, bag: 0, loot: 0 },
     gear: emptyGear(),
+    // 关隘：mats 是各秘境凑到的材料，lost 是在各秘境败过几场（对手让了几步）。
+    gate: emptyGate(false),
     death: null
   };
 }
@@ -1311,14 +1314,16 @@ function canDraw(state) {
 }
 
 // 机缘用尽时只能静坐：耗 1 年寿元（劫期过了照样多折），让灵气和机缘跟着年岁涨。
+// 关隘的材料没凑齐、机缘又不够进秘境打一场时也能静坐，否则攒不出那几次机缘。
 function canMeditate(state) {
   const run = state.run;
-  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && run.chance < 1;
+  return run.phase === 'alive' && !atSea(run) && !run.event && !run.pending && !run.trib && (run.chance < 1 || gateSaving(state));
 }
 
 // 坐到下一次机缘回来为止，至少一年。
 function meditateWait(state) {
-  return Math.max(1, Math.ceil((1 - state.run.chance) * chanceYears(state) - 1e-9));
+  const chance = state.run.chance;
+  return Math.max(1, Math.ceil((Math.floor(chance) + 1 - chance) * chanceYears(state) - 1e-9));
 }
 
 function meditateYears(state) {
@@ -2604,6 +2609,148 @@ function trainCollect(state, rng) {
   return { title: '历练', label: '收了储物袋', qi: amount >= 1 ? amount : 0, gained: Math.max(0, Math.floor(run.qi - qi)), drops: drops, lines: lines, tags: tags };
 }
 
+// 关隘与秘境：GATES 里的几场天劫要先凑齐材料才肯落下，材料只在对应的秘境里打赢对手才有。
+// 每打一场耗 GATE_COST 次机缘，不耗寿元，也不计劫期；战斗当场算完，页面只负责播放。
+// 对手相当于历练里某一关的首领；在同一个秘境每败一场，那里的对手就让一步（气血和攻击各降 GATE_YIELD），最多让 GATE_YIELD_MAX 步。
+const GATE_COST = 3;
+const GATE_YIELD = 0.15;
+const GATE_YIELD_MAX = 5;
+
+function emptyGate(full) {
+  const gate = { mats: {}, lost: {} };
+  GATES.forEach((def) => {
+    gate.mats[def.id] = full ? def.need : 0;
+    gate.lost[def.id] = 0;
+  });
+  return gate;
+}
+
+function gateDef(run) {
+  return GATES.filter((def) => def.trib === run.realm)[0] || null;
+}
+
+// 眼前这场天劫的关隘：have 是手里的材料，short 为真时天劫落不下来。这个境界没有关隘时返回 null。
+function tribGate(state) {
+  const run = state.run;
+  const def = gateDef(run);
+  if (!def) return null;
+  const have = run.gate.mats[def.id];
+  return { id: def.id, scene: def.scene, material: def.material, need: def.need, have: have, short: have < def.need };
+}
+
+// 材料没凑齐、机缘又不够打一场时，可以静坐着把机缘攒出来。
+function gateSaving(state) {
+  const gate = tribGate(state);
+  return !!gate && gate.short && state.run.chance < GATE_COST;
+}
+
+function gateFoe(state, def, foe) {
+  const run = state.run;
+  const yielded = 1 - GATE_YIELD * run.gate.lost[def.id];
+  return battle.foeFighter({
+    name: foe.name,
+    hp: TRAIN_HP * Math.pow(TRAIN_HP_GROWTH, foe.stage - 1) * TRAIN_BOSS_HP * yielded,
+    atk: TRAIN_ATK * Math.pow(TRAIN_ATK_GROWTH, foe.stage - 1) * TRAIN_BOSS_ATK * yielded,
+    interval: foe.interval,
+    reduce: foe.reduce,
+    resist: foe.resist,
+    skill: foe.skill
+  }, 1 + HEAVEN_REQ * run.heaven);
+}
+
+// 眼下不能进秘境打一场的原因；能打返回空串。
+function gateReason(state) {
+  const run = state.run;
+  const gate = tribGate(state);
+  if (run.phase !== 'alive' || !gate) return '眼下没有要闯的秘境';
+  if (!gate.short) return gate.material + '已经凑齐';
+  if (atSea(run)) return '人在枯海，回来再说';
+  if (run.trib) return '天劫未了';
+  if (run.chance < GATE_COST) return '机缘不足 ' + GATE_COST + ' 次';
+  return '';
+}
+
+// 秘境面板：材料凑了多少、三个对手各自的数值和胜率。这个境界没有关隘时返回 null。
+function gateView(state) {
+  const run = state.run;
+  const def = run.phase === 'alive' ? gateDef(run) : null;
+  if (!def) return null;
+  const gate = tribGate(state);
+  const me = trainFighter(state);
+  return {
+    id: def.id,
+    scene: def.scene,
+    text: def.text,
+    trib: TRIBS[def.trib].name,
+    material: def.material,
+    need: def.need,
+    have: gate.have,
+    done: !gate.short,
+    cost: GATE_COST,
+    reason: gateReason(state),
+    yielded: run.gate.lost[def.id],
+    yieldMax: GATE_YIELD_MAX,
+    yieldStep: GATE_YIELD,
+    saving: gateSaving(state) && canMeditate(state),
+    saveYears: meditateYears(state),
+    foes: def.foes.map((foe) => {
+      const fighter = gateFoe(state, def, foe);
+      return {
+        id: foe.id, tier: foe.tier, name: foe.name, text: foe.text, gain: foe.gain, stage: foe.stage,
+        hp: fighter.hp, atk: Math.round(fighter.atk), skill: foe.skill.name, chance: battle.estimate(me, fighter)
+      };
+    })
+  };
+}
+
+// 进秘境打一场：先扣机缘，当场算完。赢了得材料，败了那里的对手让一步。返回结算和可回放的战斗；打不了返回 null。
+function gateFight(state, foeId, rng) {
+  if (gateReason(state)) return null;
+  const run = state.run;
+  const def = gateDef(run);
+  const foe = findById(def.foes, foeId);
+  if (!foe) return null;
+  const before = snapshot(state);
+  const me = trainFighter(state);
+  run.chance -= GATE_COST;
+  const fight = battle.simulate(me, gateFoe(state, def, foe), rng || Math.random);
+  const lines = ['机缘 -' + GATE_COST];
+  let gain = 0;
+  if (fight.win) {
+    gain = Math.min(foe.gain, def.need - run.gate.mats[def.id]);
+    run.gate.mats[def.id] += gain;
+    lines.push(def.material + ' +' + gain + '（' + run.gate.mats[def.id] + ' / ' + def.need + '）');
+    if (run.gate.mats[def.id] >= def.need) lines.push(def.material + '凑齐了，' + TRIBS[def.trib].name + '可以落下来了');
+  } else if (run.gate.lost[def.id] < GATE_YIELD_MAX) {
+    run.gate.lost[def.id]++;
+    lines.push('没打过，什么也没拿到', def.scene + '里的对手让了一步：气血和攻击各 -' + pctText(GATE_YIELD * run.gate.lost[def.id]));
+  } else {
+    lines.push('没打过，什么也没拿到');
+  }
+  const label = (fight.win ? '打赢了' : '败给了') + foe.name;
+  run.log.push({ age: run.age, title: '秘境·' + def.scene, text: label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  return {
+    title: '秘境·' + def.scene, label: label, text: foe.text, lines: lines, tags: [fight.win ? 'good' : 'bad'], dead: false,
+    win: fight.win, gain: gain, have: run.gate.mats[def.id], need: def.need,
+    fight: {
+      gate: def.id, scene: def.scene, tier: foe.tier, sprite: foe.id, boss: foe === def.foes[def.foes.length - 1],
+      win: fight.win, seconds: fight.seconds, timeline: fight.timeline, me: fight.me, foe: fight.foe
+    }
+  };
+}
+
+function normalizeGate(raw) {
+  const gate = emptyGate(false);
+  const mats = raw && typeof raw.mats === 'object' && raw.mats ? raw.mats : {};
+  const lost = raw && typeof raw.lost === 'object' && raw.lost ? raw.lost : {};
+  GATES.forEach((def) => {
+    gate.mats[def.id] = toCount(mats[def.id], def.need);
+    gate.lost[def.id] = toCount(lost[def.id], GATE_YIELD_MAX);
+  });
+  return gate;
+}
+
 // 装备：历练掉落，机缘里偶尔也给，只管这一世。身上兵、衣、佩三个槽位，背包最多 PACK_MAX 件，装不下的直接分解成锻材。
 function emptyGear() {
   const worn = {};
@@ -3109,6 +3256,7 @@ function yuanTrialView(state) {
   const terms = tribulationTerms(state, trib);
   const route = findById(SEA_ROUTES, sea.route);
   const a = attrs(state);
+  const gate = tribGate(state);
   const options = [];
   const chanceFor = (value) => tribulationChance(state, clamp(value / req, 0, 1.2));
   const attribute = (key, label) => {
@@ -3142,7 +3290,8 @@ function yuanTrialView(state) {
   return Object.assign(terms, {
     step: step, name: name,
     gear: tribGear(state),
-    ready: !run.event && !run.pending && isFull(state),
+    gate: gate,
+    ready: !run.event && !run.pending && isFull(state) && !(gate && gate.short),
     text: sea.saltPassed ? '潮声把你叫过的每一个名字都念了一遍。你得认出，哪一个是自己的。' : '返潮把锚链一节节拽出海床。你要先越过乱潮，才能听清船底是谁在喊你的名字。',
     options: options
   });
@@ -3205,6 +3354,7 @@ function tribulationInfo(state) {
   const demonOk = run.mode === 'demon' && mech(run, 'demonTrib') > 0;
   const again = mech(run, 'reTrib');
   const gear = tribGear(state);
+  const gate = tribGate(state);
   const minChance = gear.cut >= 1 ? 0 : 0.05;
   // 化神起装备不足也削弱借势，避免零装备靠借势的固定加成绕过装备要求。
   const borrowBonus = BORROW_TRIB * (gear.cut >= 1 ? 1 - gear.penalty : 1);
@@ -3232,9 +3382,10 @@ function tribulationInfo(state) {
     scatterText: scatterAttr ? boltRewardText(plan.tests, { attr: scatterAttr }) : '',
     demonOk: demonOk,
     gear: gear,
+    gate: gate,
     parts: tribulationParts(state, ratio),
-    // 逐道雷渡到一半时不再看灵气和魔修身份，否则这场劫既渡不完也退不出。
-    ready: run.phase === 'alive' && !run.pending && (!!run.trib || ((run.mode !== 'demon' || demonOk) && tribQiReady(state)))
+    // 逐道雷渡到一半时不再看灵气和魔修身份，否则这场劫既渡不完也退不出。关隘的材料没凑齐，这场劫落不下来。
+    ready: run.phase === 'alive' && !run.pending && (!!run.trib || ((run.mode !== 'demon' || demonOk) && tribQiReady(state) && !(gate && gate.short)))
   });
   if (trib.bolts) {
     // chance 和 borrowChance 改成“剩下的必接雷全过”的把握，渡到余雷时是下一道余雷的把握。
@@ -3672,6 +3823,8 @@ function normalizeRun(state, raw, rng) {
     const remaining = toCount(raw.aftermath.remaining, SUDDEN_AFTERMATH);
     if (remaining) run.aftermath = { id: raw.aftermath.id, remaining: remaining };
   }
+  // 加入关隘之前就已经开始的这一世不补这道门槛，按材料齐全算。
+  run.gate = raw.gate === undefined ? emptyGate(true) : normalizeGate(raw.gate);
   if (phase === 'dead') {
     const death = raw.death && typeof raw.death === 'object' ? raw.death : {};
     run.death = {
@@ -3950,6 +4103,14 @@ module.exports = {
   trainRate,
   trainBag,
   trainCollect,
+  GATES,
+  GATE_COST,
+  GATE_YIELD,
+  GATE_YIELD_MAX,
+  tribGate,
+  gateView,
+  gateReason,
+  gateFight,
   GEAR_SLOTS: gear.SLOTS,
   GEAR_PACK_MAX: gear.PACK_MAX,
   GEAR_MAX_LEVEL: gear.MAX_LEVEL,

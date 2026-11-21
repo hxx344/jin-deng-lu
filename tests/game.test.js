@@ -1,6 +1,9 @@
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const game = require('../utils/game');
+const battle = require('../utils/battle');
 const { powerProfile } = require('../utils/combat-power');
 
 const near = (a, b) => assert.ok(Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)), a + ' 应约等于 ' + b);
@@ -33,6 +36,8 @@ function born(root) {
   // 旧规则用例隔离命格，命格本身由独立用例覆盖。
   s.run.fate = '';
   assert.ok(game.chooseRoot(s, root || 'talisman', 0, () => 0));
+  // 旧规则用例隔离关隘：材料按凑齐算，关隘本身由独立用例覆盖。
+  game.GATES.forEach((gate) => { s.run.gate.mats[gate.id] = gate.need; });
   return s;
 }
 
@@ -1325,6 +1330,9 @@ test('随机游玩 300 世：不会卡死，数值始终合法，存档读回后
         const result = game.choose(s, index, rng);
         assert.strictEqual(result === null, index >= 0 && v.options[index].disabled);
       }
+    } else if (game.gateView(s) && !game.gateView(s).reason && rng() < 0.5) {
+      const foes = game.GATES.filter((gate) => gate.trib === run.realm)[0].foes;
+      assert.ok(game.gateFight(s, foes[Math.floor(rng() * foes.length)].id, rng));
     } else if (game.tribulationInfo(s) && game.tribulationInfo(s).ready && rng() < 0.5) {
       game.attemptTribulation(s, rng);
     } else if (game.canDraw(s)) {
@@ -3704,4 +3712,180 @@ test('逐道雷渡到一半时不能服散，灵气不满也能把这场劫渡�
   const r = game.attemptTribulation(s, () => 0, 'scatter');
   assert.ok(r && r.done);
   assert.strictEqual(s.run.trib, null);
+});
+
+// 关隘与秘境
+function atGate(realm) {
+  const s = born();
+  s.run.realm = realm;
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  s.run.gate = game.normalizeState({}, 0, () => 0).run.gate;
+  return s;
+}
+
+test('关隘内容：五场天劫各一个秘境，三个对手从下品到上品越来越强、给的材料越来越多，图都在', () => {
+  assert.deepStrictEqual(game.GATES.map((gate) => game.TRIBS[gate.trib].name), ['筑基劫', '元婴劫', '问鼎劫', '碎涅劫', '踏天劫']);
+  const needs = game.GATES.map((gate) => gate.need);
+  assert.strictEqual(new Set(needs).size, needs.length);
+  const ids = [];
+  game.GATES.forEach((gate) => {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'assets', 'scenes', gate.id + '.svg')), gate.id + ' 缺场景图');
+    assert.deepStrictEqual(gate.foes.map((foe) => foe.tier), ['下品', '中品', '上品']);
+    const s = atGate(gate.trib);
+    const view = game.gateView(s);
+    assert.strictEqual(view.scene, gate.scene);
+    for (let i = 1; i < view.foes.length; i++) {
+      assert.ok(view.foes[i].hp > view.foes[i - 1].hp && view.foes[i].atk > view.foes[i - 1].atk);
+      assert.ok(view.foes[i].gain > view.foes[i - 1].gain);
+    }
+    // 只打最弱的对手也凑得齐。
+    assert.ok(gate.need % gate.foes[0].gain === 0);
+    gate.foes.forEach((foe) => {
+      ids.push(foe.id);
+      assert.ok(fs.existsSync(path.join(__dirname, '..', 'assets', 'foes', foe.id + '.svg')), foe.id + ' 缺对手图');
+    });
+  });
+  assert.strictEqual(new Set(ids).size, 15);
+  // 新对手不和历练里的共用模型。
+  ['dog', 'scarecrow', 'debt', 'waiter', 'scavenger'].forEach((id) => assert.ok(ids.indexOf(id) < 0));
+  // 没有关隘的境界没有秘境。
+  assert.strictEqual(game.gateView(atGate(2)), null);
+  assert.strictEqual(game.tribGate(atGate(2)), null);
+});
+
+test('关隘：材料没凑齐天劫落不下来，秘境每场耗 3 次机缘、不耗寿元不计劫期，凑齐后才能渡劫', () => {
+  const s = atGate(1);
+  s.run.stats = { edge: 400, body: 400, mind: 400 };
+  s.run.chance = 7;
+  let info = game.tribulationInfo(s);
+  assert.deepStrictEqual(info.gate, { id: 'paper', scene: '纸人巷', material: '纸灰', need: 4, have: 0, short: true });
+  assert.strictEqual(info.ready, false);
+  ['endure', 'borrow', 'scatter'].forEach((method) => assert.strictEqual(game.attemptTribulation(s, () => 0, method), null));
+  let view = game.gateView(s);
+  assert.strictEqual(view.cost, 3);
+  assert.strictEqual(view.reason, '');
+  assert.deepStrictEqual(view.foes.map((foe) => foe.gain), [1, 2, 3]);
+  view.foes.forEach((foe) => assert.strictEqual(foe.chance, 1));
+  assert.strictEqual(game.gateFight(s, 'dog', () => 0), null);
+  const age = s.run.age;
+  const choices = s.run.choices;
+  const realmChoices = s.run.realmChoices;
+  let r = game.gateFight(s, 'papercollector', mulberry(1));
+  assert.strictEqual(r.win, true);
+  assert.strictEqual(r.gain, 3);
+  assert.strictEqual(r.fight.sprite, 'papercollector');
+  assert.strictEqual(r.fight.gate, 'paper');
+  assert.ok(r.fight.timeline.length > 0);
+  assert.deepStrictEqual(r.lines, ['机缘 -3', '纸灰 +3（3 / 4）']);
+  assert.strictEqual(s.run.chance, 4);
+  assert.deepStrictEqual([s.run.age, s.run.choices, s.run.realmChoices], [age, choices, realmChoices]);
+  assert.strictEqual(s.run.log[s.run.log.length - 1].title, '秘境·纸人巷');
+  assert.strictEqual(game.tribulationInfo(s).ready, false);
+  // 多出来的不记：还差 1 份时打上品也只得 1 份。
+  r = game.gateFight(s, 'papercollector', mulberry(2));
+  assert.strictEqual(r.gain, 1);
+  assert.deepStrictEqual(r.lines, ['机缘 -3', '纸灰 +1（4 / 4）', '纸灰凑齐了，筑基劫可以落下来了']);
+  assert.strictEqual(s.run.chance, 1);
+  view = game.gateView(s);
+  assert.strictEqual(view.done, true);
+  assert.strictEqual(view.reason, '纸灰已经凑齐');
+  s.run.chance = 30;
+  assert.strictEqual(game.gateFight(s, 'paperboy', () => 0), null);
+  info = game.tribulationInfo(s);
+  assert.strictEqual(info.gate.short, false);
+  assert.strictEqual(info.ready, true);
+  assert.ok(game.attemptTribulation(s, () => 0).success);
+  // 进了没有关隘的境界，秘境关门。
+  assert.strictEqual(game.gateView(s), null);
+  assert.strictEqual(game.gateFight(s, 'paperboy', () => 0), null);
+});
+
+test('关隘：败了不给材料，那里的对手让一步，最多让五步；机缘不够时可以静坐攒出来', () => {
+  const s = atGate(1);
+  s.run.stats = { edge: 0, body: 0, mind: 0 };
+  s.run.chance = 30;
+  const hp = game.gateView(s).foes[2].hp;
+  for (let i = 1; i <= 6; i++) {
+    const r = game.gateFight(s, 'papercollector', mulberry(i));
+    assert.strictEqual(r.win, false);
+    assert.strictEqual(r.gain, 0);
+    assert.strictEqual(s.run.gate.lost.paper, Math.min(5, i));
+  }
+  assert.strictEqual(s.run.gate.mats.paper, 0);
+  assert.strictEqual(s.run.chance, 12);
+  const view = game.gateView(s);
+  assert.strictEqual(view.yielded, 5);
+  assert.ok(Math.abs(view.foes[2].hp - hp * 0.25) <= 1);
+  // 机缘只剩 2 次：不够打一场，也翻得了机缘，但还能静坐把第 3 次攒出来。
+  s.run.chance = 2;
+  assert.strictEqual(game.gateView(s).reason, '机缘不足 3 次');
+  assert.strictEqual(game.gateFight(s, 'paperboy', () => 0), null);
+  assert.strictEqual(game.gateView(s).saving, true);
+  assert.ok(game.canMeditate(s));
+  assert.strictEqual(game.meditateYears(s), game.gateView(s).saveYears);
+  assert.ok(game.meditate(s));
+  assert.ok(s.run.chance >= 3 && s.run.chance < 4);
+  assert.strictEqual(game.canMeditate(s), false);
+  assert.strictEqual(game.gateView(s).reason, '');
+  // 材料凑齐后，手里还有机缘就不能再静坐。
+  s.run.gate.mats.paper = 4;
+  s.run.chance = 2;
+  assert.strictEqual(game.canMeditate(s), false);
+});
+
+test('关隘：元婴劫要盐晶，人在枯海时进不了秘境；存档原样读回，旧档这一世不补门槛', () => {
+  const s = goldCore();
+  s.run.gate.mats.salt = 0;
+  s.run.stats = { edge: 3000, body: 3000, mind: 3000 };
+  s.run.chance = 40;
+  assert.ok(game.chooseSea(s, 'sect', 0));
+  assert.strictEqual(game.gateView(s).reason, '人在枯海，回来再说');
+  assert.strictEqual(game.gateFight(s, 'saltcrab', () => 0), null);
+  assert.ok(game.retreatSea(s));
+  let trial = game.yuanTrialView(s);
+  assert.strictEqual(trial.gate.short, true);
+  assert.strictEqual(trial.ready, false);
+  assert.strictEqual(game.attemptYuanTrial(s, () => 0, 'body', 1), null);
+  assert.ok(game.gateFight(s, 'saltferryman', mulberry(3)).win);
+  assert.deepStrictEqual(game.normalizeState(JSON.parse(JSON.stringify(s)), s.lastTime, () => 0), s);
+  assert.ok(game.gateFight(s, 'saltferryman', mulberry(4)).win);
+  trial = game.yuanTrialView(s);
+  assert.strictEqual(trial.gate.have, 6);
+  assert.strictEqual(trial.ready, true);
+  assert.ok(game.attemptYuanTrial(s, () => 0, 'body', 1).success);
+  // 坏数据截到合法范围；加入关隘之前的存档按材料齐全算。
+  const raw = JSON.parse(JSON.stringify(atGate(1)));
+  raw.run.gate = { mats: { paper: 99, salt: -1 }, lost: { paper: 99 } };
+  let loaded = game.normalizeState(raw, 0, () => 0);
+  assert.strictEqual(loaded.run.gate.mats.paper, 4);
+  assert.strictEqual(loaded.run.gate.mats.salt, 0);
+  assert.strictEqual(loaded.run.gate.lost.paper, game.GATE_YIELD_MAX);
+  delete raw.run.gate;
+  loaded = game.normalizeState(raw, 0, () => 0);
+  game.GATES.forEach((gate) => assert.strictEqual(loaded.run.gate.mats[gate.id], gate.need));
+  assert.strictEqual(game.tribulationInfo(loaded).ready, true);
+  // 新开的一世从零凑起。
+  assert.strictEqual(game.createState(0, () => 0).run.gate.mats.paper, 0);
+});
+
+test('关隘：听雨剑按扣费前的机缘档位参战，和面板里的胜率口径一致', () => {
+  const s = atGate(1);
+  give(s, ['sw2'], 2);
+  s.run.chance = 12;
+  const before = game.trainFighter(s);
+  const simulate = battle.simulate;
+  let fought = null;
+  try {
+    battle.simulate = function (me) {
+      fought = me;
+      return simulate.apply(this, arguments);
+    };
+    assert.ok(game.gateFight(s, 'paperboy', mulberry(7)));
+  } finally {
+    battle.simulate = simulate;
+  }
+  assert.strictEqual(s.run.chance, 9);
+  assert.strictEqual(fought.atk, before.atk);
+  assert.ok(fought.atk > game.trainFighter(s).atk);
 });
