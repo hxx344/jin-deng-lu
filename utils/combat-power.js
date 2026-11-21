@@ -31,24 +31,65 @@ function attributePower(attributes, softCap) {
     Math.min(...effective) * BALANCE_WEIGHT;
 }
 
-// 所有来源独立取整后再求和，破境加成再按合计乘出来单列一项。新玩法在调用侧提供带固定 id 的加减项。
+const MODULE_IDS = ['realm', 'attributes', 'mastery', 'bonds', 'gear'];
+
+function opponentBuild(realm, stage) {
+  const attribute = realm.power.opponentAttribute * stage.power;
+  return {
+    attributes: { edge: attribute, body: attribute, mind: attribute },
+    mastery: realm.power.opponentMastery * stage.power,
+    bonds: realm.power.opponentBonds,
+    gear: realm.power.opponentGear || 0
+  };
+}
+
+function referenceValues(realm, stage) {
+  const build = opponentBuild(realm, stage);
+  return {
+    realm: realm.power.base * stage.power,
+    attributes: attributePower(build.attributes, realm.power.softCap),
+    mastery: build.mastery,
+    bonds: build.bonds,
+    gear: build.gear
+  };
+}
+
+// 先定合计再按小数余数分配取整，免得低战力阶段各项分别四舍五入后，合计停在上一个小境界。
+function roundShares(values) {
+  const rounded = values.map(Math.floor);
+  const left = Math.round(values.reduce((sum, value) => sum + value, 0)) - rounded.reduce((sum, value) => sum + value, 0);
+  const order = values.map((value, index) => ({ index: index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+  for (let i = 0; i < left; i++) rounded[order[i].index]++;
+  return rounded;
+}
+
+// 五项养成各分一份当前境界的典型战力，实际投入高于或低于典型构筑时按比例增减。
+// 破境倍率乘到每一个来源上，不再单列一项吞掉后期几乎所有战力；未知来源仍按固定加减项处理。
 function powerProfile(realm, stage, attributes, extraSources = []) {
+  const references = referenceValues(realm, stage);
+  const referenceTotal = MODULE_IDS.reduce((sum, id) => sum + references[id], 0);
+  const moduleShare = referenceTotal / MODULE_IDS.length;
   const sources = [
     { id: 'realm', label: '境界', value: realm.power.base * stage.power },
     { id: 'attributes', label: '锋 · 躯 · 神', value: attributePower(attributes, realm.power.softCap) },
     ...extraSources
-  ].map((source) => ({
-    id: source.id,
-    label: source.label,
-    value: Number.isFinite(source.value) ? Math.round(source.value) : 0
-  }));
+  ].map((source) => {
+    const raw = Number.isFinite(source.value) ? source.value : 0;
+    const reference = references[source.id] || 0;
+    return {
+      id: source.id,
+      label: source.label,
+      value: reference > 0 ? moduleShare * raw / reference : raw
+    };
+  });
   const mult = realm.power.mult || 1;
-  const flat = sources.reduce((sum, source) => sum + source.value, 0);
-  if (mult > 1) {
-    sources.push({ id: 'boost', label: '破境加成 ×' + mult.toFixed(2), value: Math.round(Math.max(0, flat) * (mult - 1)) });
-  }
-  const total = sources.reduce((sum, source) => sum + source.value, 0);
-  return { total: Math.max(0, total), sources: sources };
+  const flatValues = sources.map((source) => source.value);
+  const flat = roundShares(flatValues).reduce((sum, value) => sum + value, 0);
+  const boostedValues = roundShares(flatValues.map((value) => value * mult));
+  const boosted = sources.map((source, i) => Object.assign({}, source, { value: boostedValues[i] }));
+  const total = boosted.reduce((sum, source) => sum + source.value, 0);
+  return { total: Math.max(0, total), baseTotal: Math.max(0, flat), multiplier: mult, sources: boosted };
 }
 
 // 排行榜沿用历史最高境界和累计灯芯，估算角色在该境界的战力。
@@ -71,12 +112,13 @@ function estimatedOpponentPower(row) {
   const knownIndex = known.knownIndex;
   const realm = known.realm;
   const stage = STAGES[knownIndex % STAGES.length];
-  const attribute = realm.power.opponentAttribute * stage.power;
+  const build = opponentBuild(realm, stage);
   const extraSources = [
-    { id: 'mastery', value: realm.power.opponentMastery * stage.power },
-    { id: 'bonds', value: realm.power.opponentBonds }
+    { id: 'mastery', value: build.mastery },
+    { id: 'bonds', value: build.bonds },
+    { id: 'gear', value: build.gear }
   ];
-  const profile = powerProfile(realm, stage, { edge: attribute, body: attribute, mind: attribute }, extraSources);
+  const profile = powerProfile(realm, stage, build.attributes, extraSources);
   const rawWick = Number(row.totalWick);
   const wick = Number.isFinite(rawWick) ? Math.max(0, rawWick) : 0;
   const bonus = Math.min(MAX_WICK_BONUS, WICK_LOG_RATE * Math.log10(1 + wick));

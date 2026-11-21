@@ -3071,7 +3071,7 @@ function mountainContext(state) {
     levelCap: Math.min(mountain.LEVEL_MAX, mountain.LEVEL_START + Math.max(0, state.run.realm - CAVE_REALM)),
     cap: qiCap(state), years: yearsLeft(state), skillCap: maxSkills(state), format: formatNumber,
     // 亲自出阵按不含破境加成的战力折算，免得境界一高就把出阵的上限顶满。
-    power: power.total - power.sources.reduce((sum, source) => sum + (source.id === 'boost' ? source.value : 0), 0)
+    power: power.baseTotal
   };
 }
 

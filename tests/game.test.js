@@ -1197,13 +1197,15 @@ test('后期灯纹：铸胚加装备分，渡厄只减大关和终劫的失败�
   s.run.qi = game.qiCap(s);
   const gearNeed = game.tribGear(s).need;
   const gearScore = game.gearScore(s);
+  const gearPower = () => game.combatPowerDetails(s).sources.filter((source) => source.id === 'gear')[0].value;
+  const gearPowerBefore = gearPower();
   assert.strictEqual(game.tribulationInfo(s).failYears, 400);
   s.lamps.r5 = 5;
   s.lamps.m6 = 3;
   assert.strictEqual(game.tribGear(s).need, gearNeed);
   assert.strictEqual(game.gearScore(s), Math.round(gearScore * (1 + 5 * game.LAMP_GEAR)));
   assert.strictEqual(game.tribGear(s).score, game.gearScore(s));
-  assert.strictEqual(game.combatPowerDetails(s).sources.filter((source) => source.id === 'gear')[0].value, game.gearScore(s));
+  assert.ok(gearPower() > gearPowerBefore);
   assert.strictEqual(game.tribulationInfo(s).failYears, 280);
 
   s.run.realm = 6;
@@ -2327,14 +2329,15 @@ test('战力由当前角色派生，兼顾境界、均衡属性和功法，旧�
 
   const s = born('pill');
   const points = (id) => game.combatPowerDetails(s).sources.find((entry) => entry.id === id).value;
-  assert.strictEqual(game.combatPowerDetails(s).total, 12);
+  assert.strictEqual(game.combatPowerDetails(s).total, 4);
   s.run.stats.edge = 12;
   s.run.stats.mind = -100;
-  assert.strictEqual(points('attributes'), 14);
+  assert.strictEqual(points('attributes'), 7);
+  const belowCap = points('attributes');
   s.run.stats.edge = 24;
   const cap = points('attributes');
   s.run.stats.edge = 36;
-  assert.ok(points('attributes') - cap < cap - 14);
+  assert.ok(points('attributes') - cap < cap - belowCap);
   s.run.stats = { edge: 30, body: 0, mind: 0 };
   const specialized = points('attributes');
   s.run.stats = { edge: 10, body: 10, mind: 10 };
@@ -2361,6 +2364,33 @@ test('战力由当前角色派生，兼顾境界、均衡属性和功法，旧�
   assert.deepStrictEqual(game.combatPowerDetails(s), profile);
   assert.ok(game.reincarnate(s, s.lastTime, () => 0));
   assert.strictEqual(game.combatPowerDetails(s).total, 0);
+});
+
+test('典型构筑下五个战力模块均等，破境倍率分摊到各来源', () => {
+  const ids = ['realm', 'attributes', 'mastery', 'bonds', 'gear'];
+  for (let realmIndex = 1; realmIndex < game.REALMS.length; realmIndex++) {
+    const realm = game.REALMS[realmIndex];
+    assert.strictEqual(realm.power.opponentGear, game.TRIBS[realmIndex].gear, realm.name + '典型装备分');
+    game.STAGES.forEach((stage) => {
+      const attribute = realm.power.opponentAttribute * stage.power;
+      const inputs = [realm, stage, { edge: attribute, body: attribute, mind: attribute }, [
+        { id: 'mastery', value: realm.power.opponentMastery * stage.power },
+        { id: 'bonds', value: realm.power.opponentBonds },
+        { id: 'gear', value: realm.power.opponentGear }
+      ]];
+      const profile = powerProfile(...inputs);
+      assert.deepStrictEqual(profile.sources.map((source) => source.id), ids);
+      const values = profile.sources.map((source) => source.value);
+      values.forEach((value) => assert.ok(Math.abs(value - values[0]) <= 1,
+        realm.name + stage.name + '：' + values.join('、')));
+      assert.strictEqual(profile.sources.some((source) => source.id === 'boost'), false);
+
+      const plainRealm = Object.assign({}, realm, { power: Object.assign({}, realm.power, { mult: 1 }) });
+      const plain = powerProfile(plainRealm, ...inputs.slice(1));
+      assert.strictEqual(profile.baseTotal, plain.total);
+      assert.ok(Math.abs(profile.total - plain.total * realm.power.mult) <= realm.power.mult / 2 + 1);
+    });
+  }
 });
 
 test('战力按有效秘法贡献计分，并支持来自新玩法的独立增减项', () => {
@@ -2427,20 +2457,23 @@ test('竞技场估算全境界逐阶段递增，同档构筑可公平切磋，�
   assert.strictEqual(game.arenaInfo(s, { realmIndex: null }).power, 8);
 });
 
-test('破境加成：每破一个大境界总战力多乘一次，单列一项；历练里的攻击和气血同样放大', () => {
+test('破境加成：每破一个大境界各来源都乘倍率；历练里的攻击和气血同样放大', () => {
   assert.strictEqual(game.REALMS[0].power.mult, 1);
   near(game.REALMS[3].power.mult, Math.pow(game.REALM_POWER_GROWTH, 3));
   const s = born('pill');
   s.run.stats = { edge: 20, body: 20, mind: 20 };
   const mortal = game.combatPowerDetails(s);
-  assert.strictEqual(mortal.sources.find((entry) => entry.id === 'boost'), undefined);
+  assert.strictEqual(mortal.baseTotal, mortal.total);
+  assert.strictEqual(mortal.multiplier, 1);
   const totals = [mortal.total];
   for (let realm = 1; realm < game.REALMS.length; realm++) {
     s.run.realm = realm;
     const profile = game.combatPowerDetails(s);
-    const boost = profile.sources.find((entry) => entry.id === 'boost');
-    const flat = profile.total - boost.value;
-    assert.strictEqual(boost.value, Math.round(flat * (game.REALMS[realm].power.mult - 1)));
+    const mult = game.REALMS[realm].power.mult;
+    assert.strictEqual(profile.multiplier, mult);
+    assert.strictEqual(profile.sources.find((entry) => entry.id === 'boost'), undefined);
+    assert.ok(profile.baseTotal > 0 && profile.total > profile.baseTotal);
+    assert.ok(Math.abs(profile.total - profile.baseTotal * mult) <= mult / 2 + 1);
     assert.strictEqual(profile.total, profile.sources.reduce((sum, source) => sum + source.value, 0));
     // 同样的属性，破境后至少比破境前多出这一档的加成。
     assert.ok(profile.total >= totals[realm - 1] * game.REALM_POWER_GROWTH - 1, game.REALMS[realm].name);
@@ -2457,20 +2490,20 @@ test('破境加成：每破一个大境界总战力多乘一次，单列一项�
 test('竞技场：战力推算、胜败奖励、对战次数每小时回复一次并可一次用完', () => {
   const s = born();
   s.run.stats = { edge: 10, body: 10, mind: -5 };
-  assert.strictEqual(game.arenaPower(s), 35);
+  assert.strictEqual(game.arenaPower(s), 16);
   assert.strictEqual(s.arena, 10);
   const weak = { id: 'u1', name: '甲', realmIndex: 0, totalWick: 0 };
   const strong = { id: 'u2', name: '乙', realmIndex: 11, totalWick: 99999 };
   let info = game.arenaInfo(s, weak);
-  assert.strictEqual(info.power, 19);
-  near(info.chance, 35 / 54);
+  assert.strictEqual(info.power, 8);
+  near(info.chance, 16 / 24);
   assert.deepStrictEqual([info.win, info.years, info.left, info.reason], [3, 3, 10, '']);
   info = game.arenaInfo(s, strong);
-  assert.strictEqual(info.power, 1627);
+  assert.strictEqual(info.power, 2057);
   assert.strictEqual(info.chance, 0.05);
   // 积分按不含破境加成的战力算。
-  assert.strictEqual(info.win, 44);
-  assert.strictEqual(game.arenaInfo(s, { realmIndex: 12, totalWick: 0 }).power, 2062);
+  assert.strictEqual(info.win, 56);
+  assert.strictEqual(game.arenaInfo(s, { realmIndex: 12, totalWick: 0 }).power, 2691);
   assert.strictEqual(game.arenaInfo(s, { id: 'u3', realmIndex: -1, totalWick: 5 }).power, 8);
   assert.strictEqual(game.arenaInfo(s, { id: 'u4' }).power, 8);
 
@@ -2485,10 +2518,10 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   assert.strictEqual(s.run.age, 0);
   assert.strictEqual(s.arena, 9);
   assert.deepStrictEqual(s.run.log[0], { age: 0, title: '竞技场', text: '败给乙：论道积分未增加，折寿 3 年', detail: '寿元余 60 → 57 年，寿元上限 60 → 57 年' });
-  // 胜：论道积分 +44，解锁称号；同一个人可以接着再胜。
+  // 胜：论道积分 +56，解锁称号；同一个人可以接着再胜。
   r = game.arenaFight(s, strong, () => 0);
   assert.strictEqual(r.win, true);
-  assert.deepStrictEqual(r.lines, ['论道积分 +44', '获得称号「论道新秀」']);
+  assert.deepStrictEqual(r.lines, ['论道积分 +56', '获得称号「论道新秀」']);
   assert.strictEqual(game.arenaStanding(s).title, '论道新秀');
   assert.strictEqual(game.maxLife(s), 57);
   assert.strictEqual(game.arenaFight(s, strong, () => 0).win, true);
@@ -2502,7 +2535,7 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   assert.deepStrictEqual([r.fights, r.wins, r.losses], [3, 2, 1]);
   assert.deepStrictEqual(r.lines, ['论道积分 +6', '折寿 3 年']);
   assert.strictEqual(r.label, '连战甲 3 场，胜 2 败 1');
-  assert.strictEqual(s.arenaPoints, 94);
+  assert.strictEqual(s.arenaPoints, 118);
   assert.deepStrictEqual(game.attrs(s), originalAttrs);
   assert.strictEqual(game.tribulationInfo(s).chance, originalTrib);
   assert.strictEqual(s.run.log.length, logs + 1);
@@ -2523,7 +2556,7 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   const raw = JSON.parse(JSON.stringify(s));
   raw.arena = 2.5;
   assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arena, 2.5);
-  assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arenaPoints, 94);
+  assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arenaPoints, 118);
   raw.arena = 99;
   assert.strictEqual(game.normalizeState(raw, s.lastTime, () => 0).arena, 10);
   delete raw.arena;
@@ -2549,7 +2582,7 @@ test('竞技场：战力推算、胜败奖励、对战次数每小时回复一�
   assert.strictEqual(s.arena, 5);
   game.reincarnate(s, s.lastTime, () => 0);
   assert.strictEqual(s.arena, 5);
-  assert.strictEqual(s.arenaPoints, 94);
+  assert.strictEqual(s.arenaPoints, 118);
 });
 function goldCore() {
   const s = born();

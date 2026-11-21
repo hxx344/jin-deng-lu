@@ -400,7 +400,8 @@ test('历练掉装备：首领关必掉，寻常的关有保底；空槽位直�
   assert.ok(/得/.test(s.run.log[s.run.log.length - 1].text));
   assert.ok(game.gearScore(s) > 0);
   const power = game.combatPowerDetails(s);
-  assert.strictEqual(power.sources.filter((source) => source.id === 'gear')[0].value, game.gearScore(s));
+  assert.ok(power.sources.find((source) => source.id === 'gear').value > 0);
+  assert.ok(power.total > game.combatPowerDetails(cultivator(13, 13, 13)).total);
 
   const bare = game.trainFighter(cultivator(13, 13, 13));
   const armed = cultivator(13, 13, 13);

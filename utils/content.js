@@ -249,6 +249,11 @@ HIGH_REALMS.forEach((row) => {
 // 终劫：踏天后期灵气满了再渡，渡过才算踏天圆满；不破境，也不加寿元。
 TRIBS.push({ name: '终劫', tests: ['edge', 'body', 'mind'], req: 1700, life: 0, failYears: 3000, gear: 2350, gearCut: 1, wall: true, final: true });
 
+// 典型构筑的装备分看当前境界要渡的天劫，战力校准和论道对手共用这一口径。
+REALMS.forEach((realm, i) => {
+  realm.power.opponentGear = (TRIBS[i] && TRIBS[i].gear) || 0;
+});
+
 // 价格 = cost × 2^已有等级。need 是第一次走到哪个境界（REALMS 的下标）之后才开放，不写就是一开始就能点。
 const AUTO_LAMP = { id: 'y5', branch: '缘', name: '自动机缘', desc: '永久解锁主界面的自动机缘开关', cost: 100, max: 1 };
 const LAMPS = [
