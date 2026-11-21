@@ -652,7 +652,7 @@ test('机缘数值：同一事件重复遇到会浮动，显示、结算和读�
   const s = born();
   drawOnlyEvent(s, 'i_dog', [0.999, 0.999]);
   const first = game.eventView(s);
-  assert.deepStrictEqual(first.options.map((o) => o.desc), ['心魔 -6，记下【摸过村口的狗】', '神 +1', '灵气 +12']);
+  assert.deepStrictEqual(first.options.map((o) => o.full), ['心魔 -6，记下【摸过村口的狗】', '神 +1', '灵气 +12']);
   assert.deepStrictEqual(first.options.map((o) => o.years), [1, 1, 1]);
   assert.deepStrictEqual(game.eventView(s), first);
 
@@ -665,7 +665,7 @@ test('机缘数值：同一事件重复遇到会浮动，显示、结算和读�
 
   const low = born();
   drawOnlyEvent(low, 'i_dog');
-  assert.deepStrictEqual(game.eventView(low).options.map((o) => o.desc), ['心魔 -4，记下【摸过村口的狗】', '神 +1', '灵气 +8']);
+  assert.deepStrictEqual(game.eventView(low).options.map((o) => o.full), ['心魔 -4，记下【摸过村口的狗】', '神 +1', '灵气 +8']);
 
   const tampered = JSON.parse(JSON.stringify(s));
   tampered.run.event.options[0].label = '篡改的选项';
@@ -673,16 +673,16 @@ test('机缘数值：同一事件重复遇到会浮动，显示、结算和读�
   tampered.run.event.options[2].fx.qi = 99;
   const safe = game.normalizeState(tampered, s.lastTime, () => 0);
   assert.strictEqual(safe.run.event.options[0].label, '摸摸它');
-  assert.deepStrictEqual(game.eventView(safe).options.map((o) => o.desc), ['心魔 -5，记下【摸过村口的狗】', '神 +1', '灵气 +10']);
+  assert.deepStrictEqual(game.eventView(safe).options.map((o) => o.full), ['心魔 -5，记下【摸过村口的狗】', '神 +1', '灵气 +10']);
 });
 
 test('机缘数值：成败结果和灵气价格浮动，概率、耗时、1 点效果与见闻序号不变', () => {
   const s = born();
   drawOnlyEvent(s, 'a_storm');
   const view = game.eventView(s);
-  assert.strictEqual(view.options[0].desc, '50% 锋 +2，躯 +1；50% 折寿 7 年');
-  assert.strictEqual(view.options[1].desc, '神 +1');
-  assert.strictEqual(view.options[2].desc, '灵气 +8，心魔 -4');
+  assert.strictEqual(view.options[0].full, '50% 锋 +2，躯 +1；50% 折寿 7 年');
+  assert.strictEqual(view.options[1].full, '神 +1');
+  assert.strictEqual(view.options[2].full, '灵气 +8，心魔 -4');
   assert.deepStrictEqual(view.options.map((o) => o.years), [1, 1, 2]);
   assert.strictEqual(s.run.event.options[0].risk.p, 0.5);
   s.known = {};
@@ -695,7 +695,7 @@ test('机缘数值：成败结果和灵气价格浮动，概率、耗时、1 点
 
   const auction = born();
   drawOnlyEvent(auction, 'a_auction');
-  assert.strictEqual(game.eventView(auction).options[1].desc, '耗灵气 24，寿元上限 +10 年');
+  assert.strictEqual(game.eventView(auction).options[1].full, '耗灵气 24，寿元上限 +10 年');
 });
 
 test('选项：说明与结算一致，每次选择才消耗寿元', () => {
@@ -703,7 +703,7 @@ test('选项：说明与结算一致，每次选择才消耗寿元', () => {
   setEvent(s, 'i_dog');
   const v = game.eventView(s);
   assert.strictEqual(v.typeName, '闲事');
-  assert.deepStrictEqual(v.options.map((o) => o.desc), ['心魔 -5，记下【摸过村口的狗】', '神 +1', '灵气 +10']);
+  assert.deepStrictEqual(v.options.map((o) => o.full), ['心魔 -5，记下【摸过村口的狗】', '神 +1', '灵气 +10']);
   assert.deepStrictEqual(v.options.map((o) => o.years), [1, 1, 1]);
   // 选项耗的 1 年同时过 1 年时间，灵气跟着涨，但不写进结算行
   const gain = game.qiRate(s) * game.YEAR_SECONDS;
@@ -774,7 +774,7 @@ test('需要灵气的选项：不够时不可选且不产生任何变化，够�
   setEvent(s, 'a_auction');
   let v = game.eventView(s);
   assert.deepStrictEqual(v.options.map((o) => o.disabled), [true, true, false]);
-  assert.strictEqual(v.options[1].desc, '耗灵气 30，寿元上限 +12 年');
+  assert.strictEqual(v.options[1].full, '耗灵气 30，寿元上限 +12 年');
   const snapshot = JSON.stringify(s);
   assert.strictEqual(game.choose(s, 1, () => 0), null);
   assert.strictEqual(JSON.stringify(s), snapshot);
@@ -792,7 +792,7 @@ test('需要灵气的选项：不够时不可选且不产生任何变化，够�
 test('概率型选项：按标明的成功率结算，运系 2 门时成功率 +10%', () => {
   let s = born();
   setEvent(s, 'a_storm');
-  assert.strictEqual(game.eventView(s).options[0].desc, '50% 锋 +3，躯 +2；50% 折寿 8 年');
+  assert.strictEqual(game.eventView(s).options[0].full, '50% 锋 +3，躯 +2；50% 折寿 8 年');
   let r = game.choose(s, 0, () => 0.49);
   assert.deepStrictEqual(r.lines, ['成了：锋 +3，躯 +2']);
   assert.deepStrictEqual(game.attrs(s), { edge: 3, body: 2, mind: 2 });
@@ -806,7 +806,7 @@ test('概率型选项：按标明的成功率结算，运系 2 门时成功率 +
   s = born();
   give(s, ['lu1', 'lu2']);
   setEvent(s, 'a_storm');
-  assert.ok(game.eventView(s).options[0].desc.indexOf('60% ') === 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('60% ') === 0);
   r = game.choose(s, 0, () => 0.59);
   assert.strictEqual(r.lines[0].indexOf('成了'), 0);
 
@@ -822,7 +822,7 @@ test('传承：学到功法、同名功法升品，属性与产出按品级增�
   let v = game.eventView(s);
   assert.strictEqual(v.typeName, '传承');
   assert.strictEqual(v.options[0].label, '修习《截云剑》');
-  assert.strictEqual(v.options[0].desc, '剑·凡品：锋 +3，灵气产出 +10%');
+  assert.strictEqual(v.options[0].full, '剑·凡品：锋 +3，灵气产出 +10%');
   assert.strictEqual(v.options[0].years, 3);
   game.choose(s, 0, () => 0);
   assert.deepStrictEqual(s.run.skills, [{ id: 'sw1', level: 1 }]);
@@ -833,7 +833,7 @@ test('传承：学到功法、同名功法升品，属性与产出按品级增�
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'sw1', level: 2 }], rerolls: 0 };
   v = game.eventView(s);
   assert.strictEqual(v.options[0].label, '精进《截云剑》至灵品');
-  assert.strictEqual(v.options[0].desc, '剑·凡品 → 灵品：锋 +3 → +6，灵气产出 +10% → +20%');
+  assert.strictEqual(v.options[0].full, '剑·凡品 → 灵品：锋 +3 → +6，灵气产出 +10% → +20%');
   const r = game.choose(s, 0, () => 0);
   assert.deepStrictEqual(r.lines, ['《截云剑》精进至灵品：锋 +3 → +6，灵气产出 +10% → +20%']);
   assert.deepStrictEqual(s.run.skills, [{ id: 'sw1', level: 2 }]);
@@ -1129,7 +1129,7 @@ test('心魔满 100 转魔修：十年燃寿、服散续命，最后身死灯芯
 
   // 普通延寿对魔躯无效，服散才增加燃寿。
   setEvent(s, 'f_kid');
-  assert.strictEqual(game.eventView(s).options[2].desc, '普通延寿对魔修无效，心魔 -15');
+  assert.strictEqual(game.eventView(s).options[2].full, '普通延寿对魔修无效，心魔 -15');
   game.choose(s, 2, () => 0);
   assert.strictEqual(game.maxLife(s), 11);
   assert.strictEqual(s.run.lifeFlat, 0);
@@ -1248,7 +1248,7 @@ test('灯纹效果：产出、机缘、渡劫、心魔、闭关和开局加成',
   // 属性只到要求的 6.25%，灯纹的 9% 也按这个比例算
   near(game.tribulationInfo(s).chance, 0.15 + 0.7 * 0.0625 + 0.09 * 0.0625);
   setEvent(s, 'a_feast');
-  assert.strictEqual(game.eventView(s).options[0].desc, '躯 +5，心魔 +11，记下【尝过仙肉】');
+  assert.strictEqual(game.eventView(s).options[0].full, '躯 +5，心魔 +11，记下【尝过仙肉】');
   assert.strictEqual(game.eventView(s).fallback.desc, '60% 灵气 +20；25% 一无所获；15% 岔气，灵气 -10，心魔 +1');
   game.choose(s, 0, () => 0);
   assert.strictEqual(s.run.demon, 11);
@@ -1950,9 +1950,9 @@ test('精进功法时，选项说明并排显示原数值和新数值', () => {
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'pi1', level: 2 }, { id: 'sw1', level: 1 }], rerolls: 0 };
   const v = game.eventView(s);
   const pi1 = game.SKILLS.filter((k) => k.id === 'pi1')[0];
-  assert.strictEqual(v.options[0].desc, '丹·凡品 → 灵品：' + game.skillUpgradeDesc(pi1, 1, 2));
-  assert.ok(/\+\d+%? → \+\d+/.test(v.options[0].desc), v.options[0].desc);
-  assert.ok(v.options[1].desc.indexOf('→') < 0);
+  assert.strictEqual(v.options[0].full, '丹·凡品 → 灵品：' + game.skillUpgradeDesc(pi1, 1, 2));
+  assert.ok(/\+\d+%? → \+\d+/.test(v.options[0].full), v.options[0].full);
+  assert.ok(v.options[1].full.indexOf('→') < 0);
   const sw = { edge: 3, mind: 1, qi: 0.25, life: 5 };
   assert.strictEqual(game.skillUpgradeDesc(sw, 1, 3), '锋 +3 → +9，神 +1 → +3，灵气产出 +25% → +75%，寿元上限 +5 年 → +15 年');
 });
@@ -1993,7 +1993,7 @@ test('特殊功法：突破、折寿、每次选择和概率型选项上的效�
   s = born();
   give(s, ['pi2', 'bo8'], 2);
   setEvent(s, 'a_storm');
-  assert.strictEqual(game.eventView(s).options[0].desc, '50% 锋 +3，躯 +2；50% 折寿 6 年');
+  assert.strictEqual(game.eventView(s).options[0].full, '50% 锋 +3，躯 +2；50% 折寿 6 年');
   let r = game.choose(s, 0, () => 0.9);
   assert.deepStrictEqual(r.lines, ['没成：折寿 6 年，躯 +2']);
   assert.strictEqual(game.maxLife(s), 54);
@@ -2011,16 +2011,16 @@ test('特殊功法：突破、折寿、每次选择和概率型选项上的效�
   give(s, ['lu3', 'lu4'], 2);
   setEvent(s, 'a_storm');
   // 运系 2 门 60%，没成的那 40% 里有 30% 改判为成
-  assert.ok(game.eventView(s).options[0].desc.indexOf('72% ') === 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('72% ') === 0);
   r = game.choose(s, 0, () => 0.71);
   assert.deepStrictEqual(r.lines, ['成了：锋 +3，躯 +2，灵气 +20']);
 
   s = born();
   give(s, ['lu5', 'lu7']);
   setEvent(s, 'a_storm');
-  assert.ok(game.eventView(s).options[0].desc.indexOf('63% ') === 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('63% ') === 0);
   s.run.age = game.maxLife(s) - 10;
-  assert.ok(game.eventView(s).options[0].desc.indexOf('71% ') === 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('71% ') === 0);
 });
 
 test('特殊功法：传承耗寿、闭关、产出、机缘、渡劫和灯芯上的效果', () => {
@@ -2065,7 +2065,7 @@ test('特殊功法：传承耗寿、闭关、产出、机缘、渡劫和灯芯�
   s.lamps = { m4: 3 };
   setEvent(s, 'a_voice');
   // 灯纹 -30%、镇心符 -40%，合计 -70%
-  assert.ok(game.eventView(s).options[0].desc.indexOf('心魔 +8') > 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('心魔 +8') > 0);
 });
 
 test('灯纹“博闻”：功法持有上限 +1，点亮时等着取舍的功法直接收下', () => {
@@ -2094,7 +2094,7 @@ test('奇缘：选项能加这一世的功法上限，加满后不再出现，�
   const s = born();
   assert.strictEqual(game.maxSkills(s), 8);
   setEvent(s, 'r_shelf');
-  assert.ok(game.eventView(s).options[0].desc.indexOf('功法上限 +1') >= 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('功法上限 +1') >= 0);
   assert.strictEqual(game.eventView(s).typeName, '奇缘');
   const r = game.choose(s, 0, () => 0);
   assert.ok(r.lines.indexOf('功法上限 +1') >= 0);
@@ -2148,7 +2148,7 @@ test('故事线：选择记下经历，经历带出后续章节和别处的新�
   setEvent(s, 'a_feast');
   let v = game.eventView(s);
   assert.strictEqual(v.options.length, 4);
-  assert.strictEqual(v.options[3].desc, '因【守骸宗弟子】；锋 +2，心魔 -5');
+  assert.strictEqual(v.options[3].full, '因【守骸宗弟子】；锋 +2，心魔 -5');
   r = game.choose(s, 3, () => 0);
   assert.deepStrictEqual(r.lines, ['锋 +2', '心魔 -5']);
 
@@ -2187,7 +2187,7 @@ test('故事线：经历可以了结，了结后对应的选项和章节消失',
   setEvent(s, 'a_market');
   const v = game.eventView(s);
   assert.strictEqual(v.options.length, 4);
-  assert.ok(v.options[3].desc.indexOf('了结【兜里有块仙骨】') > 0);
+  assert.ok(v.options[3].full.indexOf('了结【兜里有块仙骨】') > 0);
   const r = game.choose(s, 3, () => 0);
   assert.strictEqual(r.lines[r.lines.length - 1], '了结【兜里有块仙骨】');
   assert.deepStrictEqual(s.run.marks, []);
@@ -2202,23 +2202,28 @@ test('故事线：经历可以了结，了结后对应的选项和章节消失',
   assert.deepStrictEqual(loaded.run.seen, ['s_dog']);
 });
 
-test('联动：同系功法凑到 2 门，相关机缘多出专属选项', () => {
+test('联动：同系功法凑到 2 门，把对应选项换成更好的版本，不多占一个位置', () => {
   const s = born();
   setEvent(s, 'a_storm');
   assert.strictEqual(game.eventView(s).options.length, 3);
+  assert.strictEqual(game.eventView(s).options[0].label, '站到山顶去');
   give(s, ['bo3']);
   assert.strictEqual(game.eventView(s).options.length, 3);
   give(s, ['bo6']);
   const v = game.eventView(s);
-  assert.strictEqual(v.options.length, 4);
-  assert.strictEqual(v.options[3].desc, '因体系 2 门；锋 +2，躯 +3');
-  const r = game.choose(s, 3, () => 0);
+  assert.strictEqual(v.options.length, 3);
+  assert.strictEqual(v.options[0].label, '站在山顶硬扛');
+  assert.strictEqual(v.options[0].full, '因体系 2 门；锋 +2，躯 +3');
+  const r = game.choose(s, 0, () => 0);
   assert.deepStrictEqual(r.lines, ['锋 +2', '躯 +3']);
-  // 经历和功法两种条件可以同时出现在一个机缘里
+  // 经历和功法两种条件可以同时出现在一个机缘里，各自替掉原来那一个，卡面仍是三个
   s.run.marks = ['dog2'];
   give(s, ['sw1', 'sw6']);
   setEvent(s, 'a_cave');
-  assert.deepStrictEqual(game.eventView(s).options.slice(3).map((o) => o.desc.split('；')[0]), ['因【身后跟着一条狗】', '因剑系 2 门']);
+  const cave = game.eventView(s);
+  assert.strictEqual(cave.options.length, 3);
+  assert.strictEqual(cave.options[0].label, '一剑把门劈了');
+  assert.strictEqual(cave.options[2].label, '让身后的黄狗进去跟它谈');
 });
 
 test('联动：上一回的结果留下余势，只影响紧接着的下一回', () => {
@@ -2230,7 +2235,7 @@ test('联动：上一回的结果留下余势，只影响紧接着的下一回',
   setEvent(s, 'a_storm');
   let v = game.eventView(s);
   assert.ok(v.wake.indexOf('顺势') === 0);
-  assert.ok(v.options[0].desc.indexOf('60% ') === 0);
+  assert.ok(v.options[0].full.indexOf('60% ') === 0);
   game.choose(s, 0, () => 0.6);
   assert.strictEqual(s.run.wake, 'lose');
   assert.strictEqual(game.maxLife(s), 52);
@@ -2239,7 +2244,7 @@ test('联动：上一回的结果留下余势，只影响紧接着的下一回',
   setEvent(s, 'a_storm');
   v = game.eventView(s);
   assert.ok(v.wake.indexOf('吃一堑') === 0);
-  assert.strictEqual(v.options[0].desc, '50% 锋 +3，躯 +2；50% 折寿 4 年');
+  assert.strictEqual(v.options[0].full, '50% 锋 +3，躯 +2；50% 折寿 4 年');
   game.choose(s, 1, () => 0);
   assert.strictEqual(s.run.wake, '');
 
@@ -2463,10 +2468,10 @@ test('功法已满时，传承和随机得来的功法里精进比新功法更�
         if (s.run.skills.some((k) => k.id === o.id)) out.owned++;
         else out.fresh++;
       });
-      // “塌了一半的洞府”剑系选项：必得一门随机功法
+      // “塌了一半的洞府”剑系选项：替掉了“进去”，仍在第一个位置，必得一门随机功法
       const t = JSON.parse(JSON.stringify(s));
       setEvent(t, 'a_cave');
-      const r = game.choose(t, 3, rng);
+      const r = game.choose(t, 0, rng);
       if (r.tags.indexOf('upgrade') >= 0) out.gainOwned++;
       else out.gainFresh++;
     }
@@ -2907,7 +2912,7 @@ test('机缘事件：直接获得次数，本世速度加成生效并读档保�
   const s = born();
   s.run.chance = 0;
   setEvent(s, 'a_chance_tide');
-  assert.ok(game.eventView(s).options[2].desc.indexOf('机缘积攒速度 +5%') >= 0);
+  assert.ok(game.eventView(s).options[2].full.indexOf('机缘积攒速度 +5%') >= 0);
   // 选项耗的年数先按原来的速度回机缘，再结算选项本身
   const passed = (i) => game.eventView(s).options[i].years / game.chanceYears(s);
   let expected = 3 + passed(0);
@@ -3318,7 +3323,7 @@ test('负面与中性机缘：新事件可展示，负面代价和中性小收�
 
   const s = born();
   setEvent(s, 'a_blood_rain');
-  assert.strictEqual(game.eventView(s).options[1].desc, '灵气 +45，心魔 +9');
+  assert.strictEqual(game.eventView(s).options[1].full, '灵气 +45，心魔 +9');
   const gain = game.qiRate(s) * game.YEAR_SECONDS * game.eventView(s).options[1].years;
   game.choose(s, 1, () => 0);
   near(s.run.qi, 45 + gain);
@@ -3331,7 +3336,7 @@ test('负面与中性机缘：新事件可展示，负面代价和中性小收�
   const calm = born();
   calm.run.chance = 0;
   setEvent(calm, 'i_paper_boat');
-  assert.strictEqual(game.eventView(calm).options[1].desc, '机缘 +1');
+  assert.strictEqual(game.eventView(calm).options[1].full, '机缘 +1');
   const passed = game.eventView(calm).options[1].years / game.chanceYears(calm);
   game.choose(calm, 1, () => 0);
   near(calm.run.chance, 1 + passed);
@@ -3378,7 +3383,7 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
   s.run.chance = 0;
   setEvent(s, 'i_dog');
   const expectedQi = Math.round(game.qiCap(s) * 0.1 * 0.7);
-  assert.strictEqual(game.eventView(s).options[2].desc, '灵气 +' + expectedQi);
+  assert.strictEqual(game.eventView(s).options[2].full, '灵气 +' + expectedQi);
   const yearQi = game.qiRate(s) * game.YEAR_SECONDS * game.eventView(s).options[2].years;
   game.choose(s, 2, () => 0.99);
   near(s.run.qi, expectedQi + yearQi);
@@ -3407,7 +3412,7 @@ test('突发事件链：主动突破引出征兆与突发，余波和冷却按�
   exact.run.aftermath = { id: 'meridian', remaining: 3 };
   setEvent(exact, 'a_dead_meridian');
   const exactQi = Math.round(game.qiCap(exact) * 0.75 * 0.7);
-  assert.strictEqual(game.eventView(exact).options[0].desc, '灵气 +' + exactQi + '，折寿 8 年');
+  assert.strictEqual(game.eventView(exact).options[0].full, '灵气 +' + exactQi + '，折寿 8 年');
   exact.run.chance = 0;
   const exactYearQi = game.qiRate(exact) * game.YEAR_SECONDS * game.eventView(exact).options[0].years;
   game.choose(exact, 0, () => 0.99);
@@ -3476,9 +3481,9 @@ test('突发来源：渡劫、秘法、大机缘、资源溢出和经历累积�
 test('突发余波：概率、秘法、机缘速度、属性和负机缘都按说明结算', () => {
   const thunder = born();
   setEvent(thunder, 'a_gamble');
-  assert.ok(thunder && game.eventView(thunder).options[0].desc.startsWith('50%'));
+  assert.ok(thunder && game.eventView(thunder).options[0].full.startsWith('50%'));
   thunder.run.aftermath = { id: 'thunder', remaining: 3 };
-  assert.ok(game.eventView(thunder).options[0].desc.startsWith('40%'));
+  assert.ok(game.eventView(thunder).options[0].full.startsWith('40%'));
 
   const fortune = born();
   const interval = game.chanceInterval(fortune);
@@ -3487,7 +3492,7 @@ test('突发余波：概率、秘法、机缘速度、属性和负机缘都按�
   fortune.run.aftermath = null;
   fortune.run.chance = 20;
   setEvent(fortune, 's_fortune');
-  assert.strictEqual(game.eventView(fortune).options[0].desc, '神 +2，机缘 -6');
+  assert.strictEqual(game.eventView(fortune).options[0].full, '神 +2，机缘 -6');
   const passed = game.eventView(fortune).options[0].years / game.chanceYears(fortune);
   game.choose(fortune, 0, () => 0);
   near(fortune.run.chance, 14 + passed);
@@ -3681,7 +3686,7 @@ test('重天：在最高一重天修到最高境界圆满后身死开出下一�
   assert.strictEqual(game.normalizeState(JSON.parse(JSON.stringify(saved)), 0).run.heaven, 0, '重天不能超过已解锁的');
 });
 
-test('见闻：没选过的选项只写牵涉哪几样，自动机缘不碰，选过一次跨世记得', () => {
+test('见闻：没选过的选项只写方向，自动机缘不碰，选过一次跨世记得', () => {
   const s = game.createState(0, () => 0);
   s.run.fate = '';
   assert.ok(game.chooseRoot(s, 'talisman', 0, () => 0));
@@ -3689,8 +3694,8 @@ test('见闻：没选过的选项只写牵涉哪几样，自动机缘不碰，�
   setEvent(s, 'a_chance_tide');
   const view = game.eventView(s);
   assert.ok(view.options.every((option) => option.unknown));
-  assert.strictEqual(view.options[0].desc, '后果未明，牵涉机缘。选过一次就记得');
-  assert.ok(view.options[1].desc.indexOf('成败未卜') === 0);
+  assert.strictEqual(view.options[0].full, '得机缘；选过一次就写明');
+  assert.ok(view.options[1].full.indexOf('赌一把：') === 0);
   assert.strictEqual(game.autoPick(s), -1);
   assert.deepStrictEqual(game.knownProgress(s).known, 0);
   assert.ok(game.choose(s, 0, () => 0));
@@ -3698,7 +3703,7 @@ test('见闻：没选过的选项只写牵涉哪几样，自动机缘不碰，�
   setEvent(s, 'a_chance_tide');
   const again = game.eventView(s);
   assert.deepStrictEqual(again.options.map((option) => option.unknown), [false, true, true]);
-  assert.ok(again.options[0].desc.indexOf('机缘 +3') >= 0);
+  assert.ok(again.options[0].full.indexOf('机缘 +3') >= 0);
   assert.strictEqual(game.autoPick(s), 0);
   assert.ok(game.retire(s));
   assert.ok(game.reincarnate(s, 0, () => 0));
@@ -3778,7 +3783,7 @@ test('藏经阁：请出的功法才会出现在传承里，品级按请出时�
   assert.strictEqual(ids.tm_bo1, 6);
 
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'tm_bo1', level: 6 }], rerolls: 0 };
-  assert.ok(game.eventView(s).options[0].desc.indexOf('体·神品：渡劫考核的每一项，都可以用躯的 80% 顶替') >= 0);
+  assert.ok(game.eventView(s).options[0].full.indexOf('体·神品：渡劫考核的每一项，都可以用躯的 80% 顶替') >= 0);
   game.choose(s, 0, () => 0);
   assert.deepStrictEqual(s.run.skills, [{ id: 'tm_bo1', level: 6 }]);
   assert.strictEqual(game.setCounts(s.run).body, 1);

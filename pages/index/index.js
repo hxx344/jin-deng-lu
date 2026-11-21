@@ -2236,6 +2236,17 @@ Page({
     });
   },
 
+  // 每秒都会重算一次面板，玩家点开的「详情」要留住，不然刚展开就被收回。
+  keepOpen(next) {
+    const cur = this.data.sheet;
+    if (!cur || !next || !cur.options || !next.options || cur.title !== next.title) return next;
+    next.options = next.options.map((item) => {
+      const old = cur.options.filter((o) => o.label === item.label)[0];
+      return old && old.open ? Object.assign({}, item, { open: true }) : item;
+    });
+    return next;
+  },
+
   refresh() {
     const s = this.state;
     const run = s.run;
@@ -2255,7 +2266,7 @@ Page({
       hero: this.heroView(),
       actor: this.actorView(),
       tip: this.tipView(),
-      sheet: this.sheetView(power.total),
+      sheet: this.keepOpen(this.sheetView(power.total)),
       autoUnlocked: game.autoUnlocked(s),
       gearDot: run.phase === 'alive' && game.gearHasBetter(s),
       alive: run.phase === 'alive',
@@ -2555,6 +2566,13 @@ Page({
 
   onOption(e) {
     this.finishChoice(game.choose(this.state, Number(e.currentTarget.dataset.index), Math.random), { fromEvent: true });
+  },
+
+  // 卡面只写最要紧的几笔，其余收在「详情」里，由玩家自己展开。
+  onOptionMore(e) {
+    const index = Number(e.currentTarget.dataset.index);
+    const options = (this.data.sheet.options || []).map((item, i) => (i === index ? Object.assign({}, item, { open: !item.open }) : item));
+    this.setData({ sheet: Object.assign({}, this.data.sheet, { options: options }) });
   },
 
   onFallback() {

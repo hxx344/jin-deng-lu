@@ -540,6 +540,8 @@
               <text class="opt-years {{item.fatal ? 'opt-fatal' : ''}}">{{item.fatal ? '寿元将尽 · ' : ''}}耗 {{item.years}} 年</text>
             </view>
             <view class="opt-desc">{{item.desc}}</view>
+            <view wx:if="{{item.more}}" class="opt-more-toggle" catchtap="onOptionMore" data-index="{{index}}">{{item.open ? '收起' : '详情'}}</view>
+            <view wx:if="{{item.open}}" class="opt-more">{{item.more}}</view>
             <view wx:if="{{item.disabled}}" class="opt-note">灵气不足</view>
           </view>
           <view class="opt opt-plain" hover-class="opt-hover" hover-stay-time="60" bindtap="onFallback">

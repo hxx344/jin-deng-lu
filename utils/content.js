@@ -468,7 +468,7 @@ const EVENTS = [
       { label: '猜在他嘴里', years: 1, risk: { p: 0.25, win: { skill: 'luck', qi: 0.3 }, lose: { life: -4 } } },
       { label: '看别人猜', years: 2, fx: { mind: 1 } },
       { label: '让狗去闻', need: ['dog2'], years: 1, fx: { qi: 0.5 } },
-      { label: '闭着眼随便指', school: 'luck', years: 1, fx: { qi: 0.6 } }
+      { replaces: 0, label: '闭着眼随便指', school: 'luck', years: 1, fx: { qi: 0.6 } }
     ]
   },
   {
@@ -478,8 +478,8 @@ const EVENTS = [
       { label: '进去', years: 3, risk: { p: 0.55, win: { skill: 'any' }, lose: { life: -7 } } },
       { label: '在门口打坐蹭灵气', years: 3, fx: { qi: 0.3 } },
       { label: '喂狗', years: 2, risk: { p: 0.7, win: { edge: 1, body: 1, mind: 1 }, lose: { life: -3 } } },
-      { label: '让身后的黄狗进去跟它谈', need: ['dog2'], years: 2, fx: { skill: 'any', demon: -3 } },
-      { label: '一剑把门劈了', school: 'sword', years: 3, fx: { skill: 'any' } }
+      { replaces: 2, label: '让身后的黄狗进去跟它谈', need: ['dog2'], years: 2, fx: { skill: 'any', demon: -3 } },
+      { replaces: 0, label: '一剑把门劈了', school: 'sword', years: 3, fx: { skill: 'any' } }
     ]
   },
   {
@@ -500,7 +500,7 @@ const EVENTS = [
       { label: '站到山顶去', years: 1, risk: { p: 0.5, win: { edge: 3, body: 2 }, lose: { life: -8 } } },
       { label: '收衣服', years: 1, fx: { mind: 1 } },
       { label: '帮全村收衣服', years: 2, fx: { qi: 0.1, demon: -5 } },
-      { label: '站在山顶硬扛', school: 'body', years: 1, fx: { edge: 2, body: 3 } }
+      { replaces: 0, label: '站在山顶硬扛', school: 'body', years: 1, fx: { edge: 2, body: 3 } }
     ]
   },
   {
@@ -510,7 +510,7 @@ const EVENTS = [
       { label: '伸手去掏', years: 2, risk: { p: 0.6, win: { qi: 0.7 }, lose: { life: -10 } } },
       { label: '用剑去挑', years: 3, fx: { edge: 2, qi: 0.2, forge: 3 } },
       { label: '往里喊话', years: 1, risk: { p: 0.5, win: { skill: 'talisman' }, lose: { demon: 10 } } },
-      { label: '一剑削下整片指甲', school: 'sword', years: 2, fx: { edge: 3, qi: 0.4 } }
+      { replaces: 0, label: '一剑削下整片指甲', school: 'sword', years: 2, fx: { edge: 3, qi: 0.4 } }
     ]
   },
   {
@@ -530,7 +530,7 @@ const EVENTS = [
       { label: '老实除草', years: 3, fx: { edge: 2, body: 2, mark: 'sect' } },
       { label: '偷学看守的剑法', years: 2, risk: { p: 0.55, win: { skill: 'sword' }, lose: { life: -6 } } },
       { label: '顺手掰一小块骨头', years: 2, fx: { qi: 0.5, demon: 12, mark: 'thief' } },
-      { label: '半天把整根肋骨的草连根拔光', school: 'body', years: 1, fx: { edge: 2, body: 2, mark: 'sect' } }
+      { replaces: 0, label: '半天把整根肋骨的草连根拔光', school: 'body', years: 1, fx: { edge: 2, body: 2, mark: 'sect' } }
     ]
   },
   {
@@ -550,7 +550,7 @@ const EVENTS = [
       { label: '上船', years: 2, risk: { p: 0.6, win: { qi: 0.5, edge: 1 }, lose: { life: -6, demon: 5 } } },
       { label: '游过去', years: 3, fx: { body: 2 } },
       { label: '等一条白的', years: 2, fx: { qi: 0.1 } },
-      { label: '扛着船过河', school: 'body', years: 2, fx: { body: 3, qi: 0.2 } }
+      { replaces: 1, label: '扛着船过河', school: 'body', years: 2, fx: { body: 3, qi: 0.2 } }
     ]
   },
   {
@@ -571,7 +571,7 @@ const EVENTS = [
       { label: '下去捞', years: 2, risk: { p: 0.5, win: { mind: 3, qi: 0.3 }, lose: { life: -6 } } },
       { label: '打一桶水喝', years: 1, fx: { qi: 0.15 } },
       { label: '扔一枚铜钱许愿', years: 1, risk: { p: 0.3, win: { chance: 2 }, lose: {} } },
-      { label: '铜钱自己跳回了手里', school: 'luck', years: 1, fx: { chance: 2 } }
+      { replaces: 2, label: '铜钱自己跳回了手里', school: 'luck', years: 1, fx: { chance: 2 } }
     ]
   },
   {
@@ -819,7 +819,7 @@ const EVENTS = [
       { label: '睡一觉', years: 1, fx: { demon: -6 } },
       { label: '淋着雨练功', years: 1, fx: { body: 1 } },
       { label: '接雨水泡茶', years: 1, fx: { qi: 0.12 } },
-      { label: '淋着雨睡', school: 'body', years: 1, fx: { body: 1, demon: -6 } }
+      { replaces: 0, label: '淋着雨睡', school: 'body', years: 1, fx: { body: 1, demon: -6 } }
     ]
   },
   {
@@ -839,7 +839,7 @@ const EVENTS = [
       { label: '听完', years: 1, fx: { mind: 1, demon: -3 } },
       { label: '跟着哼', years: 1, fx: { qi: 0.12 } },
       { label: '舞剑相和', years: 1, fx: { edge: 1 } },
-      { label: '以剑引风，把调子改了', school: 'sword', years: 1, fx: { edge: 2, mind: 1 } }
+      { replaces: 2, label: '以剑引风，把调子改了', school: 'sword', years: 1, fx: { edge: 2, mind: 1 } }
     ]
   },
   {
@@ -849,7 +849,7 @@ const EVENTS = [
       { label: '接受现实', years: 1, fx: { mind: 1 } },
       { label: '炼一颗驻颜丹', years: 1, cost: { qi: 0.15 }, fx: { life: 3 } },
       { label: '把镜子砸了', years: 1, fx: { edge: 1, demon: 2 } },
-      { label: '随手搓一颗驻颜丹', school: 'pill', years: 1, fx: { life: 4 } }
+      { replaces: 1, label: '随手搓一颗驻颜丹', school: 'pill', years: 1, fx: { life: 4 } }
     ]
   },
   {
@@ -1084,7 +1084,7 @@ const EVENTS = [
       { label: '把身上最破的一件递进去', years: 2, cost: { qi: 0.3 }, fx: { gear: 1 } },
       { label: '赌他炉底压着的那件', years: 2, risk: { p: 0.45, win: { gear: 2 }, lose: { life: -6, forge: 2 } } },
       { label: '帮他拉一天风箱', years: 3, fx: { body: 2, forge: 4 } },
-      { label: '徒手从炉里捞一件', school: 'body', years: 2, fx: { gear: 1, body: 2 } }
+      { replaces: 0, label: '徒手从炉里捞一件', school: 'body', years: 2, fx: { gear: 1, body: 2 } }
     ]
   },
   {
@@ -1104,7 +1104,7 @@ const EVENTS = [
       { label: '挑一件顺眼的', years: 1, cost: { qi: 0.4 }, fx: { gear: 1 } },
       { label: '买下那口没开封的箱子', years: 2, cost: { qi: 0.6 }, fx: { gear: 2 } },
       { label: '替掌柜抄一天当票', years: 2, fx: { mind: 2, qi: 0.15 } },
-      { label: '闭着眼摸一件', school: 'luck', years: 1, fx: { gear: 2 } }
+      { replaces: 0, label: '闭着眼摸一件', school: 'luck', years: 1, fx: { gear: 2 } }
     ]
   },
   {

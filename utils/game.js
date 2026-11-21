@@ -183,9 +183,6 @@ const LAMP_GEAR = 0.03;
 const LAMP_WALL_YEARS = 0.1;
 // REALM_LIFE[i] 是从凡胎破境到第 i 个境界一共加的寿元。
 const REALM_LIFE = REALMS.map((realm, i) => TRIBS.slice(0, i).reduce((sum, trib) => sum + trib.life, 0));
-// 没选过的选项只显示牵涉哪几样东西。
-const FX_KINDS = [['qi', '灵气'], ['edge', '锋'], ['body', '躯'], ['mind', '神'], ['demon', '心魔'], ['life', '寿元上限'], ['chance', '机缘'],
-  ['speed', '机缘速度'], ['skill', '功法'], ['slot', '功法位'], ['karma', '因果'], ['mark', '经历'], ['unmark', '经历']];
 // 普通机缘的数量效果每次翻开时随机；功法位、装备档次、耗时和成功率不属于数量效果。
 const EVENT_VALUE_SPREAD = 0.2;
 const EVENT_VALUE_KEYS = ['qi', 'edge', 'body', 'mind', 'demon', 'life', 'chance', 'speed', 'forge'];
@@ -594,6 +591,38 @@ function learnOption(state, opt) {
   if (index >= 0) state.known[ev.id] = (state.known[ev.id] || 0) | (1 << index);
 }
 
+// 没选过的选项只写方向：会失去什么、能换到什么，具体数值等亲自选过一次再写明。
+function hintWords(fx) {
+  const gain = [];
+  const cost = [];
+  if (!fx) return { gain: gain, cost: cost };
+  const add = (arr, text) => {
+    if (arr.indexOf(text) < 0) arr.push(text);
+  };
+  if (fx.skill) add(gain, '一门功法');
+  ATTRS.forEach((k) => {
+    if (fx[k] > 0) add(gain, ATTR_NAMES[k]);
+    else if (fx[k] < 0) add(cost, ATTR_NAMES[k]);
+  });
+  if (fx.qi > 0) add(gain, '灵气');
+  else if (fx.qi < 0) add(cost, '灵气');
+  if (fx.life > 0) add(gain, '寿元上限');
+  else if (fx.life < 0) add(cost, '折寿');
+  if (fx.demon > 0) add(cost, '心魔');
+  else if (fx.demon < 0) add(gain, '心魔消退');
+  if (fx.chance > 0) add(gain, '机缘');
+  else if (fx.chance < 0) add(cost, '机缘');
+  if (fx.speed > 0) add(gain, '机缘变快');
+  else if (fx.speed < 0) add(cost, '机缘变慢');
+  if (fx.slot) add(gain, '功法位');
+  if (fx.gear) add(gain, '装备');
+  if (fx.forge) add(gain, '锻材');
+  if (fx.karma) add(gain, '因果');
+  if (fx.mark) add(gain, '经历');
+  if (fx.unmark) add(gain, '了结旧事');
+  return { gain: gain, cost: cost };
+}
+
 function hiddenDesc(state, opt) {
   const segments = [];
   const because = (opt.need || []).map((m) => '【' + MARKS[m] + '】').join('') +
@@ -601,14 +630,20 @@ function hiddenDesc(state, opt) {
   if (because) segments.push('因' + because);
   const cost = optionCost(state, opt);
   if (cost) segments.push('耗灵气 ' + formatNumber(cost));
-  const kinds = [];
-  [opt.fx, opt.risk && opt.risk.win, opt.risk && opt.risk.lose].forEach((fx) => {
-    if (!fx) return;
-    FX_KINDS.forEach((kind) => {
-      if (fx[kind[0]] && kinds.indexOf(kind[1]) < 0) kinds.push(kind[1]);
-    });
-  });
-  segments.push((opt.risk ? '成败未卜' : '后果未明') + (kinds.length ? '，牵涉' + kinds.join('、') : '') + '。选过一次就记得');
+  if (opt.risk) {
+    const win = hintWords(opt.risk.win);
+    const lose = hintWords(opt.risk.lose);
+    const winText = win.gain.concat(win.cost).join('、');
+    const loseText = lose.cost.concat(lose.gain).join('、');
+    segments.push('赌一把：赢了得' + (winText || '些东西') + '，输了赔上' + (loseText || '些东西'));
+  } else {
+    const hint = hintWords(opt.fx);
+    if (hint.gain.length && hint.cost.length) segments.push('换得' + hint.gain.join('、') + '，代价是' + hint.cost.join('、'));
+    else if (hint.gain.length) segments.push('得' + hint.gain.join('、'));
+    else if (hint.cost.length) segments.push('只有代价：' + hint.cost.join('、'));
+    else segments.push('后果未明');
+  }
+  segments.push('选过一次就写明');
   return segments.join('；');
 }
 
@@ -651,6 +686,10 @@ function signed(n) {
 
 function pctText(v) {
   return Math.round(v * 100) + '%';
+}
+
+function signedPct(v) {
+  return (v > 0 ? '+' : '-') + pctText(Math.abs(v));
 }
 
 // 功法上每个字段的写法：label 在前，val 把（已乘品级的）数值写成文字。
@@ -1044,26 +1083,32 @@ function qiRewardAmount(state, fraction) {
 }
 
 // 把效果写成给玩家看的文字；选项说明和实际结算都以同一份数据为准。
-function fxParts(state, fx) {
-  const parts = [];
-  if (fx.skill) parts.push(fx.skill === 'any' ? '获得一门功法' : '获得一门' + SCHOOLS[fx.skill].name + '系功法');
+// 把效果拆成一条条，带 key 和好坏（dir：1 是好处，-1 是代价），好挑出「最要紧的那一条」。
+function fxItems(state, fx) {
+  const items = [];
+  if (fx.skill) items.push({ key: 'skill', dir: 1, text: fx.skill === 'any' ? '获得一门功法' : '获得一门' + SCHOOLS[fx.skill].name + '系功法' });
   ATTRS.forEach((k) => {
-    if (fx[k]) parts.push(ATTR_NAMES[k] + ' ' + signed(fx[k]));
+    if (fx[k]) items.push({ key: k, dir: fx[k] > 0 ? 1 : -1, text: ATTR_NAMES[k] + ' ' + signed(fx[k]) });
   });
-  if (fx.qi) parts.push('灵气 +' + formatNumber(qiRewardAmount(state, fx.qi)));
-  if (fx.life > 0) parts.push(state.run.mode === 'demon' ? '普通延寿对魔修无效' : '寿元上限 +' + fx.life + ' 年');
-  else if (fx.life < 0) parts.push('折寿 ' + lifeLoss(state, -fx.life) + ' 年');
-  if (fx.demon) parts.push('心魔 ' + signed(demonGain(state, fx.demon)));
-  if (fx.chance) parts.push('机缘 ' + signed(fx.chance));
-  if (fx.speed) parts.push('这一世机缘积攒速度 +' + pctText(fx.speed));
-  if (fx.slot && state.run.slots < MAX_EXTRA_SLOTS) parts.push('功法上限 +' + fx.slot);
-  if (fx.gear) parts.push(fx.gear > 1 ? '得一件上好的装备' : '得一件装备');
-  if (fx.forge) parts.push('锻材 +' + fx.forge);
-  if (fx.karma) parts.push('种下因果【' + KARMA[fx.karma] + '】');
-  if (fx.mark) parts.push('记下【' + MARKS[fx.mark] + '】');
+  if (fx.qi) items.push({ key: 'qi', dir: 1, text: '灵气 +' + formatNumber(qiRewardAmount(state, fx.qi)) });
+  if (fx.life > 0) items.push({ key: 'life', dir: 1, text: state.run.mode === 'demon' ? '普通延寿对魔修无效' : '寿元上限 +' + fx.life + ' 年' });
+  else if (fx.life < 0) items.push({ key: 'life', dir: -1, text: '折寿 ' + lifeLoss(state, -fx.life) + ' 年' });
+  if (fx.demon) items.push({ key: 'demon', dir: fx.demon > 0 ? -1 : 1, text: '心魔 ' + signed(demonGain(state, fx.demon)) });
+  if (fx.chance) items.push({ key: 'chance', dir: fx.chance > 0 ? 1 : -1, text: '机缘 ' + signed(fx.chance) });
+  if (fx.speed) items.push({ key: 'speed', dir: fx.speed > 0 ? 1 : -1, text: '这一世机缘积攒速度 ' + signedPct(fx.speed) });
+  if (fx.slot && state.run.slots < MAX_EXTRA_SLOTS) items.push({ key: 'slot', dir: 1, text: '功法上限 +' + fx.slot });
+  if (fx.gear) items.push({ key: 'gear', dir: 1, text: fx.gear > 1 ? '得一件上好的装备' : '得一件装备' });
+  if (fx.forge) items.push({ key: 'forge', dir: 1, text: '锻材 +' + fx.forge });
+  if (fx.karma) items.push({ key: 'karma', dir: 1, text: '种下因果【' + KARMA[fx.karma] + '】' });
+  if (fx.mark) items.push({ key: 'mark', dir: 1, text: '记下【' + MARKS[fx.mark] + '】' });
   markList(fx.unmark).forEach((m) => {
-    if (state.run.marks.indexOf(m) >= 0) parts.push('了结【' + MARKS[m] + '】');
+    if (state.run.marks.indexOf(m) >= 0) items.push({ key: 'unmark', dir: 1, text: '了结【' + MARKS[m] + '】' });
   });
+  return items;
+}
+
+function fxParts(state, fx) {
+  const parts = fxItems(state, fx).map((i) => i.text);
   return parts.length ? parts : ['无事发生'];
 }
 
@@ -1142,10 +1187,20 @@ function eventDef(state) {
   }
   const def = findById(EVENTS, ev.id);
   // 带条件的选项只在有对应经历时出现；触发式事件用独立类型展示，不参与普通随机池。
+  const all = ev.options || def.options;
+  const shown = all.map((opt, index) => ({ opt: opt, index: index })).filter((row) => marksOk(run, row.opt));
+  // 有些条件选项是把普通选项「升级」成了更好的版本（同一件事做得更漂亮）。
+  // 这时让它顶掉原来那一格，卡面不多出第四个选项，位置也不跳。
+  const upgradeFor = {};
+  shown.forEach((row) => {
+    if (row.opt.replaces === undefined) return;
+    if (marksOk(run, all[row.opt.replaces])) upgradeFor[row.opt.replaces] = row.opt;
+  });
+  const slots = shown.filter((row) => !(row.opt.replaces !== undefined && marksOk(run, all[row.opt.replaces])));
   return {
     type: def.stage === 'omen' ? 'omen' : (def.stage === 'event' ? 'sudden' : def.type),
     line: def.line, title: def.title, text: def.text, trigger: def.trigger, stage: def.stage,
-    options: (ev.options || def.options).filter((o) => marksOk(run, o))
+    options: slots.map((row) => upgradeFor[row.index] || row.opt)
   };
 }
 
@@ -1160,20 +1215,22 @@ function optionCost(state, opt) {
   return opt.cost && opt.cost.qi ? qiAmount(state, opt.cost.qi) : 0;
 }
 
-function optionDesc(state, opt) {
+function learnLine(state, opt) {
+  const skill = skillInfo(opt.learn.id);
+  const owned = skillEntry(state.run, skill.id);
+  if (owned && owned.level < opt.learn.level) {
+    return SCHOOLS[skill.school].name + '·' + gradeName(owned.level) + '品 → ' + gradeName(opt.learn.level) + '品：' + skillUpgradeDesc(skill, owned.level, opt.learn.level);
+  }
+  return SCHOOLS[skill.school].name + '·' + gradeName(opt.learn.level) + '品：' + skillDesc(skill, opt.learn.level);
+}
+
+// 完整说明：和卡面同源，只是不折叠。见闻、读屏和「详情」都取这一份，保证折叠前后说的是同一件事。
+function optionFull(state, opt) {
   const segments = [];
   const because = (opt.need || []).map((m) => '【' + MARKS[m] + '】').join('') +
     (opt.school ? SCHOOLS[opt.school].name + '系 ' + SCHOOL_NEED + ' 门' : '');
   if (because) segments.push('因' + because);
-  if (opt.learn) {
-    const skill = skillInfo(opt.learn.id);
-    const owned = skillEntry(state.run, skill.id);
-    if (owned && owned.level < opt.learn.level) {
-      segments.push(SCHOOLS[skill.school].name + '·' + gradeName(owned.level) + '品 → ' + gradeName(opt.learn.level) + '品：' + skillUpgradeDesc(skill, owned.level, opt.learn.level));
-    } else {
-      segments.push(SCHOOLS[skill.school].name + '·' + gradeName(opt.learn.level) + '品：' + skillDesc(skill, opt.learn.level));
-    }
-  }
+  if (opt.learn) segments.push(learnLine(state, opt));
   const fixed = [];
   const cost = optionCost(state, opt);
   if (cost) fixed.push('耗灵气 ' + formatNumber(cost));
@@ -1185,6 +1242,56 @@ function optionDesc(state, opt) {
     segments.push(100 - pct + '% ' + fxParts(state, opt.risk.lose).join('，'));
   }
   return segments.join('；');
+}
+
+// 卡面上只留最要紧的几笔：代价、最大的一笔好处、最大的一笔代价。其余收进「详情」。
+// 一张卡读三个数就够做决定，读不完就等于没做决定。
+const FX_WEIGHT = {
+  skill: 95, slot: 80, life: 70, gear: 55, qi: 50, chance: 45, demon: 45,
+  edge: 40, body: 40, mind: 40, karma: 35, mark: 35, unmark: 35, speed: 30, forge: 20
+};
+
+function bestItem(items, dir) {
+  let best = null;
+  items.forEach((item) => {
+    if (item.dir !== dir) return;
+    if (!best || (FX_WEIGHT[item.key] || 10) > (FX_WEIGHT[best.key] || 10)) best = item;
+  });
+  return best;
+}
+
+function optionBrief(state, opt) {
+  const head = [];
+  const more = [];
+  const because = (opt.need || []).map((m) => '【' + MARKS[m] + '】').join('') +
+    (opt.school ? SCHOOLS[opt.school].name + '系 ' + SCHOOL_NEED + ' 门' : '');
+  if (because) head.push('因' + because);
+  const cost = optionCost(state, opt);
+  if (cost) head.push('耗灵气 ' + formatNumber(cost));
+  if (opt.learn) head.push(learnLine(state, opt));
+  const items = opt.fx ? fxItems(state, opt.fx) : [];
+  const gain = bestItem(items, 1);
+  const loss = bestItem(items, -1);
+  if (gain) head.push(gain.text);
+  if (loss) head.push(loss.text);
+  items.forEach((item) => {
+    if (item !== gain && item !== loss) more.push(item.text);
+  });
+  if (opt.risk) {
+    const pct = Math.round(riskChance(state, opt.risk) * 100);
+    const win = fxItems(state, opt.risk.win);
+    const lose = fxItems(state, opt.risk.lose);
+    const winBest = bestItem(win, 1) || win[0] || null;
+    const loseBest = bestItem(lose, -1) || lose[0] || null;
+    head.push(pct + '% ' + (winBest ? winBest.text : '无事') + '，否则' + (loseBest ? loseBest.text : '无事'));
+    win.forEach((item) => {
+      if (item !== winBest) more.push(item.text);
+    });
+    lose.forEach((item) => {
+      if (item !== loseBest) more.push(item.text);
+    });
+  }
+  return { desc: head.length ? head.join('；') : '无事发生', more: more.join('；') };
 }
 
 function fallbackQi(state) {
@@ -1232,9 +1339,13 @@ function eventView(state) {
       const cost = optionCost(state, opt);
       const years = optionYears(state, opt);
       const known = optionKnown(state, opt);
+      const brief = known ? optionBrief(state, opt) : null;
+      const hidden = known ? '' : hiddenDesc(state, opt);
       return {
         label: opt.label,
-        desc: known ? optionDesc(state, opt) : hiddenDesc(state, opt),
+        desc: known ? brief.desc : hidden,
+        more: known ? brief.more : '',
+        full: known ? optionFull(state, opt) : hidden,
         years: years,
         disabled: cost > run.qi,
         fatal: years >= left,

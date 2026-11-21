@@ -2616,6 +2616,21 @@
   color: #9fe0c8;
 }
 
+.opt-more-toggle {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #7f8a7f;
+  text-decoration: underline;
+}
+
+.opt-more {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #8c8275;
+}
+
 .opt-note {
   margin-top: 4rpx;
   font-size: 22rpx;
