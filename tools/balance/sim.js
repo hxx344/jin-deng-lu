@@ -165,7 +165,8 @@ const POLICIES = {
 
   // 挂机玩：只开着“自动机缘”、到点渡劫，其余不动脑。没见过的选项会去试（代替玩家平时手动点出来的见闻），
   // 见过的全交给“自动机缘”；成功率过半就硬抗天劫，劫期过了或寿元将尽也渡。自动机缘不替玩家做的决定
-  // 都用最省事的做法：道途和枯海随便选，不管装备，不合秘法、不修洞府、不重抽根骨。
+  // 都用最省事的做法：道途和枯海随便选，不合秘法、不修洞府、不重抽根骨。装备自己换、自己锻造，
+  // 储物袋也收，但不为装备停下来等。
   idle: {
     root(state) {
       return state.run.rootChoices[0];
@@ -191,6 +192,7 @@ const POLICIES = {
     replace(state) {
       return game.autoReplace(state);
     },
+    tidy: true,
     afterDeath() {}
   },
 
@@ -311,19 +313,19 @@ function tidyGear(state) {
   });
 }
 
-function train(state, clock, seconds, manage) {
+function train(state, clock, seconds, manage, star) {
   if (!game.trainStage(state)) {
     clock.spare = 0;
     return;
   }
+  // star 为真时攒够香火先来一次仙星十连，再一起打理。
   const tidy = () => {
-    if (state.run.incense >= game.STAR.ten && game.starDraw(state, 10, clock.starRng)) {
+    if (star && state.run.incense >= game.STAR.ten && game.starDraw(state, 10, clock.starRng)) {
       state.run.starCards.forEach((card) => { card.shown = true; });
     }
     tidyGear(state);
     if (state.run.starCards.length) game.finishStarDraw(state);
-  };
-  clock.spare += seconds;
+  };  clock.spare += seconds;
   while (clock.spare > 0) {
     const stage = game.trainStage(state);
     if (!stage) break;
@@ -350,7 +352,7 @@ function playLife(state, policy, rng, config, clock) {
     clock.now += seconds * 1000;
     life.spent[state.run.realm] += seconds / 60;
     game.advance(state, clock.now);
-    if (!pauseTrain && state.run.phase === 'alive') train(state, clock, seconds, !!policy.gear);
+    if (!pauseTrain && state.run.phase === 'alive') train(state, clock, seconds, !!(policy.gear || policy.tidy), !!policy.gear);
   };
   clock.spare = 0;
   const tribRecord = (name, success) => ({ name: name, success: success, gear: game.gearScore(state), cleared: state.run.battle.cleared });
@@ -486,7 +488,7 @@ function playLife(state, policy, rng, config, clock) {
     }
     if (run.phase === 'alive' && run.pending) game.resolveReplace(state, policy.replace(state, rng));
     // 机缘里也会给装备和锻材。
-    if (run.phase === 'alive' && policy.gear) tidyGear(state);
+    if (run.phase === 'alive' && (policy.gear || policy.tidy)) tidyGear(state);
     tick(config.choiceSeconds);
   }
   life.realm = run.realm;
@@ -658,10 +660,10 @@ function render(data) {
     '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',
     '- 灯传：三种打法都会开卷和使用本境顿悟。随手玩随机挑，挂机玩拿第一项，认真玩先选契合劫相的功法，顿悟优先凑两门或四门羁绊。凡胎试招打赢第一关就停，引气后续打。',
     '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍和道途随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
-    '- **挂机玩**：只开着游戏自带的“自动机缘”、到点渡劫，其余不动脑。见过的选项全交给“自动机缘”估分；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；自动机缘不替玩家做的决定都用最省事的做法：道途、枯海和元婴劫随机选，不管装备，不合秘法、不修洞府、不重抽根骨。',
+    '- **挂机玩**：只开着游戏自带的“自动机缘”、到点渡劫，其余不动脑。见过的选项全交给“自动机缘”估分；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；自动机缘不替玩家做的决定都用最省事的做法：道途、枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨；装备自己换、自己锻造，储物袋也收。',
     '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，再拖一次机缘多折的寿元不比渡劫失败折的少时不再等，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',
     '- 逐道雷的天劫：三种打法都把必接的雷一口气接完；随手玩和挂机玩接完就收劫，不引余雷。',
-    '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒并退回 ' + game.TRAIN_RETREAT + ' 关。认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，并收储物袋；随手玩和挂机玩不管装备，只有空槽位会自动穿上。',
+    '- 历练：三种打法都照打（场景里的战斗本来就是自己打的），一场战斗占掉它自己的时长再加 ' + TRAIN_GAP + ' 秒间隔，败了多歇 ' + TRAIN_REST + ' 秒并退回 ' + game.TRAIN_RETREAT + ' 关。挂机玩和认真玩每过一关把更好的装备换上、用不上的分解、锻材拿去强化，机缘里得了装备或锻材也照做，并收储物袋；随手玩不管装备，只有空槽位会自动穿上。',
     '- 认真玩在本世攒够 ' + game.STAR.ten + ' 香火时进行仙星十连，翻牌后换装和强化。',
     '- 等装备：灵气满了、装备分还不够这一场天劫的要求时，认真玩最多停 ' + config.gearPatience.careful + ' 分钟，只让历练接着打；连着 ' + GEAR_STALL + ' 分钟装备分没涨就不等了。等的时间算进时长。随手玩和挂机玩不等。',
     '- 秘境：人在有关隘的境界、材料没凑齐时，机缘够 ' + game.GATE_COST + ' 次就进秘境打。随手玩和挂机玩三个对手里随便挑；认真玩挑“胜率 × 材料”最高的，胜率到 ' + Math.round(GATE_ODDS * 100) + '% 才去；灵气圆满后只差材料、胜率还不到时，先停下来让历练接着打（和等装备共用耐心），等不动了照打。只差材料、机缘又不够打一场时静坐着攒。一场占掉它自己的时长加 ' + TRAIN_GAP + ' 秒，败了多歇 ' + TRAIN_REST + ' 秒。',
