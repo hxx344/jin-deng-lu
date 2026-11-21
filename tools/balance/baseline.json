@@ -653,16 +653,16 @@
             "demon": 6.7
           },
           "heaven": 0,
-          "wick": 262,
-          "choices": 79.4,
-          "minutes": 11,
-          "age": 456.2,
-          "left": 6.1,
+          "wick": 297.3,
+          "choices": 79.3,
+          "minutes": 11.1,
+          "age": 406.9,
+          "left": 1.1,
           "skills": 8.4,
           "arcanes": 0,
           "suddens": 1.52,
           "demon": 8.3,
-          "totalWick": 416.5,
+          "totalWick": 414.5,
           "totalMinutes": 15.9,
           "heavenMax": 0,
           "known": 23.1,
@@ -672,42 +672,42 @@
           "reach": {
             "引气": 95,
             "筑基": 78.3,
-            "金丹": 36.7,
-            "元婴": 33.3,
-            "化神": 31.7,
+            "金丹": 38.3,
+            "元婴": 35,
+            "化神": 33.3,
             "婴变": 30,
             "问鼎": 28.3,
-            "阴虚": 23.3,
-            "阳实": 23.3,
+            "阴虚": 21.7,
+            "阳实": 21.7,
             "窥涅": 20,
             "净涅": 20,
-            "碎涅": 16.7,
-            "空涅": 13.3,
-            "空灵": 13.3,
-            "空玄": 13.3,
-            "空劫": 13.3,
-            "踏天": 5,
-            "圆满": 5
+            "碎涅": 18.3,
+            "空涅": 16.7,
+            "空灵": 16.7,
+            "空玄": 16.7,
+            "空劫": 15,
+            "踏天": 11.7,
+            "圆满": 10
           },
           "causes": {
-            "clear": 5,
-            "age": 50,
-            "trib": 45,
+            "clear": 10,
+            "age": 46.7,
+            "trib": 43.3,
             "demon": 0
           },
-          "heaven": 0,
-          "wick": 2633.7,
-          "choices": 178,
-          "minutes": 21.8,
-          "age": 2144.2,
-          "left": 305.7,
-          "skills": 10.8,
+          "heaven": 0.02,
+          "wick": 3055.7,
+          "choices": 183.5,
+          "minutes": 22,
+          "age": 1983.7,
+          "left": 766.9,
+          "skills": 10.9,
           "arcanes": 0,
           "suddens": 2.45,
           "demon": 1.7,
-          "totalWick": 4860.3,
-          "totalMinutes": 54,
-          "heavenMax": 0.05,
+          "totalWick": 5831.8,
+          "totalMinutes": 54.3,
+          "heavenMax": 0.12,
           "known": 50.7,
           "lampsMaxed": 23.3
         },
@@ -716,128 +716,128 @@
             "引气": 100,
             "筑基": 98.3,
             "金丹": 80,
-            "元婴": 73.3,
-            "化神": 68.3,
-            "婴变": 63.3,
-            "问鼎": 60,
-            "阴虚": 51.7,
+            "元婴": 75,
+            "化神": 71.7,
+            "婴变": 66.7,
+            "问鼎": 63.3,
+            "阴虚": 55,
             "阳实": 50,
-            "窥涅": 45,
-            "净涅": 45,
-            "碎涅": 38.3,
-            "空涅": 33.3,
-            "空灵": 33.3,
-            "空玄": 30,
-            "空劫": 28.3,
-            "踏天": 25,
-            "圆满": 21.7
+            "窥涅": 46.7,
+            "净涅": 43.3,
+            "碎涅": 41.7,
+            "空涅": 31.7,
+            "空灵": 28.3,
+            "空玄": 28.3,
+            "空劫": 26.7,
+            "踏天": 21.7,
+            "圆满": 15
           },
           "causes": {
-            "clear": 21.7,
-            "age": 56.7,
-            "trib": 21.7,
+            "clear": 15,
+            "age": 61.7,
+            "trib": 23.3,
             "demon": 0
           },
           "heaven": 0.37,
-          "wick": 7590.6,
-          "choices": 312.3,
-          "minutes": 34.6,
-          "age": 3942.6,
-          "left": 1397.7,
-          "skills": 13.6,
+          "wick": 7230.8,
+          "choices": 310.4,
+          "minutes": 33.8,
+          "age": 4283.7,
+          "left": 1122.3,
+          "skills": 13.7,
           "arcanes": 0,
-          "suddens": 2.93,
-          "demon": 5,
-          "totalWick": 34939.3,
-          "totalMinutes": 185,
-          "heavenMax": 0.58,
-          "known": 81.9,
+          "suddens": 2.97,
+          "demon": 3.3,
+          "totalWick": 33923.6,
+          "totalMinutes": 179.6,
+          "heavenMax": 0.52,
+          "known": 81.8,
           "lampsMaxed": 85
         },
         "12": {
           "reach": {
             "引气": 100,
-            "筑基": 100,
-            "金丹": 70,
-            "元婴": 61.7,
-            "化神": 56.7,
-            "婴变": 48.3,
-            "问鼎": 45,
-            "阴虚": 41.7,
-            "阳实": 41.7,
-            "窥涅": 41.7,
-            "净涅": 35,
-            "碎涅": 33.3,
-            "空涅": 33.3,
-            "空灵": 33.3,
-            "空玄": 31.7,
-            "空劫": 23.3,
-            "踏天": 20,
-            "圆满": 15
+            "筑基": 96.7,
+            "金丹": 85,
+            "元婴": 80,
+            "化神": 71.7,
+            "婴变": 65,
+            "问鼎": 65,
+            "阴虚": 56.7,
+            "阳实": 56.7,
+            "窥涅": 56.7,
+            "净涅": 53.3,
+            "碎涅": 43.3,
+            "空涅": 36.7,
+            "空灵": 36.7,
+            "空玄": 33.3,
+            "空劫": 26.7,
+            "踏天": 18.3,
+            "圆满": 13.3
           },
           "causes": {
-            "clear": 15,
-            "age": 63.3,
+            "clear": 13.3,
+            "age": 65,
             "trib": 21.7,
             "demon": 0
           },
-          "heaven": 1.07,
-          "wick": 6956.7,
-          "choices": 272.1,
-          "minutes": 28.6,
-          "age": 3821.6,
-          "left": 1294.5,
-          "skills": 13.4,
+          "heaven": 0.9,
+          "wick": 9273.7,
+          "choices": 331.1,
+          "minutes": 34.3,
+          "age": 5335.6,
+          "left": 1108.5,
+          "skills": 14,
           "arcanes": 0,
-          "suddens": 2.75,
+          "suddens": 2.93,
           "demon": 3.3,
-          "totalWick": 67527.6,
-          "totalMinutes": 300.2,
-          "heavenMax": 1.22,
-          "known": 88.6,
+          "totalWick": 69253.5,
+          "totalMinutes": 303.8,
+          "heavenMax": 1.03,
+          "known": 88.8,
           "lampsMaxed": 98.3
         },
         "16": {
           "reach": {
-            "引气": 98.3,
-            "筑基": 93.3,
-            "金丹": 76.7,
-            "元婴": 68.3,
-            "化神": 65,
-            "婴变": 53.3,
-            "问鼎": 50,
-            "阴虚": 45,
-            "阳实": 43.3,
-            "窥涅": 41.7,
-            "净涅": 36.7,
-            "碎涅": 31.7,
-            "空涅": 28.3,
+            "引气": 100,
+            "筑基": 96.7,
+            "金丹": 66.7,
+            "元婴": 61.7,
+            "化神": 60,
+            "婴变": 51.7,
+            "问鼎": 48.3,
+            "阴虚": 48.3,
+            "阳实": 46.7,
+            "窥涅": 43.3,
+            "净涅": 43.3,
+            "碎涅": 38.3,
+            "空涅": 30,
             "空灵": 28.3,
             "空玄": 23.3,
-            "空劫": 23.3,
+            "空劫": 20,
             "踏天": 15,
-            "圆满": 10
+            "圆满": 11.7
           },
           "causes": {
-            "clear": 10,
-            "age": 70,
-            "trib": 20,
+            "clear": 11.7,
+            "age": 63.3,
+            "trib": 25,
             "demon": 0
           },
-          "heaven": 1.42,
-          "wick": 8067.6,
-          "choices": 283.5,
-          "minutes": 30,
-          "age": 4290.9,
-          "left": 601.2,
-          "skills": 13.6,
+          "heaven": 1.25,
+          "wick": 7430.1,
+          "choices": 292.7,
+          "minutes": 30.3,
+          "age": 4381.9,
+          "left": 944.9,
+          "skills": 13.5,
           "arcanes": 0,
           "suddens": 2.8,
           "demon": 3.3,
-          "totalWick": 100100.1,
-          "totalMinutes": 414.8,
-          "heavenMax": 1.52,
-          "known": 91.2,
+          "totalWick": 101480.8,
+          "totalMinutes": 423.6,
+          "heavenMax": 1.37,
+          "known": 91.6,
           "lampsMaxed": 100
         }
       },
@@ -870,231 +870,231 @@
         "婴变": {
           "share": 100,
           "medianLife": 5,
-          "medianMinutes": 87.4
+          "medianMinutes": 86.3
         },
         "问鼎": {
           "share": 100,
           "medianLife": 5,
-          "medianMinutes": 91.1
+          "medianMinutes": 91.6
         },
         "阴虚": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 114.1
+          "medianMinutes": 109
         },
         "阳实": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 115.3
+          "medianMinutes": 109.4
         },
         "窥涅": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 119.7
+          "medianMinutes": 116
         },
         "净涅": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 120.9
+          "medianMinutes": 118.6
         },
         "碎涅": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 126.4
+          "medianMinutes": 126.3
         },
         "空涅": {
           "share": 100,
-          "medianLife": 7,
-          "medianMinutes": 148.8
+          "medianLife": 6.5,
+          "medianMinutes": 141.5
         },
         "空灵": {
           "share": 100,
           "medianLife": 7,
-          "medianMinutes": 150.8
+          "medianMinutes": 144.4
         },
         "空玄": {
           "share": 98.3,
           "medianLife": 7,
-          "medianMinutes": 152.5
+          "medianMinutes": 148.9
         },
         "空劫": {
           "share": 98.3,
           "medianLife": 7,
-          "medianMinutes": 160.4
+          "medianMinutes": 158.8
         },
         "踏天": {
-          "share": 98.3,
-          "medianLife": 8,
-          "medianMinutes": 186.5
+          "share": 93.3,
+          "medianLife": 7,
+          "medianMinutes": 168.4
         },
         "圆满": {
-          "share": 95,
-          "medianLife": 8,
-          "medianMinutes": 199
+          "share": 90,
+          "medianLife": 9,
+          "medianMinutes": 211.6
         }
       },
       "tribs": {
         "引气劫": {
-          "perLife": 1.3,
-          "success": 72.6,
-          "gear": 1370,
+          "perLife": 1.29,
+          "success": 73.2,
+          "gear": 1776,
           "cleared": 1,
           "stay": 1,
           "firstSaves": 60,
           "firstPass": 61.7
         },
         "筑基劫": {
-          "perLife": 1.47,
-          "success": 56.4,
-          "gear": 1595,
+          "perLife": 1.46,
+          "success": 57.2,
+          "gear": 2531,
           "cleared": 13,
           "stay": 2.2,
           "firstSaves": 60,
           "firstPass": 38.3
         },
         "金丹劫": {
-          "perLife": 1.43,
-          "success": 40.5,
-          "gear": 1804,
-          "cleared": 38,
+          "perLife": 1.39,
+          "success": 43.1,
+          "gear": 2953,
+          "cleared": 37,
           "stay": 4,
           "firstSaves": 60,
           "firstPass": 33.3
         },
         "元婴劫": {
           "perLife": 1.44,
-          "success": 36.2,
-          "gear": 1961.5,
-          "cleared": 56,
+          "success": 38.1,
+          "gear": 3112,
+          "cleared": 54,
           "stay": 3.3,
           "firstSaves": 60,
           "firstPass": 65
         },
         "化神劫": {
-          "perLife": 1.08,
-          "success": 44.4,
-          "gear": 2253.5,
+          "perLife": 1.09,
+          "success": 46.5,
+          "gear": 3461,
           "cleared": 79,
-          "stay": 3.8,
+          "stay": 3.7,
           "firstSaves": 60,
           "firstPass": 86.7
         },
         "婴变劫": {
-          "perLife": 0.92,
-          "success": 46.8,
-          "gear": 2400,
-          "cleared": 102,
+          "perLife": 1.03,
+          "success": 45,
+          "gear": 3980,
+          "cleared": 103,
           "stay": 3.8,
           "firstSaves": 60,
           "firstPass": 90
         },
         "问鼎劫": {
-          "perLife": 0.69,
-          "success": 60.3,
-          "gear": 2545,
-          "cleared": 118,
-          "stay": 3.7,
+          "perLife": 0.72,
+          "success": 61.8,
+          "gear": 4273,
+          "cleared": 121,
+          "stay": 3.3,
           "firstSaves": 60,
           "firstPass": 93.3
         },
         "阴虚劫": {
-          "perLife": 0.78,
-          "success": 44.1,
-          "gear": 2686,
-          "cleared": 129,
+          "perLife": 0.86,
+          "success": 43.6,
+          "gear": 4258,
+          "cleared": 136,
           "stay": 4,
           "firstSaves": 60,
           "firstPass": 66.7
         },
         "阳实劫": {
-          "perLife": 0.51,
-          "success": 65.5,
-          "gear": 2978,
-          "cleared": 140,
+          "perLife": 0.57,
+          "success": 61.4,
+          "gear": 4992,
+          "cleared": 148,
           "stay": 2.8,
           "firstSaves": 60,
           "firstPass": 98.3
         },
         "窥涅劫": {
-          "perLife": 0.58,
-          "success": 54.7,
-          "gear": 2936,
-          "cleared": 141,
+          "perLife": 0.59,
+          "success": 57.5,
+          "gear": 5079.5,
+          "cleared": 152.5,
           "stay": 2.8,
           "firstSaves": 60,
           "firstPass": 91.7
         },
         "净涅劫": {
-          "perLife": 0.66,
-          "success": 45.9,
-          "gear": 3162,
-          "cleared": 148,
-          "stay": 3.7,
+          "perLife": 0.71,
+          "success": 45.4,
+          "gear": 5413,
+          "cleared": 159,
+          "stay": 3.8,
           "firstSaves": 60,
           "firstPass": 96.7
         },
         "碎涅劫": {
-          "perLife": 0.63,
-          "success": 42,
-          "gear": 3139,
-          "cleared": 152.5,
+          "perLife": 0.71,
+          "success": 39.8,
+          "gear": 5713,
+          "cleared": 164,
           "stay": 4.5,
           "firstSaves": 60,
-          "firstPass": 86.7
+          "firstPass": 85
         },
         "空涅劫": {
-          "perLife": 0.47,
-          "success": 44.6,
-          "gear": 3214,
-          "cleared": 153,
+          "perLife": 0.51,
+          "success": 45.5,
+          "gear": 6192,
+          "cleared": 170,
           "stay": 3.8,
           "firstSaves": 60,
-          "firstPass": 71.7
+          "firstPass": 75
         },
         "空灵劫": {
-          "perLife": 0.31,
-          "success": 66.4,
-          "gear": 3229,
-          "cleared": 157,
-          "stay": 2,
+          "perLife": 0.34,
+          "success": 63.9,
+          "gear": 6243.5,
+          "cleared": 173,
+          "stay": 2.3,
           "firstSaves": 60,
-          "firstPass": 98.3
+          "firstPass": 96.7
         },
         "空玄劫": {
-          "perLife": 0.37,
-          "success": 53.3,
-          "gear": 3298,
-          "cleared": 159,
-          "stay": 2.7,
+          "perLife": 0.35,
+          "success": 55.3,
+          "gear": 6484,
+          "cleared": 176,
+          "stay": 2.9,
           "firstSaves": 60,
-          "firstPass": 95
+          "firstPass": 91.7
         },
         "空劫": {
-          "perLife": 0.31,
-          "success": 56.4,
-          "gear": 3326,
-          "cleared": 164,
+          "perLife": 0.33,
+          "success": 51.6,
+          "gear": 5906,
+          "cleared": 177,
           "stay": 2.9,
           "firstSaves": 59,
           "firstPass": 89.8
         },
         "踏天劫": {
-          "perLife": 0.27,
-          "success": 45.6,
-          "gear": 3447,
-          "cleared": 171,
-          "stay": 4.2,
+          "perLife": 0.24,
+          "success": 53.4,
+          "gear": 6211,
+          "cleared": 181.5,
+          "stay": 4,
           "firstSaves": 59,
-          "firstPass": 74.6
+          "firstPass": 76.3
         },
         "终劫": {
           "perLife": 0.19,
-          "success": 49.5,
-          "gear": 3599,
-          "cleared": 177,
+          "success": 46.1,
+          "gear": 7137,
+          "cleared": 189,
           "stay": 3.8,
-          "firstSaves": 59,
-          "firstPass": 74.6
+          "firstSaves": 56,
+          "firstPass": 57.1
         }
       },
       "gates": {
@@ -1110,28 +1110,28 @@
           "pass": 100,
           "done": 100,
           "fights": 2.3,
-          "win": 99.6
+          "win": 99.5
         },
         "ink": {
           "met": 100,
           "pass": 100,
           "done": 100,
           "fights": 3.2,
-          "win": 99.8
+          "win": 99.9
         },
         "kiln": {
           "met": 100,
           "pass": 100,
           "done": 100,
-          "fights": 4.3,
-          "win": 99.7
+          "fights": 4.2,
+          "win": 99.8
         },
         "tomb": {
           "met": 98.3,
           "pass": 100,
           "done": 100,
-          "fights": 4.3,
-          "win": 99.3
+          "fights": 4.1,
+          "win": 100
         }
       },
       "capped": 0
@@ -1199,7 +1199,7 @@
             "空灵": 1.7,
             "空玄": 1.7,
             "空劫": 1.7,
-            "踏天": 1.7,
+            "踏天": 0,
             "圆满": 0
           },
           "causes": {
@@ -1209,17 +1209,17 @@
             "demon": 0
           },
           "heaven": 0,
-          "wick": 488.4,
-          "choices": 102,
-          "minutes": 13.6,
-          "age": 521.3,
-          "left": 15.7,
-          "skills": 8.4,
-          "arcanes": 1.1,
+          "wick": 467.9,
+          "choices": 101.4,
+          "minutes": 13.4,
+          "age": 512.1,
+          "left": 5.6,
+          "skills": 8.3,
+          "arcanes": 1.08,
           "suddens": 2,
           "demon": 5,
-          "totalWick": 651.3,
-          "totalMinutes": 21.7,
+          "totalWick": 679.3,
+          "totalMinutes": 21.5,
           "heavenMax": 0,
           "known": 24.8,
           "lampsMaxed": 1.7
@@ -1230,170 +1230,170 @@
             "筑基": 88.3,
             "金丹": 60,
             "元婴": 55,
-            "化神": 36.7,
-            "婴变": 30,
-            "问鼎": 28.3,
+            "化神": 38.3,
+            "婴变": 31.7,
+            "问鼎": 30,
             "阴虚": 16.7,
             "阳实": 15,
             "窥涅": 15,
-            "净涅": 15,
-            "碎涅": 10,
-            "空涅": 6.7,
-            "空灵": 6.7,
-            "空玄": 6.7,
-            "空劫": 6.7,
-            "踏天": 3.3,
-            "圆满": 3.3
+            "净涅": 13.3,
+            "碎涅": 8.3,
+            "空涅": 5,
+            "空灵": 3.3,
+            "空玄": 3.3,
+            "空劫": 3.3,
+            "踏天": 0,
+            "圆满": 0
           },
           "causes": {
-            "clear": 3.3,
-            "age": 58.3,
-            "trib": 38.3,
+            "clear": 0,
+            "age": 60,
+            "trib": 40,
             "demon": 0
           },
           "heaven": 0,
-          "wick": 1756.3,
-          "choices": 192.7,
-          "minutes": 25.8,
-          "age": 1874.6,
-          "left": 166,
+          "wick": 1352.4,
+          "choices": 185.9,
+          "minutes": 25.1,
+          "age": 1723.1,
+          "left": 29.9,
           "skills": 11.6,
-          "arcanes": 2.45,
+          "arcanes": 2.32,
           "suddens": 2.7,
           "demon": 0,
-          "totalWick": 3212.3,
-          "totalMinutes": 64.3,
-          "heavenMax": 0.03,
-          "known": 54.6,
-          "lampsMaxed": 13.3
+          "totalWick": 2902.8,
+          "totalMinutes": 63.4,
+          "heavenMax": 0,
+          "known": 54.5,
+          "lampsMaxed": 15
         },
         "8": {
           "reach": {
             "引气": 100,
             "筑基": 100,
             "金丹": 85,
-            "元婴": 85,
+            "元婴": 83.3,
             "化神": 80,
             "婴变": 71.7,
-            "问鼎": 68.3,
+            "问鼎": 71.7,
             "阴虚": 66.7,
-            "阳实": 61.7,
-            "窥涅": 58.3,
-            "净涅": 51.7,
-            "碎涅": 41.7,
-            "空涅": 33.3,
-            "空灵": 31.7,
-            "空玄": 30,
-            "空劫": 30,
-            "踏天": 18.3,
-            "圆满": 11.7
+            "阳实": 66.7,
+            "窥涅": 65,
+            "净涅": 60,
+            "碎涅": 48.3,
+            "空涅": 38.3,
+            "空灵": 35,
+            "空玄": 35,
+            "空劫": 35,
+            "踏天": 28.3,
+            "圆满": 23.3
           },
           "causes": {
-            "clear": 11.7,
-            "age": 71.7,
-            "trib": 16.7,
+            "clear": 23.3,
+            "age": 61.7,
+            "trib": 15,
             "demon": 0
           },
-          "heaven": 0.37,
-          "wick": 8278.9,
-          "choices": 344.1,
-          "minutes": 41.4,
-          "age": 5183.7,
-          "left": 1079.6,
-          "skills": 14.2,
-          "arcanes": 4.97,
-          "suddens": 2.92,
+          "heaven": 0.35,
+          "wick": 9552.3,
+          "choices": 360.6,
+          "minutes": 43.4,
+          "age": 5333.8,
+          "left": 1216.3,
+          "skills": 14.5,
+          "arcanes": 5.15,
+          "suddens": 2.93,
           "demon": 0,
-          "totalWick": 32735.7,
-          "totalMinutes": 209.9,
-          "heavenMax": 0.48,
-          "known": 81.9,
+          "totalWick": 34948.7,
+          "totalMinutes": 210.7,
+          "heavenMax": 0.58,
+          "known": 81.8,
           "lampsMaxed": 86.7
         },
         "12": {
           "reach": {
             "引气": 100,
-            "筑基": 96.7,
-            "金丹": 78.3,
-            "元婴": 76.7,
-            "化神": 70,
-            "婴变": 65,
-            "问鼎": 61.7,
-            "阴虚": 55,
-            "阳实": 53.3,
-            "窥涅": 51.7,
-            "净涅": 50,
+            "筑基": 100,
+            "金丹": 83.3,
+            "元婴": 83.3,
+            "化神": 75,
+            "婴变": 71.7,
+            "问鼎": 71.7,
+            "阴虚": 56.7,
+            "阳实": 50,
+            "窥涅": 50,
+            "净涅": 43.3,
             "碎涅": 35,
-            "空涅": 25,
-            "空灵": 23.3,
-            "空玄": 23.3,
-            "空劫": 23.3,
-            "踏天": 15,
-            "圆满": 13.3
+            "空涅": 28.3,
+            "空灵": 28.3,
+            "空玄": 28.3,
+            "空劫": 25,
+            "踏天": 16.7,
+            "圆满": 15
           },
           "causes": {
-            "clear": 13.3,
-            "age": 61.7,
-            "trib": 23.3,
+            "clear": 15,
+            "age": 63.3,
+            "trib": 20,
             "demon": 1.7
           },
-          "heaven": 1.12,
-          "wick": 8290.9,
-          "choices": 321.7,
-          "minutes": 37.4,
-          "age": 4425.9,
-          "left": 1055.2,
-          "skills": 13.9,
-          "arcanes": 4.65,
-          "suddens": 2.88,
+          "heaven": 1.05,
+          "wick": 7870.4,
+          "choices": 339.1,
+          "minutes": 40,
+          "age": 4759.6,
+          "left": 995.8,
+          "skills": 14.2,
+          "arcanes": 4.88,
+          "suddens": 2.98,
           "demon": 1.7,
-          "totalWick": 77744.2,
-          "totalMinutes": 375.1,
-          "heavenMax": 1.25,
-          "known": 88.9,
+          "totalWick": 74594.9,
+          "totalMinutes": 369.8,
+          "heavenMax": 1.2,
+          "known": 88.5,
           "lampsMaxed": 100
         },
         "16": {
           "reach": {
             "引气": 100,
-            "筑基": 93.3,
-            "金丹": 70,
-            "元婴": 70,
-            "化神": 58.3,
-            "婴变": 48.3,
-            "问鼎": 48.3,
-            "阴虚": 38.3,
-            "阳实": 35,
-            "窥涅": 35,
+            "筑基": 96.7,
+            "金丹": 63.3,
+            "元婴": 63.3,
+            "化神": 55,
+            "婴变": 45,
+            "问鼎": 45,
+            "阴虚": 36.7,
+            "阳实": 30,
+            "窥涅": 30,
             "净涅": 28.3,
-            "碎涅": 21.7,
-            "空涅": 16.7,
-            "空灵": 13.3,
-            "空玄": 11.7,
-            "空劫": 10,
-            "踏天": 6.7,
-            "圆满": 3.3
+            "碎涅": 23.3,
+            "空涅": 18.3,
+            "空灵": 18.3,
+            "空玄": 16.7,
+            "空劫": 15,
+            "踏天": 10,
+            "圆满": 6.7
           },
           "causes": {
-            "clear": 3.3,
-            "age": 73.3,
-            "trib": 21.7,
-            "demon": 1.7
+            "clear": 6.7,
+            "age": 63.3,
+            "trib": 30,
+            "demon": 0
           },
-          "heaven": 1.58,
-          "wick": 5968.4,
-          "choices": 267.2,
-          "minutes": 31.2,
-          "age": 3286.5,
-          "left": 332.3,
-          "skills": 14,
-          "arcanes": 3.5,
-          "suddens": 2.83,
-          "demon": 1.7,
-          "totalWick": 107918.3,
-          "totalMinutes": 510.9,
-          "heavenMax": 1.62,
-          "known": 91.5,
+          "heaven": 1.45,
+          "wick": 5810.1,
+          "choices": 260.4,
+          "minutes": 30.7,
+          "age": 3553.5,
+          "left": 557.7,
+          "skills": 13.6,
+          "arcanes": 3.58,
+          "suddens": 2.97,
+          "demon": 3.3,
+          "totalWick": 106591.3,
+          "totalMinutes": 507.7,
+          "heavenMax": 1.52,
+          "known": 91.3,
           "lampsMaxed": 100
         }
       },
@@ -1421,236 +1421,236 @@
         "化神": {
           "share": 100,
           "medianLife": 5,
-          "medianMinutes": 75.4
+          "medianMinutes": 74.9
         },
         "婴变": {
           "share": 100,
           "medianLife": 5,
-          "medianMinutes": 94.9
+          "medianMinutes": 95.5
         },
         "问鼎": {
           "share": 100,
           "medianLife": 5,
-          "medianMinutes": 99.1
+          "medianMinutes": 100.3
         },
         "阴虚": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 136.1
+          "medianMinutes": 132.8
         },
         "阳实": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 138.5
+          "medianMinutes": 135.6
         },
         "窥涅": {
           "share": 100,
           "medianLife": 6,
-          "medianMinutes": 140.1
+          "medianMinutes": 136.7
         },
         "净涅": {
           "share": 100,
           "medianLife": 7,
-          "medianMinutes": 144.3
+          "medianMinutes": 144.9
         },
         "碎涅": {
           "share": 100,
           "medianLife": 7,
-          "medianMinutes": 164.9
+          "medianMinutes": 166.4
         },
         "空涅": {
-          "share": 100,
-          "medianLife": 7.5,
-          "medianMinutes": 197.3
+          "share": 98.3,
+          "medianLife": 8,
+          "medianMinutes": 190
         },
         "空灵": {
-          "share": 100,
-          "medianLife": 7.5,
-          "medianMinutes": 197.3
+          "share": 98.3,
+          "medianLife": 8,
+          "medianMinutes": 198.9
         },
         "空玄": {
-          "share": 100,
+          "share": 96.7,
           "medianLife": 8,
-          "medianMinutes": 201.7
+          "medianMinutes": 200.5
         },
         "空劫": {
-          "share": 100,
+          "share": 96.7,
           "medianLife": 8,
-          "medianMinutes": 201.7
+          "medianMinutes": 200.8
         },
         "踏天": {
-          "share": 98.3,
-          "medianLife": 9,
-          "medianMinutes": 222.4
+          "share": 95,
+          "medianLife": 8,
+          "medianMinutes": 207.6
         },
         "圆满": {
-          "share": 96.7,
-          "medianLife": 9.5,
-          "medianMinutes": 251.6
+          "share": 90,
+          "medianLife": 8.5,
+          "medianMinutes": 218.4
         }
       },
       "tribs": {
         "引气劫": {
-          "perLife": 1.24,
-          "success": 79.2,
-          "gear": 1231,
+          "perLife": 1.2,
+          "success": 81.9,
+          "gear": 1575,
           "cleared": 1,
           "stay": 0.8,
           "firstSaves": 60,
           "firstPass": 81.7
         },
         "筑基劫": {
-          "perLife": 1.35,
-          "success": 66.6,
-          "gear": 1508,
+          "perLife": 1.28,
+          "success": 70.3,
+          "gear": 2023.5,
           "cleared": 16,
           "stay": 2.9,
           "firstSaves": 60,
           "firstPass": 48.3
         },
         "金丹劫": {
-          "perLife": 1.2,
-          "success": 57.4,
-          "gear": 1758,
-          "cleared": 49,
-          "stay": 5.4,
+          "perLife": 1.24,
+          "success": 54.5,
+          "gear": 2628,
+          "cleared": 48,
+          "stay": 5.5,
           "firstSaves": 60,
           "firstPass": 38.3
         },
         "元婴劫": {
-          "perLife": 0.84,
-          "success": 78.4,
-          "gear": 2017,
-          "cleared": 71,
+          "perLife": 0.82,
+          "success": 77.8,
+          "gear": 3123,
+          "cleared": 72,
           "stay": 3.5,
           "firstSaves": 60,
           "firstPass": 65
         },
         "化神劫": {
-          "perLife": 1.05,
-          "success": 55.1,
-          "gear": 2421,
-          "cleared": 102,
+          "perLife": 1.07,
+          "success": 52.9,
+          "gear": 3824,
+          "cleared": 99,
           "stay": 4.7,
           "firstSaves": 60,
           "firstPass": 68.3
         },
         "婴变劫": {
-          "perLife": 0.98,
-          "success": 51.8,
-          "gear": 2629,
-          "cleared": 121,
+          "perLife": 0.88,
+          "success": 55.8,
+          "gear": 4128.5,
+          "cleared": 124,
           "stay": 4.5,
           "firstSaves": 60,
           "firstPass": 63.3
         },
         "问鼎劫": {
-          "perLife": 0.73,
-          "success": 66.2,
-          "gear": 2642,
-          "cleared": 127.5,
-          "stay": 4.1,
+          "perLife": 0.71,
+          "success": 67.9,
+          "gear": 4335.5,
+          "cleared": 135,
+          "stay": 4.2,
           "firstSaves": 60,
           "firstPass": 90
         },
         "阴虚劫": {
-          "perLife": 0.68,
-          "success": 56.7,
-          "gear": 2813,
-          "cleared": 136,
+          "perLife": 0.66,
+          "success": 58,
+          "gear": 4749,
+          "cleared": 146.5,
           "stay": 4.3,
           "firstSaves": 60,
-          "firstPass": 55
+          "firstPass": 56.7
         },
         "阳实劫": {
           "perLife": 0.47,
-          "success": 77.9,
-          "gear": 2849,
-          "cleared": 138,
+          "success": 77,
+          "gear": 5041,
+          "cleared": 151,
           "stay": 1.7,
           "firstSaves": 60,
           "firstPass": 93.3
         },
         "窥涅劫": {
           "perLife": 0.51,
-          "success": 71.2,
-          "gear": 2987.5,
-          "cleared": 142,
-          "stay": 1.9,
-          "firstSaves": 60,
-          "firstPass": 96.7
-        },
-        "净涅劫": {
-          "perLife": 0.72,
-          "success": 44,
-          "gear": 3143,
-          "cleared": 150,
-          "stay": 4.6,
-          "firstSaves": 60,
-          "firstPass": 81.7
-        },
-        "碎涅劫": {
-          "perLife": 0.56,
-          "success": 44.8,
-          "gear": 3207,
+          "success": 70.6,
+          "gear": 5003,
           "cleared": 154,
-          "stay": 5.2,
-          "firstSaves": 60,
-          "firstPass": 76.7
-        },
-        "空涅劫": {
-          "perLife": 0.33,
-          "success": 60.8,
-          "gear": 3386,
-          "cleared": 157.5,
-          "stay": 4.2,
-          "firstSaves": 60,
-          "firstPass": 75
-        },
-        "空灵劫": {
-          "perLife": 0.24,
-          "success": 80.2,
-          "gear": 3377.5,
-          "cleared": 159.5,
-          "stay": 1.7,
-          "firstSaves": 60,
-          "firstPass": 100
-        },
-        "空玄劫": {
-          "perLife": 0.23,
-          "success": 81.1,
-          "gear": 3342.5,
-          "cleared": 162,
-          "stay": 1.8,
-          "firstSaves": 60,
-          "firstPass": 96.7
-        },
-        "空劫": {
-          "perLife": 0.25,
-          "success": 71.4,
-          "gear": 3445,
-          "cleared": 169,
           "stay": 2,
           "firstSaves": 60,
           "firstPass": 98.3
         },
-        "踏天劫": {
-          "perLife": 0.23,
-          "success": 58.7,
-          "gear": 3528,
-          "cleared": 171,
-          "stay": 5.3,
+        "净涅劫": {
+          "perLife": 0.67,
+          "success": 47.8,
+          "gear": 5379.5,
+          "cleared": 161,
+          "stay": 4.5,
           "firstSaves": 60,
-          "firstPass": 71.7
+          "firstPass": 85
+        },
+        "碎涅劫": {
+          "perLife": 0.56,
+          "success": 47.6,
+          "gear": 5860.5,
+          "cleared": 164,
+          "stay": 5.1,
+          "firstSaves": 60,
+          "firstPass": 76.7
+        },
+        "空涅劫": {
+          "perLife": 0.38,
+          "success": 54.8,
+          "gear": 6426,
+          "cleared": 169,
+          "stay": 4.3,
+          "firstSaves": 60,
+          "firstPass": 76.7
+        },
+        "空灵劫": {
+          "perLife": 0.26,
+          "success": 76.4,
+          "gear": 6126,
+          "cleared": 169,
+          "stay": 1.8,
+          "firstSaves": 59,
+          "firstPass": 96.6
+        },
+        "空玄劫": {
+          "perLife": 0.26,
+          "success": 70.9,
+          "gear": 6676,
+          "cleared": 173.5,
+          "stay": 1.9,
+          "firstSaves": 59,
+          "firstPass": 93.2
+        },
+        "空劫": {
+          "perLife": 0.23,
+          "success": 77.5,
+          "gear": 7327,
+          "cleared": 180,
+          "stay": 1.7,
+          "firstSaves": 58,
+          "firstPass": 94.8
+        },
+        "踏天劫": {
+          "perLife": 0.24,
+          "success": 53.5,
+          "gear": 7281,
+          "cleared": 184,
+          "stay": 5,
+          "firstSaves": 58,
+          "firstPass": 75.9
         },
         "终劫": {
-          "perLife": 0.17,
-          "success": 60.6,
-          "gear": 3635.5,
-          "cleared": 179,
-          "stay": 4.3,
-          "firstSaves": 59,
-          "firstPass": 74.6
+          "perLife": 0.16,
+          "success": 60.7,
+          "gear": 6995,
+          "cleared": 187.5,
+          "stay": 4.1,
+          "firstSaves": 57,
+          "firstPass": 73.7
         }
       },
       "gates": {
@@ -1665,7 +1665,7 @@
           "met": 100,
           "pass": 100,
           "done": 100,
-          "fights": 2.1,
+          "fights": 2.2,
           "win": 99.5
         },
         "ink": {
@@ -1673,17 +1673,17 @@
           "pass": 100,
           "done": 100,
           "fights": 3.1,
-          "win": 99.7
+          "win": 99.9
         },
         "kiln": {
           "met": 100,
           "pass": 100,
           "done": 100,
           "fights": 4.1,
-          "win": 99.9
+          "win": 100
         },
         "tomb": {
-          "met": 100,
+          "met": 96.7,
           "pass": 100,
           "done": 100,
           "fights": 4.1,
@@ -2234,44 +2234,44 @@
           "5": {
             "reach": {
               "引气": 100,
-              "筑基": 75,
-              "金丹": 58.3,
-              "元婴": 58.3,
-              "化神": 50,
-              "婴变": 50,
-              "问鼎": 50,
-              "阴虚": 33.3,
-              "阳实": 25,
-              "窥涅": 25,
-              "净涅": 25,
-              "碎涅": 16.7,
-              "空涅": 16.7,
-              "空灵": 8.3,
-              "空玄": 8.3,
-              "空劫": 8.3,
-              "踏天": 8.3,
-              "圆满": 8.3
+              "筑基": 66.7,
+              "金丹": 50,
+              "元婴": 50,
+              "化神": 41.7,
+              "婴变": 41.7,
+              "问鼎": 41.7,
+              "阴虚": 25,
+              "阳实": 16.7,
+              "窥涅": 16.7,
+              "净涅": 16.7,
+              "碎涅": 8.3,
+              "空涅": 8.3,
+              "空灵": 0,
+              "空玄": 0,
+              "空劫": 0,
+              "踏天": 0,
+              "圆满": 0
             },
             "causes": {
-              "clear": 8.3,
+              "clear": 0,
               "age": 66.7,
-              "trib": 25,
+              "trib": 33.3,
               "demon": 0
             },
             "heaven": 0,
-            "wick": 2534.3,
-            "choices": 225.6,
-            "minutes": 27.8,
-            "age": 2078,
-            "left": 869.8,
-            "skills": 11.3,
+            "wick": 1273.9,
+            "choices": 182.3,
+            "minutes": 23.4,
+            "age": 1632.5,
+            "left": 4.8,
+            "skills": 10.3,
             "arcanes": 0,
-            "suddens": 2.25,
+            "suddens": 2,
             "demon": 0,
-            "totalWick": 4993.2,
-            "totalMinutes": 70.9,
-            "heavenMax": 0.08,
-            "known": 60.7,
+            "totalWick": 3650.5,
+            "totalMinutes": 66.3,
+            "heavenMax": 0,
+            "known": 60.4,
             "lampsMaxed": 16.7
           }
         },
@@ -2314,12 +2314,12 @@
           "阴虚": {
             "share": 33.3,
             "medianLife": 4.5,
-            "medianMinutes": 93.3
+            "medianMinutes": 93.5
           },
           "阳实": {
             "share": 33.3,
             "medianLife": 4.5,
-            "medianMinutes": 93.3
+            "medianMinutes": 93.5
           },
           "窥涅": {
             "share": 25,
@@ -2334,201 +2334,201 @@
           "碎涅": {
             "share": 16.7,
             "medianLife": 4.5,
-            "medianMinutes": 105.8
+            "medianMinutes": 104.4
           },
           "空涅": {
             "share": 16.7,
             "medianLife": 4.5,
-            "medianMinutes": 105.8
+            "medianMinutes": 104.4
           },
           "空灵": {
             "share": 8.3,
             "medianLife": 4,
-            "medianMinutes": 109.4
+            "medianMinutes": 106.7
           },
           "空玄": {
             "share": 8.3,
             "medianLife": 4,
-            "medianMinutes": 109.4
+            "medianMinutes": 106.7
           },
           "空劫": {
             "share": 8.3,
             "medianLife": 4,
-            "medianMinutes": 109.4
+            "medianMinutes": 106.7
           },
           "踏天": {
-            "share": 8.3,
-            "medianLife": 5,
-            "medianMinutes": 165.1
+            "share": 0,
+            "medianLife": null,
+            "medianMinutes": null
           },
           "圆满": {
-            "share": 8.3,
-            "medianLife": 5,
-            "medianMinutes": 165.1
+            "share": 0,
+            "medianLife": null,
+            "medianMinutes": null
           }
         },
         "tribs": {
           "引气劫": {
-            "perLife": 1.18,
-            "success": 70.4,
+            "perLife": 1.23,
+            "success": 67.6,
             "gear": 10,
             "cleared": 1,
-            "stay": 1.4,
+            "stay": 1.5,
             "firstSaves": 12,
             "firstPass": 50
           },
           "筑基劫": {
-            "perLife": 1.03,
-            "success": 48.4,
-            "gear": 57.5,
+            "perLife": 1.05,
+            "success": 46,
+            "gear": 60,
             "cleared": 12,
             "stay": 3,
             "firstSaves": 12,
             "firstPass": 33.3
           },
           "金丹劫": {
-            "perLife": 0.6,
-            "success": 47.2,
-            "gear": 161,
+            "perLife": 0.58,
+            "success": 45.7,
+            "gear": 160,
             "cleared": 26,
             "stay": 3.8,
             "firstSaves": 11,
             "firstPass": 54.5
           },
           "元婴劫": {
-            "perLife": 0.53,
-            "success": 37.5,
+            "perLife": 0.52,
+            "success": 35.5,
             "gear": 228,
             "cleared": 35,
-            "stay": 4.3,
+            "stay": 4.5,
             "firstSaves": 10,
             "firstPass": 60
           },
           "化神劫": {
-            "perLife": 0.37,
-            "success": 50,
-            "gear": 517,
+            "perLife": 0.35,
+            "success": 47.6,
+            "gear": 516,
             "cleared": 47,
             "stay": 4.3,
             "firstSaves": 9,
             "firstPass": 88.9
           },
           "婴变劫": {
-            "perLife": 0.43,
-            "success": 42.3,
+            "perLife": 0.42,
+            "success": 40,
             "gear": 609,
             "cleared": 58,
-            "stay": 4.4,
+            "stay": 4.6,
             "firstSaves": 8,
             "firstPass": 100
           },
           "问鼎劫": {
-            "perLife": 0.28,
-            "success": 58.8,
-            "gear": 666,
-            "cleared": 70,
+            "perLife": 0.25,
+            "success": 60,
+            "gear": 643,
+            "cleared": 69,
             "stay": 4.7,
             "firstSaves": 8,
             "firstPass": 87.5
           },
           "阴虚劫": {
-            "perLife": 0.32,
-            "success": 31.6,
-            "gear": 744,
-            "cleared": 80,
-            "stay": 6,
+            "perLife": 0.3,
+            "success": 27.8,
+            "gear": 741,
+            "cleared": 79.5,
+            "stay": 7.8,
             "firstSaves": 7,
             "firstPass": 42.9
           },
           "阳实劫": {
-            "perLife": 0.18,
-            "success": 45.5,
-            "gear": 1117,
+            "perLife": 0.15,
+            "success": 44.4,
+            "gear": 1118,
             "cleared": 84,
-            "stay": 3.8,
+            "stay": 3.2,
             "firstSaves": 4,
             "firstPass": 100
           },
           "窥涅劫": {
-            "perLife": 0.22,
-            "success": 30.8,
+            "perLife": 0.2,
+            "success": 25,
             "gear": 1015,
-            "cleared": 87,
-            "stay": 2.5,
+            "cleared": 80.5,
+            "stay": 3.3,
             "firstSaves": 4,
             "firstPass": 75
           },
           "净涅劫": {
-            "perLife": 0.13,
-            "success": 50,
-            "gear": 1083.5,
-            "cleared": 99.5,
-            "stay": 4.4,
+            "perLife": 0.12,
+            "success": 42.9,
+            "gear": 1040,
+            "cleared": 98,
+            "stay": 4.9,
             "firstSaves": 3,
             "firstPass": 100
           },
           "碎涅劫": {
-            "perLife": 0.13,
-            "success": 37.5,
-            "gear": 1781,
-            "cleared": 117.5,
-            "stay": 5.1,
+            "perLife": 0.08,
+            "success": 40,
+            "gear": 1985,
+            "cleared": 117,
+            "stay": 6.9,
             "firstSaves": 3,
             "firstPass": 66.7
           },
           "空涅劫": {
-            "perLife": 0.08,
-            "success": 60,
-            "gear": 2122,
-            "cleared": 132,
-            "stay": 4.6,
+            "perLife": 0.03,
+            "success": 100,
+            "gear": 1857,
+            "cleared": 123,
+            "stay": 4.3,
             "firstSaves": 2,
             "firstPass": 100
           },
           "空灵劫": {
-            "perLife": 0.08,
-            "success": 40,
-            "gear": 2176,
-            "cleared": 137,
-            "stay": 2.5,
+            "perLife": 0.03,
+            "success": 50,
+            "gear": 1884,
+            "cleared": 125.5,
+            "stay": 2,
             "firstSaves": 2,
             "firstPass": 50
           },
           "空玄劫": {
-            "perLife": 0.05,
-            "success": 66.7,
-            "gear": 2176,
-            "cleared": 142,
-            "stay": 3.4,
+            "perLife": 0.02,
+            "success": 100,
+            "gear": 1629,
+            "cleared": 124,
+            "stay": 2.1,
             "firstSaves": 1,
             "firstPass": 100
           },
           "空劫": {
-            "perLife": 0.03,
+            "perLife": 0.02,
             "success": 100,
-            "gear": 1853.5,
-            "cleared": 135,
+            "gear": 1643,
+            "cleared": 124,
             "stay": 1.7,
             "firstSaves": 1,
             "firstPass": 100
           },
           "踏天劫": {
             "perLife": 0.03,
-            "success": 50,
-            "gear": 2085,
-            "cleared": 144,
-            "stay": 4.5,
+            "success": 0,
+            "gear": 1691,
+            "cleared": 129,
+            "stay": null,
             "firstSaves": 1,
             "firstPass": 0
           },
           "终劫": {
-            "perLife": 0.02,
-            "success": 100,
-            "gear": 2484,
-            "cleared": 145,
-            "stay": 2.2,
-            "firstSaves": 1,
-            "firstPass": 100
+            "perLife": 0,
+            "success": null,
+            "gear": null,
+            "cleared": null,
+            "stay": null,
+            "firstSaves": 0,
+            "firstPass": null
           }
         },
         "gates": {
@@ -2543,14 +2543,14 @@
             "met": 83.3,
             "pass": 100,
             "done": 100,
-            "fights": 3.2,
+            "fights": 3.3,
             "win": 98.1
           },
           "ink": {
             "met": 66.7,
             "pass": 100,
             "done": 100,
-            "fights": 3.5,
+            "fights": 3.6,
             "win": 100
           },
           "kiln": {
@@ -2564,7 +2564,7 @@
             "met": 8.3,
             "pass": 100,
             "done": 100,
-            "fights": 4,
+            "fights": 6,
             "win": 100
           }
         },
@@ -2624,9 +2624,9 @@
               "化神": 16.7,
               "婴变": 16.7,
               "问鼎": 16.7,
-              "阴虚": 8.3,
-              "阳实": 8.3,
-              "窥涅": 8.3,
+              "阴虚": 0,
+              "阳实": 0,
+              "窥涅": 0,
               "净涅": 0,
               "碎涅": 0,
               "空涅": 0,
@@ -2643,62 +2643,62 @@
               "demon": 0
             },
             "heaven": 0,
-            "wick": 433.6,
-            "choices": 124.2,
-            "minutes": 16.3,
-            "age": 680.3,
-            "left": 2.5,
+            "wick": 356.8,
+            "choices": 118.9,
+            "minutes": 15.6,
+            "age": 468.4,
+            "left": 4.8,
             "skills": 9.8,
-            "arcanes": 1.5,
+            "arcanes": 1.42,
             "suddens": 2.42,
             "demon": 0,
-            "totalWick": 786.3,
-            "totalMinutes": 39,
+            "totalWick": 709.5,
+            "totalMinutes": 38.3,
             "heavenMax": 0,
-            "known": 39.2,
+            "known": 38.9,
             "lampsMaxed": 0
           },
           "5": {
             "reach": {
               "引气": 100,
-              "筑基": 100,
-              "金丹": 75,
-              "元婴": 75,
-              "化神": 66.7,
-              "婴变": 50,
-              "问鼎": 41.7,
-              "阴虚": 33.3,
-              "阳实": 33.3,
-              "窥涅": 33.3,
-              "净涅": 25,
-              "碎涅": 25,
+              "筑基": 91.7,
+              "金丹": 66.7,
+              "元婴": 66.7,
+              "化神": 58.3,
+              "婴变": 33.3,
+              "问鼎": 33.3,
+              "阴虚": 25,
+              "阳实": 25,
+              "窥涅": 25,
+              "净涅": 16.7,
+              "碎涅": 16.7,
               "空涅": 16.7,
               "空灵": 16.7,
               "空玄": 16.7,
               "空劫": 16.7,
-              "踏天": 0,
-              "圆满": 0
+              "踏天": 8.3,
+              "圆满": 8.3
             },
             "causes": {
-              "clear": 0,
-              "age": 58.3,
-              "trib": 41.7,
+              "clear": 8.3,
+              "age": 41.7,
+              "trib": 50,
               "demon": 0
             },
             "heaven": 0,
-            "wick": 3665.7,
-            "choices": 262.9,
-            "minutes": 32.4,
-            "age": 3937.3,
-            "left": 23.1,
-            "skills": 13.3,
-            "arcanes": 3.83,
-            "suddens": 3,
+            "wick": 3471.5,
+            "choices": 232.8,
+            "minutes": 28.6,
+            "age": 2796.7,
+            "left": 571.8,
+            "skills": 12.6,
+            "arcanes": 3.08,
+            "suddens": 2.92,
             "demon": 0,
-            "totalWick": 8021.1,
-            "totalMinutes": 99.6,
-            "heavenMax": 0,
-            "known": 65.8,
+            "totalWick": 6533.2,
+            "totalMinutes": 94.6,
+            "heavenMax": 0.08,
+            "known": 65.2,
             "lampsMaxed": 33.3
           }
         },
@@ -2721,7 +2721,7 @@
           "元婴": {
             "share": 83.3,
             "medianLife": 4,
-            "medianMinutes": 57.4
+            "medianMinutes": 53.4
           },
           "化神": {
             "share": 66.7,
@@ -2731,73 +2731,73 @@
           "婴变": {
             "share": 58.3,
             "medianLife": 4,
-            "medianMinutes": 82
+            "medianMinutes": 82.2
           },
           "问鼎": {
             "share": 58.3,
             "medianLife": 4,
-            "medianMinutes": 82
+            "medianMinutes": 82.2
           },
           "阴虚": {
             "share": 41.7,
             "medianLife": 4,
-            "medianMinutes": 104.9
+            "medianMinutes": 105.4
           },
           "阳实": {
             "share": 41.7,
             "medianLife": 4,
-            "medianMinutes": 104.9
+            "medianMinutes": 105.4
           },
           "窥涅": {
             "share": 41.7,
             "medianLife": 4,
-            "medianMinutes": 104.9
+            "medianMinutes": 105.4
           },
           "净涅": {
             "share": 33.3,
             "medianLife": 4,
-            "medianMinutes": 119.4
+            "medianMinutes": 116.5
           },
           "碎涅": {
-            "share": 33.3,
-            "medianLife": 4.5,
-            "medianMinutes": 120.9
+            "share": 25,
+            "medianLife": 5,
+            "medianMinutes": 140
           },
           "空涅": {
-            "share": 16.7,
-            "medianLife": 4.5,
-            "medianMinutes": 148.9
+            "share": 25,
+            "medianLife": 5,
+            "medianMinutes": 140
           },
           "空灵": {
             "share": 16.7,
-            "medianLife": 4.5,
-            "medianMinutes": 148.9
+            "medianLife": 5,
+            "medianMinutes": 163.8
           },
           "空玄": {
             "share": 16.7,
-            "medianLife": 4.5,
-            "medianMinutes": 148.9
+            "medianLife": 5,
+            "medianMinutes": 163.8
           },
           "空劫": {
             "share": 16.7,
-            "medianLife": 4.5,
-            "medianMinutes": 148.9
+            "medianLife": 5,
+            "medianMinutes": 163.8
           },
           "踏天": {
-            "share": 0,
-            "medianLife": null,
-            "medianMinutes": null
+            "share": 8.3,
+            "medianLife": 5,
+            "medianMinutes": 140
           },
           "圆满": {
-            "share": 0,
-            "medianLife": null,
-            "medianMinutes": null
+            "share": 8.3,
+            "medianLife": 5,
+            "medianMinutes": 140
           }
         },
         "tribs": {
           "引气劫": {
-            "perLife": 1.27,
-            "success": 75,
+            "perLife": 1.32,
+            "success": 72.2,
             "gear": 10,
             "cleared": 1,
             "stay": 1.4,
@@ -2805,36 +2805,36 @@
             "firstPass": 83.3
           },
           "筑基劫": {
-            "perLife": 1.13,
-            "success": 66.2,
-            "gear": 66,
+            "perLife": 1.1,
+            "success": 66.7,
+            "gear": 64,
             "cleared": 13,
             "stay": 3,
             "firstSaves": 12,
             "firstPass": 50
           },
           "金丹劫": {
-            "perLife": 0.85,
-            "success": 52.9,
-            "gear": 217,
-            "cleared": 33,
-            "stay": 5.2,
+            "perLife": 0.83,
+            "success": 52,
+            "gear": 211.5,
+            "cleared": 32.5,
+            "stay": 5.4,
             "firstSaves": 12,
             "firstPass": 25
           },
           "元婴劫": {
-            "perLife": 0.5,
-            "success": 73.3,
-            "gear": 361,
-            "cleared": 45.5,
-            "stay": 4,
+            "perLife": 0.48,
+            "success": 72.4,
+            "gear": 349,
+            "cleared": 45,
+            "stay": 3.8,
             "firstSaves": 10,
             "firstPass": 60
           },
           "化神劫": {
             "perLife": 0.45,
-            "success": 66.7,
-            "gear": 536,
+            "success": 63,
+            "gear": 538,
             "cleared": 58,
             "stay": 4.5,
             "firstSaves": 10,
@@ -2842,120 +2842,120 @@
           },
           "婴变劫": {
             "perLife": 0.38,
-            "success": 56.5,
+            "success": 47.8,
             "gear": 752,
             "cleared": 67,
-            "stay": 3.9,
+            "stay": 3.8,
             "firstSaves": 8,
             "firstPass": 50
           },
           "问鼎劫": {
-            "perLife": 0.35,
-            "success": 57.1,
-            "gear": 877,
-            "cleared": 72,
-            "stay": 5.1,
+            "perLife": 0.3,
+            "success": 61.1,
+            "gear": 869.5,
+            "cleared": 71,
+            "stay": 5.9,
             "firstSaves": 7,
             "firstPass": 100
           },
           "阴虚劫": {
-            "perLife": 0.18,
-            "success": 72.7,
-            "gear": 922,
-            "cleared": 85,
-            "stay": 4.6,
+            "perLife": 0.17,
+            "success": 60,
+            "gear": 911,
+            "cleared": 84.5,
+            "stay": 7.1,
             "firstSaves": 7,
-            "firstPass": 42.9
+            "firstPass": 28.6
           },
           "阳实劫": {
-            "perLife": 0.22,
-            "success": 61.5,
-            "gear": 1307,
+            "perLife": 0.18,
+            "success": 54.5,
+            "gear": 1337,
             "cleared": 96,
-            "stay": 1.5,
+            "stay": 2.5,
             "firstSaves": 5,
             "firstPass": 100
           },
           "窥涅劫": {
-            "perLife": 0.13,
+            "perLife": 0.1,
             "success": 100,
-            "gear": 1509.5,
+            "gear": 1607,
             "cleared": 108.5,
-            "stay": 3,
+            "stay": 2.9,
             "firstSaves": 5,
             "firstPass": 100
           },
           "净涅劫": {
-            "perLife": 0.28,
-            "success": 35.3,
-            "gear": 1511,
-            "cleared": 114,
-            "stay": 4.5,
+            "perLife": 0.13,
+            "success": 62.5,
+            "gear": 1858.5,
+            "cleared": 119.5,
+            "stay": 3.1,
             "firstSaves": 5,
-            "firstPass": 60
+            "firstPass": 80
           },
           "碎涅劫": {
             "perLife": 0.15,
-            "success": 55.6,
-            "gear": 1676,
-            "cleared": 124,
-            "stay": 5,
+            "success": 33.3,
+            "gear": 1709,
+            "cleared": 119,
+            "stay": 5.3,
             "firstSaves": 4,
-            "firstPass": 75
+            "firstPass": 50
           },
           "空涅劫": {
             "perLife": 0.07,
             "success": 75,
-            "gear": 1873.5,
-            "cleared": 125.5,
-            "stay": 4.5,
-            "firstSaves": 4,
-            "firstPass": 50
-          },
-          "空灵劫": {
-            "perLife": 0.05,
-            "success": 100,
-            "gear": 2202,
-            "cleared": 128,
-            "stay": 1.6,
-            "firstSaves": 2,
+            "gear": 2039,
+            "cleared": 126.5,
+            "stay": 4.7,
+            "firstSaves": 3,
             "firstPass": 100
           },
-          "空玄劫": {
+          "空灵劫": {
             "perLife": 0.07,
-            "success": 75,
-            "gear": 2246.5,
-            "cleared": 137,
+            "success": 50,
+            "gear": 3792,
+            "cleared": 149,
             "stay": 2.2,
+            "firstSaves": 3,
+            "firstPass": 66.7
+          },
+          "空玄劫": {
+            "perLife": 0.05,
+            "success": 66.7,
+            "gear": 3792,
+            "cleared": 151,
+            "stay": 3.1,
             "firstSaves": 2,
             "firstPass": 100
           },
           "空劫": {
-            "perLife": 0.08,
-            "success": 60,
-            "gear": 2401,
-            "cleared": 138,
-            "stay": 4.4,
+            "perLife": 0.05,
+            "success": 66.7,
+            "gear": 3308,
+            "cleared": 153,
+            "stay": 3.8,
             "firstSaves": 2,
             "firstPass": 100
           },
           "踏天劫": {
             "perLife": 0.05,
-            "success": 0,
-            "gear": 2620,
-            "cleared": 154,
-            "stay": null,
+            "success": 33.3,
+            "gear": 3308,
+            "cleared": 156,
+            "stay": 3.6,
             "firstSaves": 2,
-            "firstPass": 0
+            "firstPass": 50
           },
           "终劫": {
-            "perLife": 0,
-            "success": null,
-            "gear": null,
-            "cleared": null,
-            "stay": null,
-            "firstSaves": 0,
-            "firstPass": null
+            "perLife": 0.02,
+            "success": 100,
+            "gear": 3308,
+            "cleared": 159,
+            "stay": 2.1,
+            "firstSaves": 1,
+            "firstPass": 100
           }
         },
         "gates": {
@@ -2977,14 +2977,14 @@
             "met": 58.3,
             "pass": 100,
             "done": 100,
-            "fights": 3.3,
+            "fights": 3.4,
             "win": 100
           },
           "kiln": {
             "met": 33.3,
             "pass": 100,
             "done": 100,
-            "fights": 4,
+            "fights": 5.2,
             "win": 100
           },
           "tomb": {

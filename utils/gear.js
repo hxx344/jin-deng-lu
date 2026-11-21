@@ -49,6 +49,10 @@ const MAX_LEVEL = 5;
 const LEVEL_BONUS = 0.1;
 const AFFIX_SCORE = 2;
 const TIER_SCORE = 0.05;
+// 过了 TIER_SCORE_LATE 阶，装备分改成每阶再乘 TIER_SCORE_GROWTH：按阶线性加到后面，一阶只多不到百分之一，
+// 而后期的关过得慢、能换上的装备又少，装备分几乎不动。
+const TIER_SCORE_LATE = 80;
+const TIER_SCORE_GROWTH = 1.015;
 const PACK_MAX = 30;
 // 主属性随掉落时的关数（阶）涨，和敌人攻击的增长率一致。
 const TIER_GROWTH = 1.1;
@@ -121,9 +125,14 @@ function bonus(items) {
   return out;
 }
 
-// 装备分：品级、强化和词条定底数，阶再往上乘，每高一阶多 TIER_SCORE。这样越靠后的关掉的装备分越高，装备分才跟得上实际战力。
+function tierScore(tier) {
+  return (1 + TIER_SCORE * (Math.min(tier, TIER_SCORE_LATE) - 1)) * Math.pow(TIER_SCORE_GROWTH, Math.max(0, tier - TIER_SCORE_LATE));
+}
+
+// 装备分：品级、强化和词条定底数，阶再往上乘，每高一阶多 TIER_SCORE，后期按 TIER_SCORE_GROWTH 复利。
+// 这样越靠后的关掉的装备分越高，装备分才跟得上实际战力。
 function score(item) {
-  return Math.round((GRADES[item.grade].score * (1 + LEVEL_BONUS * item.level) + AFFIX_SCORE * item.affixes.length) * (1 + TIER_SCORE * (item.tier - 1)));
+  return Math.round((GRADES[item.grade].score * (1 + LEVEL_BONUS * item.level) + AFFIX_SCORE * item.affixes.length) * tierScore(item.tier));
 }
 
 // 比较两件同槽位装备谁在战斗里更好用的粗略分数。
@@ -198,4 +207,4 @@ function clean(raw) {
   return { slot: raw.slot, grade: grade, tier: tier, level: level, affixes: affixes };
 }
 
-module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, roll, stats, bonus, statsText, score, rating, better, spare, enhanceCost, scrapValue, describe, clean };
+module.exports = { SLOTS, GRADES, AFFIXES, STAT_KEYS, MAX_LEVEL, PACK_MAX, TIER_SCORE_LATE, TIER_SCORE_GROWTH, roll, stats, bonus, statsText, score, rating, better, spare, enhanceCost, scrapValue, describe, clean };

@@ -366,6 +366,12 @@ test('装备：品级定词条数和装备分，阶越高、强化越高主属�
   assert.strictEqual(gear.score(Object.assign({}, low, { tier: 1 })), 4);
   assert.strictEqual(gear.score(low), Math.round(4 * 1.4));
   assert.ok(gear.score(Object.assign({}, low, { tier: 60 })) > gear.score(low) * 2);
+  // 到 80 阶为止每阶加 5%，之后每阶乘 1.015：后期每过一关，装备分涨的比例不再越来越小。
+  const late = { slot: 'weapon', grade: 6, tier: 80, level: 0, affixes: [] };
+  assert.strictEqual(gear.score(late), Math.round(58 * 4.95));
+  assert.strictEqual(gear.score(Object.assign({}, late, { tier: 81 })), Math.round(58 * 4.95 * 1.015));
+  assert.strictEqual(gear.score(Object.assign({}, late, { tier: 180 })), Math.round(58 * 4.95 * Math.pow(1.015, 100)));
+  assert.ok(Number.isFinite(gear.score(Object.assign({}, late, { tier: 9999 }))));
   const high = { slot: 'weapon', grade: 3, tier: 9, level: 5, affixes: ['atk', 'crit', 'haste'] };
   assert.strictEqual(gear.stats(high).atk, Math.round(6.5 * 2.5 * 1.5));
   assert.strictEqual(gear.score(high), Math.round((22 * 1.5 + 6) * 1.4));
