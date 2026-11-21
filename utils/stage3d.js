@@ -4,6 +4,7 @@
 const M = require('./stage3d-mesh.js');
 const W = require('./stage3d-world.js');
 const H = require('./stage3d-hero.js');
+const F = require('./stage3d-foes.js');
 
 // 走一关的时长；页面的“走路”阶段按这个等。
 const WALK_MS = 2600;
@@ -13,7 +14,8 @@ const WALK_MAX_MS = 4200;
 const HERO_RPX = 110;
 const FEET_RPX = 70;
 // 历练时角色让出右半边，和 wxss 里 .stage-fray .actor 的偏移一致（rpx）。
-const FRAY_SHIFT_RPX = 80;
+// 历练时角色往左让，对手站在右边，两者隔 W.FOE_GAP（约 400rpx），和原来平面场景的站位一致。
+const FRAY_SHIFT_RPX = 190;
 const FOV = 40 * Math.PI / 180;
 const TILE_RADIUS = 17;
 // 每帧最多新建几个地块；刚进一个场景时多建一些，配合淡入盖住。
@@ -128,6 +130,9 @@ function unbind(gl, prog) {
 }
 
 const ease = W.ease;
+// 剑气的颜色：普通、暴击、追击、符。
+const SHOT_COLORS = { hit: [0.55, 1, 0.82], crit: [1, 0.82, 0.4], extra: [0.75, 0.88, 1], charm: [1, 0.45, 0.3] };
+
 function approach(cur, target, rate, dt) {
   return cur + (target - cur) * (1 - Math.exp(-rate * dt));
 }
@@ -207,6 +212,14 @@ function createStage(gl, opts) {
   let shown = { key: '', s: 0 };
   let fade = { from: '', to: '', at: -1e9 };
   let particles = null;
+  let combatK = 0;
+  let foe = null;
+  let foeAct = 0;
+  let foeActAt = -1e9;
+  let shot = 0;
+  let shotAt = -1e9;
+  let shotKind = 'hit';
+  const foeBufs = {};
   let particleKind = '';
   const R = M.rng(99);
 
@@ -338,6 +351,67 @@ function createStage(gl, opts) {
     return out;
   }
 
+  // 对手的位置和姿态。foe 是页面 bar.foe（sprite、state、boss），state：in 登场、on 对峙、out 倒下、away 角色败退时离场。
+  function foePose(info, now, t, az, camDist, origin, world) {
+    if (!info || !info.sprite) { foe = null; return null; }
+    const key = info.sprite + '|' + info.state;
+    if (!foe || foe.key !== key) foe = { key: key, at: now };
+    const style = F.buildFoe(info.sprite).style;
+    const fk = (now - foe.at) / 1000;
+    const gap = W.FOE_GAP * camDist;
+    const size = info.boss ? 1.3 : 1;
+    let off = 0, lift = 0, tilt = 0, sq = 1, sc = size, tintK = 0, sink = 0, alpha = 1;
+    if (info.state === 'in') {
+      const k = Math.min(1, fk / 0.7);
+      off = 3 * (1 - W.ease(k));
+      lift = Math.abs(Math.sin(k * Math.PI * 2)) * 0.35 * (1 - k);
+    } else if (info.state === 'out') {
+      const k = fk / 0.7;
+      if (k >= 1) return null;
+      tilt = -1.3 * W.ease(k);
+      off = 0.6 * k;
+      lift = Math.sin(Math.min(1, k * 2) * Math.PI) * 0.25;
+      sc *= 1 - 0.45 * k;
+      tintK = 0.3 + 0.6 * k;
+      alpha = 1 - k;
+    } else if (info.state === 'away') {
+      const k = fk / 0.9;
+      if (k >= 1) return null;
+      off = 5 * k * k;
+      alpha = 1 - k;
+    }
+    if (info.state === 'in' || info.state === 'on') {
+      if (style === 'hop') { lift += Math.abs(Math.sin(t * 4)) * 0.07; sq = 1 + 0.05 * Math.sin(t * 8); }
+      else if (style === 'sway') tilt += 0.07 * Math.sin(t * 2);
+      else if (style === 'float') { lift += 0.22 + 0.08 * Math.sin(t * 2.2); tilt += 0.04 * Math.sin(t * 1.3); }
+      else if (style === 'flicker') sq = 1 + 0.04 * Math.sin(t * 7) + 0.02 * Math.sin(t * 13);
+      else sq = 1 + 0.025 * Math.sin(t * 3);
+      // 扑上来咬一口
+      const la = (now - foeActAt) / 360;
+      if (la >= 0 && la < 1) {
+        const a = la < 0.4 ? W.ease(la / 0.4) : 1 - W.ease((la - 0.4) / 0.6);
+        off -= gap * 0.35 * a;
+        tilt += 0.3 * a;
+        lift += 0.1 * a;
+      }
+      // 挨了一下：往后一缩，发白
+      const ha = (now - hitFoeAt) / 300;
+      if (ha >= 0 && ha < 1) {
+        const b = Math.sin(ha * Math.PI);
+        off += 0.25 * b;
+        tilt -= 0.12 * b;
+        sq *= 1 - 0.06 * b;
+        tintK = Math.max(tintK, 0.75 * (1 - ha));
+      }
+    }
+    const rx = Math.cos(az), rz = -Math.sin(az);
+    const bx = rx * gap, bz = rz * gap;
+    const ground = world.height(origin[0] + bx, origin[2] + bz) - sink;
+    const pos = [bx + rx * off, ground + lift, bz + rz * off];
+    const model = M.chain(M.translate(pos[0], pos[1], pos[2]), M.rotY(az), M.rotZ(tilt), M.rotY(-0.6), M.scale(sc, sc * sq, sc));
+    return { sprite: info.sprite, boss: !!info.boss, pos: pos, ground: ground, lift: lift, size: sc, model: model, tintK: tintK, alpha: alpha };
+  }
+
   // 页面每帧调用。input：actor、bar 是页面数据，place 是角色停在第几关，walk 是 { from, to, at, ms }。
   function render(now, input) {
     const t = now / 1000;
@@ -386,9 +460,15 @@ function createStage(gl, opts) {
     const ms = actionMs[action] || 1200;
     const loop = action === 'idle' || action === 'ponder' || action === 'brace';
     let p = H.pose(action, loop ? 0 : (now - actAt) / ms, t);
+    // 历练开打后站起来迎敌；调息、行路时照旧。
+    const combat = !!bar.show && !bar.rest && !walking && !actor.storm && actor.show && activeKey === key;
+    combatK = approach(combatK, combat ? 1 : 0, 6, dt || 1);
+    if (combatK > 0.01) p = H.blendWalk(p, H.pose('stance', 0, t), combatK);
     if (bar.meHit !== hitMe) { hitMe = bar.meHit; if (hitMe) hitMeAt = now; }
     if (bar.foeHit !== hitFoe) { hitFoe = bar.foeHit; if (hitFoe) hitFoeAt = now; }
-    if (loop) {
+    if (bar.foeAct !== foeAct) { foeAct = bar.foeAct; if (foeAct) foeActAt = now; }
+    if (bar.shot !== shot) { shot = bar.shot; if (shot) { shotAt = now; shotKind = bar.shotKind || 'hit'; } }
+    if (loop || combatK > 0.5) {
       const ka = (now - hitFoeAt) / 320;
       if (ka >= 0 && ka < 1) {
         const a = Math.sin(ka * Math.PI);
@@ -404,15 +484,17 @@ function createStage(gl, opts) {
         p.tintK = 0.35 * b;
       }
     }
-    const stand = walking ? walking.stand : 0;
-    if (stand > 0) p = H.blendWalk(p, H.pose('walk', 0, walking.move * 6), stand);
+    const walkStand = walking ? walking.stand : 0;
+    if (walkStand > 0) p = H.blendWalk(p, H.pose('walk', 0, walking.move * 6), walkStand);
+    const stand = Math.max(walkStand, combatK);
     const rig = H.rig(p);
 
-    // 角色朝向：走路朝前；坐着时朝镜头，历练时偏向右边来敌的方向。
-    const faceCam = az + (bar.show ? 0.6 : 0.25);
-    const yawTarget = stand > 0.5 ? (dir > 0 ? heading : heading + Math.PI) : faceCam;
+    // 角色朝向：走路朝前；坐着时朝镜头，历练时偏向右边来敌的方向，开打后再侧过去一点。
+    const faceCam = az + (combatK > 0.5 ? 0.85 : bar.show ? 0.6 : 0.25);
+    const yawTarget = walkStand > 0.5 ? (dir > 0 ? heading : heading + Math.PI) : faceCam;
     heroYaw = heroYaw === null ? yawTarget : M.lerpAngle(heroYaw, yawTarget, 1 - Math.exp(-8 * dt));
     const heroM = M.chain(M.translate(0, 0, 0), M.rotY(heroYaw));
+    const foeView = foePose(bar.foe, now, t, az, cameraAt(world.camSeed, Math.round(s)).dist, origin, world);
 
     // 镜头
     const aspect = width / height;
@@ -445,7 +527,14 @@ function createStage(gl, opts) {
     const flick = 1 + Math.sin(t * 9.1) * 0.06 + Math.sin(t * 23.7) * 0.04 + Math.sin(t * 3.3) * 0.05;
     const flare = actor.flare ? 1.7 : 1;
     const lampLight = [lampPos[0], lampPos[1] - 0.2, lampPos[2]];
-    const accentPos = M.apply(M.rotY(az), [-2.2, 2.4, -2.6]);
+    let accentPos = M.apply(M.rotY(az), [-2.2, 2.4, -2.6]);
+    let accentC = M.shade(b.accent, 0.9);
+    // 对手离灯远，开打时把补光挪到它前上方，免得一团黑。
+    if (foeView) {
+      const fp = foeView.pos;
+      accentPos = [fp[0] + Math.sin(az) * 1.6, fp[1] + 2.2, fp[2] + Math.cos(az) * 1.6];
+      accentC = M.mix(accentC, [1.3, 1.1, 0.9], 0.6);
+    }
     const storm = !!actor.storm;
     const flash = storm ? Math.max(0, Math.sin(((now - actAt) / ms) * Math.PI * 7)) * (((now - actAt) / ms) > 0.6 && ((now - actAt) / ms) < 0.85 ? 0.6 : 0.08) : 0;
 
@@ -471,7 +560,7 @@ function createStage(gl, opts) {
     gl.uniform3fv(lit.u.uL0p, lampLight);
     gl.uniform3fv(lit.u.uL0c, [2.6 * flick * flare, 1.5 * flick * flare, 0.62 * flick * flare]);
     gl.uniform3fv(lit.u.uL1p, accentPos);
-    gl.uniform3fv(lit.u.uL1c, M.shade(b.accent, 0.9));
+    gl.uniform3fv(lit.u.uL1c, accentC);
     gl.uniform1f(lit.u.uFlash, flash);
     gl.uniform4fv(lit.u.uTint, [0, 0, 0, 0]);
     for (let i = 0; i < tiles.length; i++) {
@@ -483,7 +572,7 @@ function createStage(gl, opts) {
     }
     gl.uniform3fv(lit.u.uWorld, [0, 0, 0]);
     // 灯
-    const swing = stand * Math.sin(t * 9) * 0.25;
+    const swing = walkStand * Math.sin(t * 9) * 0.25 + combatK * Math.sin(t * 5) * 0.06;
     drawMesh(lamp, M.chain(M.translate(lampPos[0], lampPos[1], lampPos[2]), M.rotY(heroYaw), M.rotX(swing)));
     // 角色
     if (actor.show) {
@@ -499,6 +588,14 @@ function createStage(gl, opts) {
         drawMesh(parts.legR, M.mul(heroM, rig.legR));
       }
       if (p.prop && parts[p.prop]) drawMesh(parts[p.prop], M.mul(heroM, M.chain(rig.handR, M.rotX(p.prop === 'sword' ? 0.3 : 0))));
+      else if (combatK > 0.5) drawMesh(parts.sword, M.mul(heroM, M.chain(rig.handR, M.rotX(1.5))));
+      gl.uniform4fv(lit.u.uTint, [0, 0, 0, 0]);
+    }
+    // 对手
+    if (foeView) {
+      if (!foeBufs[foeView.sprite]) foeBufs[foeView.sprite] = mkBuf(F.buildFoe(foeView.sprite).data);
+      if (foeView.tintK > 0) gl.uniform4fv(lit.u.uTint, [1, 1, 1, Math.min(1, foeView.tintK)]);
+      drawMesh(foeBufs[foeView.sprite], foeView.model);
       gl.uniform4fv(lit.u.uTint, [0, 0, 0, 0]);
     }
     unbind(gl, lit);
@@ -509,6 +606,10 @@ function createStage(gl, opts) {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const shadows = [[lampPos[0] + 0.05, 0.03, lampPos[2] + 0.05, 0.28, 0.28, 0, 0, 0, 0.5 * (1 - stand * 0.5)]];
     if (actor.show) shadows.push([0, 0.03, 0, 0.55 * p.shrink, 0.5 * p.shrink, 0, 0, 0, 0.55 * Math.max(0.3, 1 - p.lift)]);
+    if (foeView) {
+      const fp = foeView.pos;
+      shadows.push([fp[0], foeView.ground + 0.03, fp[2], 0.6 * foeView.size, 0.5 * foeView.size, 0, 0, 0, 0.5 * foeView.alpha / (1 + foeView.lift * 2)]);
+    }
     sprites(shadows, vp, [1, 0, 0], [0, 0, 1]);
 
     // 发光：灯、角色的灵光、魂火、粒子
@@ -534,6 +635,26 @@ function createStage(gl, opts) {
       const wz = L[2] + Math.cos(t * 1.1) * 0.4;
       glow.push([wx, wy, wz, 0.5, 0.5, 1, 0.7, 0.35, 0.4]);
       glow.push([wx, wy, wz, 0.12, 0.12, 1, 0.95, 0.85, 1]);
+    }
+    if (foeView && foeView.boss) {
+      const fp = foeView.pos;
+      const pu = 0.8 + 0.2 * Math.sin(t * 3);
+      glow.push([fp[0], fp[1] + 0.8 * foeView.size, fp[2], 1.6 * foeView.size * pu, 1.9 * foeView.size * pu, 1, 0.38, 0.22, 0.22 * foeView.alpha]);
+    }
+    // 剑气：从右手飞到对手身上
+    const sk = (now - shotAt) / 300;
+    if (foeView && sk >= 0 && sk < 1) {
+      const from = M.apply(M.mul(heroM, rig.handR), [0, 0.2, 0.25]);
+      const to = [foeView.pos[0], foeView.pos[1] + 0.7 * foeView.size, foeView.pos[2]];
+      const col = SHOT_COLORS[shotKind] || SHOT_COLORS.hit;
+      const big = shotKind === 'crit' ? 1.6 : shotKind === 'extra' ? 0.7 : 1;
+      for (let i = 0; i < 4; i++) {
+        const q = Math.max(0, sk - i * 0.06);
+        const e = q * q;
+        const fade = (1 - i * 0.22) * (sk > 0.85 ? (1 - sk) / 0.15 : 1);
+        glow.push([M.lerp(from[0], to[0], e), M.lerp(from[1], to[1], e), M.lerp(from[2], to[2], e), 0.32 * big * (1 - i * 0.2), 0.32 * big * (1 - i * 0.2), col[0], col[1], col[2], fade]);
+      }
+      glow.push([M.lerp(from[0], to[0], sk * sk), M.lerp(from[1], to[1], sk * sk), M.lerp(from[2], to[2], sk * sk), 0.1 * big, 0.1 * big, 1, 1, 1, 1]);
     }
     if (particleKind !== b.particle) {
       particleKind = b.particle;
@@ -580,6 +701,7 @@ function createStage(gl, opts) {
     dispose() {
       for (const k in worlds) dropWorld(worlds[k]);
       if (hero) for (const k in hero) gl.deleteBuffer(hero[k].buf);
+      for (const k in foeBufs) gl.deleteBuffer(foeBufs[k].buf);
       gl.deleteBuffer(lamp.buf);
       gl.deleteBuffer(sprBuf);
       gl.deleteBuffer(fxBuf);

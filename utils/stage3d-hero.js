@@ -163,6 +163,19 @@ const ACTIONS = {
     p.lean = 0.08;
     p.twist = w * 0.08;
   },
+  // 迎敌：站着，左手提灯，右手持剑在身前。
+  stance(p, k, t) {
+    const b = Math.sin(t * 5);
+    p.sit = 0;
+    p.legL = 0.3;
+    p.legR = -0.22;
+    p.lift = 0.012 * (b + 1);
+    p.lean = 0.1;
+    p.squash = 1 + 0.015 * b;
+    p.armL = [0.35, 0.15, 0];
+    p.armR = [0.75, -0.4, -0.3];
+    p.headPitch = 0.04;
+  },
   notice(p, k) {
     p.lift = pulse(k, 0, 0.6) * 0.12;
     p.headPitch = -0.25 * pulse(k, 0, 1);

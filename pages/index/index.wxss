@@ -4723,7 +4723,9 @@ button.sheet-btn::after {
 .stage-3d-on .lamp,
 .stage-3d-on .wisp,
 .stage-3d-on .a-shadow,
-.stage-3d-on .a-float {
+.stage-3d-on .a-float,
+.stage-3d-on .foe,
+.stage-3d-on .shot {
   display: none;
 }
 

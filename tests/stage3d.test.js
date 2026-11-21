@@ -6,6 +6,7 @@ const M = require('../utils/stage3d-mesh.js');
 const W = require('../utils/stage3d-world.js');
 const H = require('../utils/stage3d-hero.js');
 const S = require('../utils/stage3d.js');
+const F = require('../utils/stage3d-foes.js');
 
 const allFinite = (data) => {
   for (let i = 0; i < data.length; i++) if (!Number.isFinite(data[i])) return false;
@@ -114,7 +115,7 @@ test('角色：页面上每个动作都有姿势，整个动作过程里关节�
   const block = src.slice(src.indexOf('const ACTIONS = {'), src.indexOf('};', src.indexOf('const ACTIONS = {')));
   const names = (block.match(/^\s+([a-z]+): \{/gm) || []).map((s) => s.trim().split(':')[0]);
   assert.ok(names.length >= 30);
-  for (const name of names.concat(['idle', 'ponder', 'brace', 'walk'])) {
+  for (const name of names.concat(['idle', 'ponder', 'brace', 'walk', 'stance'])) {
     assert.ok(H.ACTION_NAMES.indexOf(name) >= 0, name + ' 没有 3D 姿势');
     for (let k = 0; k <= 1; k += 0.125) {
       const rig = H.rig(H.blendWalk(H.pose(name, k, k * 3), H.pose('walk', 0, k * 6), k));
@@ -130,4 +131,35 @@ test('角色：衣着随境界换色，门派色取渐变里的第一个颜色',
   assert.notDeepStrictEqual(Array.from(a.torso), Array.from(b.torso));
   for (const k in b) assert.ok(b[k].length > 0 && allFinite(b[k]), k);
   assert.ok(allFinite(H.buildLamp()));
+});
+
+test('对手：assets/foes 里每张图都有 3D 模型，数据完整，高矮合适', () => {
+  const sprites = fs.readdirSync(path.join(__dirname, '../assets/foes')).filter((f) => f.endsWith('.svg')).map((f) => f.slice(0, -4));
+  assert.ok(sprites.length >= 20);
+  for (const name of sprites) {
+    assert.ok(F.FOE_NAMES.indexOf(name) >= 0, name + ' 没有 3D 模型');
+    const foe = F.buildFoe(name);
+    assert.ok(['hop', 'sway', 'float', 'stomp', 'flicker'].indexOf(foe.style) >= 0, name);
+    assert.ok(foe.data.length > 0 && foe.data.length % M.STRIDE === 0 && allFinite(foe.data), name);
+    let top = 0;
+    for (let i = 1; i < foe.data.length; i += M.STRIDE) top = Math.max(top, foe.data[i]);
+    assert.ok(top > 0.9 && top < 2, name + ' 高 ' + top);
+  }
+  // 不认识的图退回一个通用的样子，不报错。
+  assert.ok(F.buildFoe('nobody').data.length > 0);
+});
+
+test('对手站位：在镜头的正右方，离角色固定远，那里不长东西', () => {
+  const w = new W.World({ seed: 100, pathSeed: 0.6, camSeed: 1, biomeAt: (s) => W.biomeFor(0, s) });
+  for (const i of [3, 5, 12, 40]) {
+    const p = w.path.point(i);
+    const f = w.foeSpot(i);
+    const d = w.camDir(i);
+    const v = [f[0] - p[0], f[1] - p[1]];
+    assert.ok(Math.abs(v[0] * d[0] + v[1] * d[1]) < 1e-9, '对手和角色离镜头一样远');
+    assert.ok(Math.abs(Math.hypot(v[0], v[1]) - W.FOE_GAP * S.cameraFor(1, i).dist) < 1e-9);
+    assert.ok(v[0] * d[1] - v[1] * d[0] > 0, '在镜头右边');
+    assert.strictEqual(w.nearFoe(f[0], f[1], i, 0), true);
+    assert.strictEqual(w.nearFoe(p[0], p[1], i, 0), false);
+  }
 });

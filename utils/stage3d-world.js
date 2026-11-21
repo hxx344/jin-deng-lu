@@ -101,6 +101,8 @@ function cameraFor(seed, i) {
   if (i > 0 && i % 5 === 0) return { az: (r1 < 0.5 ? -1 : 1) * 0.95, pitch: 0.42, dist: 1.15 };
   return { az: (r1 < 0.5 ? -1 : 1) * (0.25 + r2 * 0.55), pitch: 0.5 + r3 * 0.24, dist: 0.95 + r2 * 0.2 };
 }
+// 对手站在角色右手边（画面上），离角色 FOE_GAP × 镜头远近。
+const FOE_GAP = 4.7;
 // 带小数的关数上插值镜头参数。
 function cameraAt(seed, s) {
   const i = Math.floor(s);
@@ -418,6 +420,21 @@ World.prototype.camDir = function (s) {
   }
   return this.dirs[s];
 };
+// 第 i 关对手站的地方：镜头右方。
+World.prototype.foeSpot = function (i) {
+  const p = this.path.point(i);
+  const d = this.camDir(i);
+  const gap = FOE_GAP * cameraFor(this.camSeed, i).dist;
+  return [p[0] + d[1] * gap, p[1] - d[0] * gap];
+};
+// 对手站的地方不放东西；r 是东西自身的大小。
+World.prototype.nearFoe = function (x, z, way, r) {
+  for (let i = Math.max(0, way - 1); i <= way + 1; i++) {
+    const f = this.foeSpot(i);
+    if (Math.hypot(x - f[0], z - f[1]) < 1.3 + r) return true;
+  }
+  return false;
+};
 // 高的东西不能挡在角色和镜头之间：落脚处和走到一半时，往镜头方向留一条渐宽的通道。
 World.prototype.blocked = function (x, z, way) {
   for (let i = Math.max(0, way - 1); i <= way + 1; i++) {
@@ -467,6 +484,7 @@ World.prototype.tile = function (tx, tz) {
     if (n.d < PATH_HALF + (big ? 2.6 : 1.1) || n.wayD < CLEAR_R + (big ? 2.5 : 0.8)) continue;
     if (occ.some((o) => Math.hypot(o[0] - x, o[1] - z) < (big ? 2.2 : 1.3))) continue;
     if (TALL[name] && this.blocked(x, z, n.way)) continue;
+    if (this.nearFoe(x, z, n.way, big ? 1.4 : 0.5)) continue;
     const y = this.height(x, z, n);
     const r = PROPS[name](m, R, x - ox, y, z - oz, 1 + M.smooth(3, 12, n.d) * 0.3, b);
     occ.push([x, z, r]);
@@ -606,4 +624,4 @@ World.prototype.tile = function (tx, tz) {
   return m.data();
 };
 
-module.exports = { ease, cameraFor, cameraAt, STEP, TILE, CELLS, BIOMES, LAYER_BIOMES, GATE_BIOMES, BIOME_SPAN, biomeFor, Path, World, PROPS };
+module.exports = { ease, cameraFor, cameraAt, FOE_GAP, STEP, TILE, CELLS, BIOMES, LAYER_BIOMES, GATE_BIOMES, BIOME_SPAN, biomeFor, Path, World, PROPS };
