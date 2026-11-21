@@ -72,7 +72,7 @@
 - `utils/cloud-sync.js`：云存档与排行榜的数据访问（登录、拉取、回写、上报成绩、取榜与名次），不碰游戏状态。
 - `utils/cloud-score.js`：分数换算、道号清洗、同步取舍的纯函数，有单测。
 - `assets/`：矢量图标（灯、灯芯、天雷）和 `assets/audio/` 下的音频。
-- `tools/audio/build.js`：程序合成全部音频，运行 `node tools/audio/build.js` 重新生成。想换成现成素材，直接替换 `assets/audio/` 里的同名文件。
+- `tools/audio/build.js`：程序合成全部音频，先 `npm install`（装 MP3 编码库），再运行 `node tools/audio/build.js` 重新生成。想换成现成素材，直接替换 `assets/audio/` 里的同名文件。
 - `tests/`：规则、战斗、音频和云同步计算的单元测试，运行 `node --test`。
 - `tools/balance/sim.js`：平衡模拟。三种固定打法的机器人（随手玩、挂机玩、认真玩）各跑 60 个存档 × 16 世，结果存为基线 `tools/balance/baseline.json`，报表在 [docs/平衡基线.md](docs/平衡基线.md)。`node --test` 会用小样本重跑并与基线比对；改了数值后运行 `node tools/balance/sim.js` 看差异，确认后加 `--write` 更新基线。调数值时可先用 `node tools/balance/quick.js [存档数] [世数]` 看小样本速览。
 - `tools/preview/`：浏览器预览工具。运行 `node tools/preview/build.js` 后用浏览器打开 `tools/preview/index.html`，不装开发者工具也能大致看到界面；显示效果与真机可能有细微差别。

@@ -1,9 +1,12 @@
 {
   "name": "jin-deng-lu",
-  "version": "1.36.1",
+  "version": "1.36.2",
   "private": true,
   "description": "烬灯录 · 微信小程序",
   "dependencies": {
     "@tencent-ai/workbuddy-cloud-sdk": "dev"
+  },
+  "devDependencies": {
+    "@breezystack/lamejs": "^1.2.7"
   }
 }

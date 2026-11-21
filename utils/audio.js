@@ -4,8 +4,9 @@ const NAMES = ['tap', 'pick', 'good', 'qi', 'bad', 'coin', 'up', 'big', 'born', 
 const BGM_VOLUME = 0.4;
 const SFX_VOLUME = 0.8;
 
+// 音效用 MP3 省包体积；背景音乐要无缝循环，MP3 首尾的静音会断一下，所以留 WAV。
 function src(name) {
-  return '/assets/audio/' + name + '.wav';
+  return '/assets/audio/' + name + (name === 'bgm' ? '.wav' : '.mp3');
 }
 
 // api 是 wx；单独传进来是为了规则测试里可以换成假的。

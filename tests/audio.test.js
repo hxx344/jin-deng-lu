@@ -22,7 +22,7 @@ test('音效：按名字播放，同一个音效复用同一个播放器，不�
   assert.strictEqual(audio.play('tap'), true);
   assert.strictEqual(audio.play('nope'), false);
   assert.strictEqual(api.made.length, 1);
-  assert.strictEqual(api.made[0].src, '/assets/audio/tap.wav');
+  assert.strictEqual(api.made[0].src, '/assets/audio/tap.mp3');
   assert.strictEqual(api.made[0].loop, false);
   assert.deepStrictEqual(api.made[0].calls, ['stop', 'play', 'stop', 'play']);
   assert.ok(NAMES.indexOf('thunder') >= 0);
@@ -71,9 +71,10 @@ test('七品星牌各有独立音色，揭牌沿用全局静音', () => {
   assert.strictEqual(new Set(STAR_SOUNDS).size, 7);
   const samples = STAR_SOUNDS.map((name) => {
     assert.ok(audio.play(name));
-    const wav = fs.readFileSync(path.join(__dirname, '../assets/audio', name + '.wav'));
-    assert.strictEqual(wav.toString('ascii', 8, 12), 'WAVE');
-    return wav.subarray(44).toString('base64');
+    const mp3 = fs.readFileSync(path.join(__dirname, '../assets/audio', name + '.mp3'));
+    // MPEG 帧同步字：11 个连续的 1。
+    assert.strictEqual(mp3.readUInt16BE(0) & 0xffe0, 0xffe0);
+    return mp3.toString('base64');
   });
   assert.strictEqual(new Set(samples).size, 7);
   audio.setMuted(true);

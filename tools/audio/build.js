@@ -1,10 +1,16 @@
-// 用程序合成背景音乐和音效，输出到 assets/audio/。改了这里之后运行：node tools/audio/build.js
+// 用程序合成背景音乐和音效，输出到 assets/audio/。改了这里之后运行：npm install，再 node tools/audio/build.js
 // 全部是确定性的合成，不依赖外部素材，也就没有版权问题。
 const fs = require('fs');
 const path = require('path');
 
-let RATE = 16000;
-let top = 0; // 本次合成用到的最高泛音频率
+// 音效按 16 kHz 合成后编码成 MP3。MP3 开头有编码器带来的约 1100 个采样的静音，
+// 所以先升到 48 kHz 再编码，把这段延迟从 69 毫秒压到 23 毫秒，点按音效才跟手。
+const SFX_RATE = 16000;
+const MP3_UP = 3;
+const MP3_KBPS = 48;
+// 背景音乐保留 WAV：MP3 首尾的静音会让循环接缝处断一下。它的泛音最高 2.9 kHz，8 kHz 采样足够。
+const BGM_RATE = 8000;
+let RATE = SFX_RATE;
 const OUT = path.resolve(__dirname, '../../assets/audio');
 const TAU = Math.PI * 2;
 
@@ -32,9 +38,6 @@ function tone(out, at, dur, freq, amp, opt) {
   const bend = opt.bend || 0;
   const start = Math.round(at * RATE);
   const n = Math.round(dur * RATE);
-  for (let h = 0; h < harm.length; h++) {
-    if (harm[h]) top = Math.max(top, freq * (1 + Math.max(0, bend)) * (h + 1));
-  }
   let phase = 0;
   for (let i = 0; i < n; i++) {
     const t = i / RATE;
@@ -54,7 +57,6 @@ function tone(out, at, dur, freq, amp, opt) {
 
 // 低通过的噪声，cutoff 越小越闷。
 function noise(out, at, dur, amp, cutoff, env, rand) {
-  top = Infinity;
   const start = Math.round(at * RATE);
   const n = Math.round(dur * RATE);
   const a = Math.min(1, TAU * cutoff / RATE);
@@ -65,27 +67,49 @@ function noise(out, at, dur, amp, cutoff, env, rand) {
   }
 }
 
-// 小程序主包上限 2 MB，音频占大头。泛音都在 3.6 kHz 以下的声音用 8 kHz 就够，体积减半；
-// 其余（带噪声或高泛音）保持 16 kHz。先按 16 kHz 合成一遍量出最高泛音，再决定用哪个采样率。
-function render(make) {
-  RATE = 16000;
-  top = 0;
-  let data = make();
-  if (top < 3600) {
-    RATE = 8000;
-    data = make();
-  }
-  return data;
-}
-
-function write(name, make, peak) {
-  const data = render(make);
+function normalize(data, peak) {
   let max = 0;
   for (let i = 0; i < data.length; i++) max = Math.max(max, Math.abs(data[i]));
   const gain = max > 0 ? peak / max : 1;
-  const bytes = Buffer.alloc(44 + data.length * 2);
+  const out = new Float64Array(data.length);
+  for (let i = 0; i < data.length; i++) out[i] = data[i] * gain;
+  return out;
+}
+
+function pcm16(data) {
+  const out = new Int16Array(data.length);
+  for (let i = 0; i < data.length; i++) out[i] = Math.round(Math.max(-1, Math.min(1, data[i])) * 32767);
+  return out;
+}
+
+// 整数倍升采样：补零后用加窗 sinc 低通，原有频率成分不变。
+function upsample(data, factor) {
+  const half = 16 * factor;
+  const kernel = new Float32Array(half * 2 + 1);
+  for (let n = -half; n <= half; n++) {
+    const x = Math.PI * n / factor;
+    kernel[n + half] = (n === 0 ? 1 : Math.sin(x) / x) * (0.5 + 0.5 * Math.cos(Math.PI * n / half));
+  }
+  const out = new Float64Array(data.length * factor);
+  for (let i = 0; i < data.length; i++) {
+    if (!data[i]) continue;
+    for (let n = -half; n <= half; n++) {
+      const k = i * factor + n;
+      if (k >= 0 && k < out.length) out[k] += data[i] * kernel[n + half];
+    }
+  }
+  return out;
+}
+
+function report(file, seconds, bytes) {
+  console.log(file + '  ' + seconds.toFixed(2) + ' 秒  ' + Math.round(bytes.length / 1024) + ' KB');
+}
+
+function writeWav(name, data, peak) {
+  const samples = pcm16(normalize(data, peak));
+  const bytes = Buffer.alloc(44 + samples.length * 2);
   bytes.write('RIFF', 0);
-  bytes.writeUInt32LE(36 + data.length * 2, 4);
+  bytes.writeUInt32LE(36 + samples.length * 2, 4);
   bytes.write('WAVEfmt ', 8);
   bytes.writeUInt32LE(16, 16);
   bytes.writeUInt16LE(1, 20);
@@ -95,10 +119,21 @@ function write(name, make, peak) {
   bytes.writeUInt16LE(2, 32);
   bytes.writeUInt16LE(16, 34);
   bytes.write('data', 36);
-  bytes.writeUInt32LE(data.length * 2, 40);
-  for (let i = 0; i < data.length; i++) bytes.writeInt16LE(Math.round(data[i] * gain * 32767), 44 + i * 2);
+  bytes.writeUInt32LE(samples.length * 2, 40);
+  for (let i = 0; i < samples.length; i++) bytes.writeInt16LE(samples[i], 44 + i * 2);
   fs.writeFileSync(path.join(OUT, name + '.wav'), bytes);
-  console.log(name + '.wav  ' + (data.length / RATE).toFixed(2) + ' 秒  ' + RATE / 1000 + ' kHz  ' + Math.round(bytes.length / 1024) + ' KB');
+  report(name + '.wav', data.length / RATE, bytes);
+}
+
+function writeMp3(Mp3Encoder, name, data, peak) {
+  const samples = pcm16(upsample(normalize(data, peak), MP3_UP));
+  const encoder = new Mp3Encoder(1, RATE * MP3_UP, MP3_KBPS);
+  const parts = [];
+  for (let i = 0; i < samples.length; i += 1152) parts.push(Buffer.from(encoder.encodeBuffer(samples.subarray(i, i + 1152))));
+  parts.push(Buffer.from(encoder.flush()));
+  const bytes = Buffer.concat(parts);
+  fs.writeFileSync(path.join(OUT, name + '.mp3'), bytes);
+  report(name + '.mp3', data.length / RATE, bytes);
 }
 
 const PLUCK = [1, 0.5, 0.28, 0.12, 0.06];
@@ -256,18 +291,27 @@ function thunder() {
   return out;
 }
 
-fs.mkdirSync(OUT, { recursive: true });
-write('bgm', bgm, 0.7);
-write('tap', tap, 0.5);
-write('pick', pick, 0.6);
-write('good', good, 0.6);
-write('qi', qi, 0.5);
-write('bad', bad, 0.7);
-write('coin', coin, 0.5);
-write('up', up, 0.7);
-write('big', big, 0.8);
-write('born', born, 0.6);
-write('lamp', lamp, 0.6);
-write('die', die, 0.8);
-write('thunder', thunder, 0.95);
-STAR_CHIMES.forEach((chime) => write('star-' + chime.name, () => starChime(chime), 0.6));
+async function main() {
+  // 编码库只有构建时用，装在 devDependencies 里，不进小程序包。
+  const { Mp3Encoder } = await import('@breezystack/lamejs');
+  fs.mkdirSync(OUT, { recursive: true });
+  RATE = BGM_RATE;
+  writeWav('bgm', bgm(), 0.7);
+  RATE = SFX_RATE;
+  const sfx = (name, data, peak) => writeMp3(Mp3Encoder, name, data, peak);
+  sfx('tap', tap(), 0.5);
+  sfx('pick', pick(), 0.6);
+  sfx('good', good(), 0.6);
+  sfx('qi', qi(), 0.5);
+  sfx('bad', bad(), 0.7);
+  sfx('coin', coin(), 0.5);
+  sfx('up', up(), 0.7);
+  sfx('big', big(), 0.8);
+  sfx('born', born(), 0.6);
+  sfx('lamp', lamp(), 0.6);
+  sfx('die', die(), 0.8);
+  sfx('thunder', thunder(), 0.95);
+  STAR_CHIMES.forEach((chime) => sfx('star-' + chime.name, starChime(chime), 0.6));
+}
+
+main();
