@@ -1016,7 +1016,7 @@ test('渡劫成功：进入下一境界，加寿元，灵气归零', () => {
   const r = crossTrib(s, () => info.chance - 0.001);
   assert.strictEqual(r.success, true);
   assert.strictEqual(r.broke, true);
-  assert.deepStrictEqual(r.lines, ['接住了第 1 道雷', '接住了第 2 道雷', '接住了第 3 道雷', '必接的雷已过，劫云未散：可以收劫破境，也可以再引余雷淬体', '突破至引气前期', '寿元上限 +30 年']);
+  assert.deepStrictEqual(r.lines, ['接住了第 1 道雷', '接住了第 2 道雷', '接住了第 3 道雷', '必接的雷已过，劫云未散：可以收劫破境，也可以再引余雷淬体', '突破至引气前期', '寿元上限 +30 年', '机缘 +18']);
   assert.strictEqual(s.run.realm, 1);
   assert.strictEqual(s.run.stage, 0);
   assert.strictEqual(s.run.qi, 0);
@@ -1024,6 +1024,45 @@ test('渡劫成功：进入下一境界，加寿元，灵气归零', () => {
   assert.strictEqual(game.qiCap(s), 500);
   near(game.qiRate(s), 2.5);
   assert.strictEqual(game.tribulationInfo(s).name, '筑基劫');
+});
+
+test('渡劫成功恢复机缘上限的 30%：只补到上限，溢出的不动，失败不恢复', () => {
+  const ready = (chance) => {
+    const s = born();
+    s.run.stage = 2;
+    s.run.qi = 250;
+    s.run.chance = chance;
+    return s;
+  };
+  assert.strictEqual(game.maxChance(born()), 60);
+  let s = ready(20.5);
+  let r = crossTrib(s, () => 0);
+  assert.strictEqual(r.broke, true);
+  assert.strictEqual(s.run.chance, 38.5);
+  assert.ok(r.lines.includes('机缘 +18'));
+  assert.ok(s.run.log[s.run.log.length - 1].text.includes('机缘 +18'));
+
+  s = ready(50);
+  r = crossTrib(s, () => 0);
+  assert.strictEqual(s.run.chance, 60);
+  assert.ok(r.lines.includes('机缘 +10'));
+
+  s = ready(100);
+  r = crossTrib(s, () => 0);
+  assert.strictEqual(s.run.chance, 100);
+  assert.ok(!r.lines.some((line) => line.indexOf('机缘 +') === 0));
+
+  // 上限被灯纹抬高后按新上限算
+  s = ready(0);
+  s.lamps.y1 = 3;
+  assert.strictEqual(game.maxChance(s), 96);
+  crossTrib(s, () => 0);
+  assert.strictEqual(s.run.chance, 28);
+
+  s = ready(20);
+  r = crossTrib(s, () => 0.9999);
+  assert.strictEqual(r.broke, false);
+  assert.strictEqual(s.run.chance, 20);
 });
 
 test('渡劫失败：折寿、涨心魔、灵气减半；寿元耗尽则死于天劫', () => {
@@ -2882,7 +2921,7 @@ test('元婴劫：早返航后可找逃字或丹修，资源不足时不结算',
   assert.strictEqual(game.yuanTrialView(s).step, 2);
   s.run.chance++;
   assert.ok(game.attemptYuanTrial(s, () => 0.999, 'pill', 2).advanced);
-  assert.strictEqual(s.run.chance, 0);
+  assert.strictEqual(s.run.chance, 18);
 });
 
 test('命格：投胎抽一张且换根骨不换，早慧、灯下黑和薄命都实际生效', () => {
@@ -2951,7 +2990,7 @@ test('渡劫三法：整场渡的天劫借势扣三十次机缘并加成功率�
   assert.strictEqual(borrowed.success, true);
   assert.strictEqual(borrowed.done, true);
   assert.strictEqual(borrowed.broke, true);
-  assert.strictEqual(s.run.chance, 0);
+  assert.strictEqual(s.run.chance, 18);
   assert.strictEqual(s.run.realm, 2);
   assert.strictEqual(s.run.lastTrib.method, 'borrow');
 
@@ -3149,7 +3188,7 @@ test('引气劫余雷：直接收劫破境，接住余雷收劫时拿奖励，�
   let life = s.run.lifeFlat;
   let r = game.attemptTribulation(s, () => 0.9999, 'settle');
   assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, extra: r.extra }, { success: true, done: true, broke: true, extra: true });
-  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年']);
+  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '机缘 +18']);
   assert.strictEqual(s.run.realm, 1);
   assert.strictEqual(s.run.trib, null);
   assert.strictEqual(s.run.lifeFlat, life + info.lifeBonus);
@@ -3169,7 +3208,7 @@ test('引气劫余雷：直接收劫破境，接住余雷收劫时拿奖励，�
   assert.deepStrictEqual(game.tribulationInfo(s).bolts.held, [reward]);
   assert.strictEqual(game.tribulationInfo(s).bolts.index, 2);
   r = game.attemptTribulation(s, () => 0.9999, 'settle');
-  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '余雷淬体：' + reward]);
+  assert.deepStrictEqual(r.lines, ['突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '机缘 +18', '余雷淬体：' + reward]);
   info.tests.forEach((k) => assert.strictEqual(s.run.stats[k], stats[k] + trib.extra[0].attr));
   assert.strictEqual(s.run.lifeFlat, life + info.lifeBonus + trib.extra[0].life);
 
@@ -3197,7 +3236,7 @@ test('引气劫余雷：没接住照样破境，但已接余雷的奖励全失�
   game.attemptTribulation(s, () => 0, 'endure');
   const r = game.attemptTribulation(s, () => 0.9999, 'endure');
   assert.deepStrictEqual({ success: r.success, done: r.done, broke: r.broke, bolt: r.bolt, extra: r.extra, dead: r.dead }, { success: false, done: true, broke: true, bolt: 2, extra: true, dead: false });
-  assert.deepStrictEqual(r.lines, ['第 2 道余雷没接住，淬体所得尽失', '突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '折寿 ' + info.failYears + ' 年', '心魔 +' + info.failDemon]);
+  assert.deepStrictEqual(r.lines, ['第 2 道余雷没接住，淬体所得尽失', '突破至引气前期', '寿元上限 +' + info.lifeBonus + ' 年', '机缘 +18', '折寿 ' + info.failYears + ' 年', '心魔 +' + info.failDemon]);
   assert.strictEqual(s.run.realm, 1);
   assert.strictEqual(s.run.trib, null);
   assert.deepStrictEqual(s.run.stats, stats);

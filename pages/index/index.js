@@ -94,6 +94,8 @@ const FRAY_GATE_LOSE = 12;
 const FRAY_POPS = 5;
 const FRAY_MY_HITS = ['hit', 'crit', 'double', 'extra', 'execute', 'thorns'];
 const HIDDEN_BAR = { show: false };
+const TRIB_CHANCE_TEXT = '机缘恢复上限的 ' + Math.round(game.TRIB_CHANCE_SHARE * 100) + '%';
+
 // 渡劫面板里提一句装备分不够扣了多少、富余加了多少；刚好够就不提。
 const gearShortText = (g) => (g.short ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 −' + percent(g.penalty) + '%。'
   : (g.bonus >= 0.005 ? '装备分 ' + g.score + ' / ' + g.need + '，成功率 +' + percent(g.bonus) + '%。' : ''));
@@ -1180,6 +1182,7 @@ Page({
           '阴虚劫、空涅劫、踏天劫是三道大关：不看劫相，锋、躯、神三项全考，属性和装备分的要求比前后的天劫高出一截，失败折的寿元也重得多。踏天后期灵气满了还有一场终劫，同样三项全考，渡过才算踏天圆满。',
           '前三场天劫每一世的“劫相”都不同：有的考两项，有的只考一项但要求高出三成多。主界面和“功法”页会标出这一场考什么、需要多少。',
           '劫期：每个境界只能从容做一定次数的机缘（主界面写着还剩几次）。过了劫期，每次机缘都多折寿元，越拖越重；多折的寿元是白折的，不涨灵气也不攒机缘。所以不能无限攒属性，要估着劫期决定什么时候渡劫。',
+          '渡劫成功，' + TRIB_CHANCE_TEXT + '，补到上限为止；失败和散功不恢复。',
           '羁绊、灯纹、功法、大机缘的雷、宗门护阵和装备分富余这些加成，按被考属性的达标程度打折：属性只到要求的一半，这些加成也只算一半。属性堆上去，加成才管用。',
           '引气劫要一道雷一道雷地接。必接的雷有 3 道，一道比一道难，每道落下前可以硬接、耗 10 次机缘借势（这一道 +10%），或散功。一道没接住，整场就败。',
           '3 道全过后劫云不会马上散：可以收劫破境，也可以再引余雷淬体，最多 2 道。接住的余雷在收劫时兑成属性、寿元上限或灯芯；没接住照样破境，但淬体所得全丢，还要折寿、涨心魔。贪不贪由你。',
@@ -1855,7 +1858,7 @@ Page({
         {
           id: 'endure',
           label: '硬抗 · 成功率 ' + percent(info.chance) + '%',
-          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年')) + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
+          desc: '成功：' + (info.final ? game.REALMS[this.state.run.realm].name + '圆满' : (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年')) + '，' + TRIB_CHANCE_TEXT + '；失败：折寿 ' + info.failYears + ' 年，心魔 +' + info.failDemon + '，' + info.keepText + '。',
           disabled: false
         },
         {
@@ -1888,7 +1891,7 @@ Page({
       const now = !passed && (extra ? bolts.extra && i - bolts.total === bolts.gains : i === bolts.passed);
       pips.push({ key: i, text: extra ? '余' : String(i + 1), state: passed ? 'done' : (now ? 'now' : 'wait'), extra: extra });
     }
-    const broke = info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年';
+    const broke = (info.demonOk ? '只升境界，不加寿元' : '寿元上限 +' + info.lifeGain + ' 年') + '，' + TRIB_CHANCE_TEXT;
     const options = bolts.extra ? [
       {
         id: 'settle',

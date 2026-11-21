@@ -337,7 +337,7 @@ test('设施折抵问名关的机缘，探索途中不能操作山门', () => {
   assert.equal(pill.chances, 4);
   const chances = state.run.chance;
   assert.ok(game.attemptYuanTrial(state, rng, 'pill', 2).advanced);
-  assert.equal(state.run.chance, chances - 4);
+  assert.equal(state.run.chance, chances - 4 + Math.floor(game.maxChance(state) * game.TRIB_CHANCE_SHARE));
   assert.equal(game.mountainView(state, 'sect', '').canName, true);
 });
 

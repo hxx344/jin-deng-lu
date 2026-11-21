@@ -46,6 +46,8 @@ const CHANCE_INTERVAL_SEC = 60;
 const BASE_MAX_CHANCE = 60;
 // 投胎时只带上限的这么多机缘，其余靠年岁攒。
 const START_CHANCE_SHARE = 1 / 3;
+// 渡劫成功后恢复上限的这么多机缘。
+const TRIB_CHANCE_SHARE = 0.3;
 // 每高一个大境界，攒一次机缘要过的年数乘这么多，和破境加的寿元一起涨。
 const CHANCE_REALM_GROWTH = 1.15;
 // 元婴之后每高一个大境界改乘这么多：后期寿元以千年计，机缘不能还按几十年一次给。
@@ -3537,12 +3539,23 @@ function tribulationTerms(state, trib) {
   };
 }
 
+// 渡劫成功回一口机缘：只补到上限为止，事件奖励溢出的部分不动。
+function restoreChance(state, lines) {
+  const run = state.run;
+  const max = maxChance(state);
+  const before = run.chance;
+  run.chance = Math.max(before, Math.min(max, before + Math.floor(max * TRIB_CHANCE_SHARE)));
+  const gained = Math.floor(run.chance) - Math.floor(before);
+  if (gained > 0) lines.push('机缘 +' + gained);
+}
+
 function enterNextRealm(state, info, lines) {
   const run = state.run;
   // 终劫不破境：渡过就是最高境界圆满，丹田和寿元都不再变。
   if (info.final) {
     run.ascended = true;
     lines.push(realmText(run));
+    restoreChance(state, lines);
     return;
   }
   run.realm++;
@@ -3564,6 +3577,7 @@ function enterNextRealm(state, info, lines) {
     gainLiveWick(state, wick);
     lines.push('灯芯 +' + wick);
   }
+  restoreChance(state, lines);
 }
 
 function failTribulation(state, info, lines) {
@@ -4434,6 +4448,7 @@ module.exports = {
   FALLBACK_NONE_P,
   FALLBACK_DEMON,
   START_CHANCE_SHARE,
+  TRIB_CHANCE_SHARE,
   CHANCE_REALM_GROWTH,
   BIG_EVERY,
   createState,
