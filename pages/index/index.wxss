@@ -4696,3 +4696,39 @@ button.sheet-btn::after {
   color: #f2c14e;
   font-weight: 600;
 }
+
+/* 3D 场景：画布在最底层；画布接管后，平面场景的背景、灯和小人藏起来，只留特效和气泡，并按 3D 角色的大小缩小 */
+.stage-3d {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.stage-3d-on {
+  height: 420rpx;
+  background: #0b1318;
+}
+
+.stage-3d-on .stage-3d {
+  opacity: 1;
+}
+
+.stage-3d-on .scene-art,
+.stage-3d-on .scene-far,
+.stage-3d-on .scene-near,
+.stage-3d-on .rib,
+.stage-3d-on .lamp,
+.stage-3d-on .wisp,
+.stage-3d-on .a-shadow,
+.stage-3d-on .a-float {
+  display: none;
+}
+
+.stage-3d-on .actor {
+  bottom: 30rpx;
+  transform: scale(0.72);
+  transform-origin: 50% 100%;
+}

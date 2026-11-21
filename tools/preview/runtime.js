@@ -26,7 +26,8 @@ var wx = {
   },
   vibrateShort: function () {},
   getWindowInfo: function () {
-    return { pixelRatio: window.devicePixelRatio || 1 };
+    // 和样式里 --rpx 的换算一致：页面最宽按 430px 排。
+    return { pixelRatio: window.devicePixelRatio || 1, windowWidth: Math.min(window.innerWidth, 430) };
   },
   createSelectorQuery: function () {
     var query = {
@@ -181,6 +182,8 @@ function __morph(a, b) {
   var i;
   for (i = a.attributes.length - 1; i >= 0; i--) {
     var name = a.attributes[i].name;
+    // 画布的宽高由脚本设定，删掉会清空画面。
+    if (a.nodeName === 'CANVAS' && (name === 'width' || name === 'height')) continue;
     if (!b.hasAttribute(name)) a.removeAttribute(name);
   }
   for (i = 0; i < b.attributes.length; i++) {
@@ -265,4 +268,8 @@ function __boot(name) {
 
   if (__page.onLoad) __page.onLoad({});
   if (__page.onShow) __page.onShow();
+  setTimeout(function () {
+    __render();
+    if (__page.onReady) __page.onReady();
+  }, 0);
 }

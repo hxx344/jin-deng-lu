@@ -9,7 +9,7 @@
 
 ## 验证
 
-- 测试：`node --test tests/game.test.js tests/audio.test.js tests/cloud.test.js tests/mountain.test.js tests/battle.test.js tests/balance.test.js tests/navigation.test.js tests/package.test.js`。
+- 测试：`node --test tests/game.test.js tests/audio.test.js tests/cloud.test.js tests/mountain.test.js tests/battle.test.js tests/balance.test.js tests/navigation.test.js tests/package.test.js tests/stage3d.test.js`。
 - 包体积：微信主包上限 2 MB，超了体验版和正式版都发布失败。`tests/package.test.js` 按进包文件总量把关，失败时先减资源体积（音频最大），不要调高预算。新增音效走 `tools/audio/build.js` 输出 MP3，不要放 WAV。
 - 平衡基线：改了规则或内容数值后，`tests/balance.test.js` 会因模拟结果变化而失败。运行 `node tools/balance/sim.js` 看全量差异，确认符合预期后运行 `node tools/balance/sim.js --write` 更新 `tools/balance/baseline.json` 和 `docs/平衡基线.md`，与规则改动一起提交。
 - 浏览器预览：`node tools/preview/build.js` 生成 `tools/preview/index.html`（不入库）。预览需要 `utils/cloud-config.js`，没有时从 `utils/cloud-config.example.js` 复制一份，该文件不提交。

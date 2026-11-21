@@ -2,6 +2,7 @@ const game = require('../../utils/game');
 const audio = require('../../utils/audio').createAudio(wx);
 const starScene = require('./star');
 const cloudSync = require('../../utils/cloud-sync');
+const stage3d = require('../../utils/stage3d');
 const { scoreOf, scoreKey, autoDaoName, cleanDaoName, preferCloudProgress, pickSave, friendlyError } = require('../../utils/cloud-score');
 
 const SAVE_KEY = 'jindeng_save_v1';
@@ -106,6 +107,11 @@ const FRAY_ENTER = 7;
 const FRAY_FALL = 7;
 const FRAY_GAP = 5;
 const FRAY_REST = 40;
+// 过关后提灯走到下一关（横推一次至多 10 关，也走过去）；跳得更远（换了一世、读了旧档）就直接到。
+const WALK_MAX_STAGES = 12;
+// 3D 场景按约 30 帧画，像素比最多按 2 算。
+const STAGE3D_FRAME_MS = 32;
+const STAGE3D_MAX_DPR = 2;
 // 秘境里败了之后停这么多拍再出结算。
 const FRAY_GATE_LOSE = 12;
 const FRAY_POPS = 5;
@@ -261,6 +267,7 @@ Page(Object.assign(starScene(audio), {
     hero: {},
     actor: {},
     bar: HIDDEN_BAR,
+    s3: false,
     bag: { text: '', full: false },
     gear: { worn: [], pack: [] },
     gearDot: false,
@@ -318,6 +325,8 @@ Page(Object.assign(starScene(audio), {
     this.result = null;
     this.lampOpen = false;
     this.act = '';
+    this.walk = null;
+    this.place = this.homeStage();
     this.replaceHidden = false;
     this.guideOpen = false;
     this.tipStep = 0;
@@ -426,13 +435,19 @@ Page(Object.assign(starScene(audio), {
     if (this.starOpen) this.renderStar();
     this.refresh();
     this.startLoop();
+    this.resume3d();
     audio.startBgm();
     // 回到前台时拉一次云端最新存档；initCloud 还没拿到会话时由它自己触发。
     if (this.cloudUid && Date.now() - this.lastCloudSync > 10000) this.syncCloud();
   },
 
+  onReady() {
+    this.init3d();
+  },
+
   onHide() {
     audio.pauseBgm();
+    this.pause3d();
     this.stopLoop();
     this.stopAct();
     this.save();
@@ -440,6 +455,7 @@ Page(Object.assign(starScene(audio), {
 
   onUnload() {
     audio.pauseBgm();
+    this.dispose3d();
     this.stopLoop();
     this.stopAct();
     this.save();
@@ -1484,6 +1500,7 @@ Page(Object.assign(starScene(audio), {
     }
     const stage = game.trainStage(this.state);
     if (!stage || this.act === 'thunder') {
+      if (!this.walk) this.place = this.homeStage();
       if (this.fray || this.data.bar.show) {
         this.fray = null;
         this.setData({ bar: HIDDEN_BAR });
@@ -1494,8 +1511,9 @@ Page(Object.assign(starScene(audio), {
     let dirty = false;
     // 败了当场就退关，调息那一阵还照原来这一关演完；横推已经记了过关，剑光也演完再换关。
     if (!f || (f.stage !== stage && f.phase !== 'rest' && f.phase !== 'sweep')) {
+      const walk = this.startWalk(stage);
       f = this.fray = {
-        stage: stage, wave: 0, waves: game.trainWaves(stage), phase: 'gap', wait: FRAY_GAP, fight: null, next: 0, step: 0,
+        stage: stage, wave: 0, waves: game.trainWaves(stage), phase: walk ? 'walk' : 'gap', wait: walk || FRAY_GAP, fight: null, next: 0, step: 0,
         me: 1, max: 1, foe: 0, shield: 0, pops: [], key: 0, meHit: 0, foeHit: 0, foeAct: 0, shot: 0, shotKind: 'hit'
       };
       dirty = true;
@@ -1533,6 +1551,11 @@ Page(Object.assign(starScene(audio), {
         } else if (f.phase === 'fall' && f.fight.last) {
           this.frayClear(f);
           return;
+        } else if (f.phase === 'walk') {
+          this.place = f.stage;
+          this.walk = null;
+          f.phase = 'gap';
+          f.wait = FRAY_GAP;
         } else if (f.phase === 'gap') {
           if (f.wave === 0 && this.fraySweep(f)) return;
           this.frayNext(f);
@@ -1549,6 +1572,130 @@ Page(Object.assign(starScene(audio), {
       }
     }
     if (dirty) this.setData({ bar: this.barView(f) });
+  },
+
+  // 角色该站在第几关：能历练时是当前关，否则是打到过的那一关。
+  homeStage() {
+    const stage = game.trainStage(this.state);
+    if (stage) return stage;
+    const battle = this.state.run.battle || {};
+    return Math.max(1, (battle.cleared || 0) + 1 - (battle.back || 0));
+  },
+
+  // 换关时让角色从上一关走过去，返回要等的拍数；没开 3D、跳得太远或已经在这一关就不走，返回 0。
+  startWalk(stage) {
+    const now = Date.now();
+    if (this.walk && now >= this.walk.at + this.walk.ms) {
+      this.place = this.walk.to;
+      this.walk = null;
+    }
+    if (this.walk && this.walk.to === stage) return Math.max(1, Math.ceil((this.walk.at + this.walk.ms - now) / FRAY_STEP_MS));
+    const from = this.place;
+    this.walk = null;
+    if (!this.s3 || !from || from === stage || Math.abs(stage - from) > WALK_MAX_STAGES) {
+      this.place = stage;
+      return 0;
+    }
+    const ms = stage3d.walkMs(from, stage);
+    this.walk = { from: from, to: stage, at: now, ms: ms };
+    return Math.ceil(ms / FRAY_STEP_MS);
+  },
+
+  // ---------- 3D 场景 ----------
+  init3d() {
+    if (this.s3 || !wx.createSelectorQuery) return;
+    wx.createSelectorQuery().in(this).select('#stage3d').fields({ node: true, size: true }).exec((res) => {
+      const r = res && res[0];
+      if (!r || !r.node || !r.width || !r.height) return;
+      const canvas = r.node;
+      let gl = null;
+      try {
+        gl = canvas.getContext('webgl', { antialias: true, alpha: false });
+      } catch (e) {
+        gl = null;
+      }
+      if (!gl) return;
+      let info = {};
+      try {
+        info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+      } catch (e) {
+        info = {};
+      }
+      const dpr = Math.min(STAGE3D_MAX_DPR, info.pixelRatio || 1);
+      const winW = info.windowWidth || r.width;
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      const actionMs = {};
+      Object.keys(ACTIONS).forEach((name) => { actionMs[name] = ACTIONS[name].ms; });
+      let stage = null;
+      try {
+        stage = stage3d.createStage(gl, { actionMs: actionMs });
+      } catch (e) {
+        console.warn('3D 场景初始化失败，改用平面场景', e);
+        return;
+      }
+      stage.resize(canvas.width, canvas.height, winW / 750 * dpr);
+      const s3 = this.s3 = { canvas: canvas, stage: stage, running: false, handle: null, last: 0, dpr: dpr, rpx: winW / 750 * dpr };
+      // 开了 3D 场景会变高，等样式生效后按新尺寸重设画布，不然画面被拉伸。
+      this.setData({ s3: true }, () => {
+        wx.createSelectorQuery().in(this).select('#stage3d').fields({ size: true }).exec((again) => {
+          const box = again && again[0];
+          if (this.s3 !== s3 || !box || !box.width || !box.height) return;
+          canvas.width = Math.round(box.width * dpr);
+          canvas.height = Math.round(box.height * dpr);
+          stage.resize(canvas.width, canvas.height, s3.rpx);
+        });
+      });
+      this.resume3d();
+    });
+  },
+
+  resume3d() {
+    const s3 = this.s3;
+    if (!s3 || s3.running) return;
+    s3.running = true;
+    const raf = s3.canvas.requestAnimationFrame ? (fn) => s3.canvas.requestAnimationFrame(fn) : (fn) => setTimeout(fn, STAGE3D_FRAME_MS);
+    const frame = () => {
+      if (!s3.running || this.s3 !== s3) return;
+      const now = Date.now();
+      // 切到别的页时场景看不见，不画。
+      if (this.data.tab === 'train' && now - s3.last >= STAGE3D_FRAME_MS - 4) {
+        s3.last = now;
+        try {
+          s3.stage.render(now, { actor: this.data.actor, bar: this.data.bar, place: this.place, walk: this.walk });
+        } catch (e) {
+          console.warn('3D 场景出错，改用平面场景', e);
+          this.dispose3d();
+          this.setData({ s3: false });
+          return;
+        }
+      }
+      s3.handle = raf(frame);
+    };
+    s3.handle = raf(frame);
+  },
+
+  pause3d() {
+    const s3 = this.s3;
+    if (!s3) return;
+    s3.running = false;
+    if (s3.handle !== null) {
+      if (s3.canvas.cancelAnimationFrame) s3.canvas.cancelAnimationFrame(s3.handle);
+      else clearTimeout(s3.handle);
+      s3.handle = null;
+    }
+  },
+
+  dispose3d() {
+    const s3 = this.s3;
+    if (!s3) return;
+    this.pause3d();
+    this.s3 = null;
+    try {
+      s3.stage.dispose();
+    } catch (e) {
+      // 上下文已经没了，不用再释放。
+    }
   },
 
   frayNext(f) {
@@ -1752,13 +1899,14 @@ Page(Object.assign(starScene(audio), {
       pips.push({ key: i, on: i < f.wave || (i === f.wave && f.phase === 'fall'), now: i === f.wave && f.phase !== 'fall', boss: boss });
     }
     const rest = f.phase === 'rest';
+    const walking = f.phase === 'walk';
     return {
       show: true,
       scene: f.gate || '',
       title: f.gate ? f.scene : (f.phase === 'sweep' ? f.sweepText : (f.stage === 1 ? '试招' : '第 ' + f.stage + ' 关')),
       pips: f.gate ? [] : pips,
       rest: rest,
-      note: rest ? (f.gate ? '没打过' : '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中')) : '',
+      note: rest ? (f.gate ? '没打过' : '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中')) : (walking ? '行路中' : ''),
       mePct: rest ? 100 : pct(f.me, f.max),
       shield: rest ? 0 : pct(f.shield, f.max),
       foe: fight ? {
