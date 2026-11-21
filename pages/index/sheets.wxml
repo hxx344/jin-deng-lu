@@ -8,6 +8,7 @@
       </view>
     </view>
     <block wx:if="{{sheet.kind === 'root'}}">
+      <view wx:if="{{sheet.flash}}" class="root-flash"></view>
       <view class="sheet-type">投胎</view>
       <view class="sheet-title">{{sheet.title}}</view>
       <view class="sheet-text">{{sheet.text}}</view>
@@ -26,13 +27,18 @@
         <view class="opt-note">{{sheet.heavenText}}</view>
       </view>
       <view class="sheet-body">
-        <view wx:for="{{sheet.options}}" wx:key="id" class="opt root-r{{item.rarity}}" hover-class="opt-hover" hover-stay-time="60" data-id="{{item.id}}" bindtap="onRoot">
-          <view class="opt-head">
-            <text class="opt-label">{{item.name}}</text>
-            <text class="opt-years root-tag">{{item.rarityName}}</text>
-          </view>
-          <view class="opt-desc">{{item.desc}}</view>
-          <view class="opt-note">{{item.text}}</view>
+        <view wx:for="{{sheet.options}}" wx:key="id" class="opt root-r{{item.rarity}} {{item.sealed ? 'root-sealed' : ''}} {{item.revealed ? 'root-revealed' : ''}}" hover-class="opt-hover" hover-stay-time="60" data-id="{{item.id}}" bindtap="onRoot">
+          <block wx:if="{{item.sealed}}">
+            <view class="root-seal-text">金光里有什么在成形……</view>
+          </block>
+          <block wx:else>
+            <view class="opt-head">
+              <text class="opt-label">{{item.name}}</text>
+              <text class="opt-years root-tag">{{item.rarityName}}</text>
+            </view>
+            <view class="opt-desc">{{item.desc}}</view>
+            <view class="opt-note">{{item.text}}</view>
+          </block>
         </view>
       </view>
       <view class="sheet-actions">
@@ -71,7 +77,8 @@
       <view class="sheet-text">{{sheet.text}}</view>
       <view wx:if="{{sheet.wake}}" class="sheet-wake">{{sheet.wake}}</view>
       <view class="sheet-body">
-        <view wx:for="{{sheet.options}}" wx:key="label" class="opt {{item.disabled ? 'opt-off' : ''}} {{item.unknown ? 'opt-unknown' : ''}}" hover-class="opt-hover" hover-stay-time="60" data-index="{{index}}" bindtap="onOption">
+        <view wx:for="{{sheet.options}}" wx:key="label" class="opt {{item.disabled ? 'opt-off' : ''}} {{item.unknown ? 'opt-unknown' : ''}} {{item.lucky ? 'opt-lucky' : ''}}" hover-class="opt-hover" hover-stay-time="60" data-index="{{index}}" bindtap="onOption">
+          <view wx:if="{{item.lucky}}" class="lucky-tag">上上签</view>
           <view class="opt-head">
             <text class="opt-label">{{item.label}}</text>
             <text class="opt-years {{item.fatal ? 'opt-fatal' : ''}}">{{item.fatal ? '寿元将尽 · ' : ''}}耗 {{item.years}} 年</text>
@@ -254,11 +261,11 @@
 
     <block wx:elif="{{sheet.kind === 'result'}}">
       <view class="sheet-type">{{sheet.title}}</view>
-      <view class="sheet-title {{sheet.defy ? 'sheet-title-defy' : ''}}">{{sheet.label}}</view>
+      <view class="sheet-title {{sheet.defy ? 'sheet-title-defy' : ''}}">{{sheet.label}}<text wx:if="{{sheet.lucky}}" class="result-lucky">上上签</text></view>
       <view wx:if="{{sheet.impact}}" class="result-impact">{{sheet.impact}}</view>
-      <view wx:if="{{sheet.text}}" class="sheet-text">{{sheet.text}}</view>
+      <view wx:if="{{sheet.text}}" class="sheet-text result-say">{{sheet.text}}</view>
       <view class="sheet-body">
-        <view wx:for="{{sheet.lines}}" wx:key="key" class="result-line {{item.hot ? 'result-line-defy' : ''}}">{{item.text}}</view>
+        <view wx:for="{{sheet.lines}}" wx:key="key" class="result-line {{item.hot ? 'result-line-defy' : ''}} {{sheet.lucky ? 'result-line-pop' : ''}}" style="{{sheet.lucky ? 'animation-delay: ' + index * 140 + 'ms' : ''}}">{{item.text}}</view>
       </view>
       <view wx:if="{{sheet.lampProgress}}" class="result-sparks">
         <text>{{hero.lampName}}</text>
@@ -466,6 +473,10 @@
       </view>
       <view class="sheet-title">{{sheet.title}}</view>
       <view class="sheet-text">{{sheet.subtitle}}。{{sheet.intro}}</view>
+      <view wx:if="{{sheet.highlights.length}}" class="chronicle-highlights">
+        <view class="chronicle-highlights-head">此生高光</view>
+        <view wx:for="{{sheet.highlights}}" wx:key="*this" class="chronicle-highlight">{{item}}</view>
+      </view>
       <view class="sheet-body">
         <view wx:for="{{sheet.rows}}" wx:key="key" class="chronicle-row">
           <view class="chronicle-age">{{item.age}}</view>
@@ -491,7 +502,9 @@
       <view class="sheet-wick">
         <image class="sheet-wick-icon" src="/assets/wick.svg" mode="aspectFit" />
         <text>灯芯 +{{sheet.wick}}</text>
+        <text wx:if="{{sheet.record}}" class="wick-record">新纪录</text>
       </view>
+      <view wx:if="{{sheet.record}}" class="wick-record-note">{{sheet.record}}</view>
       <view wx:if="{{sheet.carry.length}}" class="sheet-body">
         <view class="sheet-text">挑一门功法，以凡品带入下一世：</view>
         <view class="carry">

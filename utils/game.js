@@ -334,6 +334,8 @@ function newRun(state, rng) {
     recent: [],
     marks: [],
     seen: [],
+    // 这一世的高光时刻，本纪长图挑分最高的几条：{ score, text }。
+    highlights: [],
     slots: 0,
     wake: '',
     log: [],
@@ -381,6 +383,8 @@ function createState(now, rng) {
     totalWick: 0,
     lives: 0,
     best: -1,
+    // 历来单世结算灯芯的最高值；0 表示还没有可比的前世。
+    bestWick: 0,
     lamps: {},
     // 藏经阁里已请出的功法：id → 品级。
     tomes: {},
@@ -808,8 +812,10 @@ function mergeSkills(state, first, second, rng) {
   run.log.push({ age: run.age, title: '秘法合成', text: '炼成《' + arcane.name + '》：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   maybeSudden(state, rng, 'backlash');
+  addHighlight(run, 60, '两门天品归一，炼成秘法《' + arcane.name + '》');
   const dead = checkDeath(state);
-  return { title: '秘法合成', label: '炼成《' + arcane.name + '》', lines: lines, tags: ['bond', 'upgrade'], dead: dead };
+  return { title: '秘法合成', label: '炼成《' + arcane.name + '》', lines: lines, tags: ['bond', 'upgrade'], dead: dead,
+    merge: { left: left.name, right: right.name, arcane: arcane.name, school: left.school } };
 }
 
 function demonGain(state, amount) {
@@ -1008,6 +1014,23 @@ function gainLiveWick(state, amount) {
   state.totalWick += amount;
 }
 
+const MAX_HIGHLIGHTS = 8;
+
+// 记一笔高光，只留分最高的几条。
+function addHighlight(run, score, text) {
+  if (!run.highlights) run.highlights = [];
+  run.highlights.push({ score: Math.round(score), text: text });
+  run.highlights.sort((a, b) => b.score - a.score);
+  run.highlights = run.highlights.slice(0, MAX_HIGHLIGHTS);
+}
+
+// 渡劫的把握越低越值得记；逆天（不到三成）必记。
+function noteTrib(run, info, chance) {
+  if (!(chance < 0.5)) return;
+  const score = chance < DEFY_CHANCE ? 100 + (1 - chance) * 100 : 40 + (1 - chance) * 20;
+  addHighlight(run, score, '以 ' + pctText(chance) + ' 的把握渡过' + info.name);
+}
+
 // 加灵气；小境界灵气满了自动突破，多出的带入下一个小境界。后期满了就停在上限等渡劫。
 function gainQi(state, amount) {
   const run = state.run;
@@ -1170,6 +1193,38 @@ function rollEventOption(opt, index, rng) {
     });
   }
   return rolled;
+}
+
+// 上上签：这次机缘随机到的收益整体落在浮动区间的高端（只看正向收益，均值达到区间上沿的这个比例）。只做展示，数值不变。
+const TOP_DRAW = 0.75;
+const DRAW_KEYS = ['qi', 'edge', 'body', 'mind', 'life', 'chance', 'speed', 'forge'];
+
+function drawScore(base, rolled) {
+  const scores = [];
+  const add = (b, r) => {
+    if (!b || !r) return;
+    DRAW_KEYS.forEach((k) => {
+      const v = b[k];
+      if (typeof v !== 'number' || v <= 0 || typeof r[k] !== 'number') return;
+      if (Number.isInteger(v) && v <= 1) return;
+      const spread = Number.isInteger(v) ? Math.max(1, Math.floor(v * EVENT_VALUE_SPREAD)) : v * EVENT_VALUE_SPREAD;
+      scores.push((r[k] - v) / spread);
+    });
+  };
+  add(base.fx, rolled.fx);
+  if (base.risk && rolled.risk) add(base.risk.win, rolled.risk.win);
+  if (!scores.length) return null;
+  return scores.reduce((a, b) => a + b, 0) / scores.length;
+}
+
+function topDraw(state, opt) {
+  const ev = state.run.event;
+  if (!ev || ev.kind !== 'event' || !opt || opt.sourceIndex === undefined) return false;
+  const def = findById(EVENTS, ev.id);
+  const base = def && def.options[opt.sourceIndex];
+  if (!base) return false;
+  const score = drawScore(base, opt);
+  return score !== null && score >= TOP_DRAW - 1e-9;
 }
 
 function eventDef(state) {
@@ -1357,7 +1412,8 @@ function eventView(state) {
         years: years,
         disabled: cost > run.qi,
         fatal: years >= left,
-        unknown: !known
+        unknown: !known,
+        lucky: known && topDraw(state, opt)
       };
     }),
     fallback: {
@@ -1820,8 +1876,9 @@ function gainSkill(state, id, level, lines, tags) {
     lines.push('习得' + skillTitle(skill, level));
     const count = setCounts(run)[skill.school];
     if (count === 2 || count === 4) {
-      tags.push('bond');
+      tags.push('bond', 'bond:' + skill.school + ':' + count);
       lines.push(bondText(skill.school, count));
+      if (count === 4) addHighlight(run, 35, SCHOOLS[skill.school].name + '系四门功法凑齐，羁绊全开');
     }
   } else {
     run.pending = { id: id, level: level };
@@ -2089,6 +2146,8 @@ function die(state, cause) {
   run.event = null;
   run.pending = null;
   run.death = { cause: cause, wick: wick, text: text };
+  if (state.bestWick > 0 && wick > state.bestWick) run.death.record = state.bestWick;
+  state.bestWick = Math.max(state.bestWick, wick);
   if (cleared) {
     state.heavenMax++;
     state.heaven = state.heavenMax;
@@ -2244,6 +2303,8 @@ function choose(state, index, rng) {
   const tags = def.type === 'fruit' ? ['fruit'] : [];
   const overdue = tribTerm(state).years;
   let label;
+  let say = '';
+  let lucky = false;
   let wake = '';
   if (index === -1) {
     label = '闭关不理';
@@ -2272,6 +2333,12 @@ function choose(state, index, rng) {
     const cost = optionCost(state, opt);
     if (cost > run.qi) return null;
     label = opt.label;
+    say = opt.say || '';
+    if (topDraw(state, opt)) {
+      lucky = true;
+      tags.push('lucky');
+      addHighlight(run, 12, '在「' + def.title + '」里抽到上上签');
+    }
     learnOption(state, opt);
     // 成功率按做选择时看到的算，不受这次耗掉的寿元影响。
     const p = opt.risk ? riskChance(state, opt.risk) : 0;
@@ -2313,6 +2380,7 @@ function choose(state, index, rng) {
       if (win && bonus) addQiWithLines(state, qiRewardAmount(state, bonus), sub, tags);
       tags.push(win ? 'win' : 'lose');
       wake = win ? 'win' : 'lose';
+      say = (win ? opt.sayWin : opt.sayLose) || say;
       lines.push((win ? '成了：' : '没成：') + (sub.length ? sub.join('，') : '无事发生'));
     }
   }
@@ -2372,7 +2440,8 @@ function choose(state, index, rng) {
   run.log.push({ age: run.age, title: def.title, text: label + '：' + lines.join('，'), detail: changeText(before, snapshot(state)) });
   run.log = run.log.slice(-MAX_LOG);
   const dead = checkDeath(state);
-  return { title: def.title, label: label, lines: lines, tags: tags, dead: dead };
+  // say 是选项结果的一段叙述（故事线用），结果卡上排在数值前面。
+  return { title: def.title, label: label, text: say, lines: lines, tags: tags, dead: dead, lucky: lucky };
 }
 
 // index 为 -1 表示放弃新功法，否则替换掉第 index 门已有功法。
@@ -3527,7 +3596,8 @@ function chooseMountain(state, page, disciple, stamp, id, name, rng = Math.rando
     const demon = result.demon ? Math.max(-state.run.demon, result.demon) : 0;
     applyFx(state, { demon: demon, chance: result.chance, life: result.life }, Math.random, result.lines, tags);
   }
-  return seaResult(state, result.title, result.label, result.lines, tags, before);
+  if (result.highlight) addHighlight(state.run, 70, result.highlight);
+  return Object.assign(seaResult(state, result.title, result.label, result.lines, tags, before), { text: result.text || '', spot: result.spot || null });
 }
 
 function landingText(sea) {
@@ -3733,11 +3803,13 @@ function enterNextRealm(state, info, lines) {
   // 终劫不破境：渡过就是最高境界圆满，丹田和寿元都不再变。
   if (info.final) {
     run.ascended = true;
+    addHighlight(run, 90, run.age + ' 岁渡过终劫，' + REALMS[run.realm].name + '圆满');
     lines.push(realmText(run));
     restoreChance(state, lines);
     return;
   }
   run.realm++;
+  addHighlight(run, 30 + run.realm * 5, run.age + ' 岁破境，入' + REALMS[run.realm].name);
   run.realmChoices = 0;
   run.scatters = 0;
   run.lamp.spent = false;
@@ -3956,9 +4028,10 @@ function attemptBolt(state, rng, method, info) {
     const odds = session.odds === undefined ? 1 : session.odds;
     const defy = defyReward(state, info, odds);
     enterNextRealm(state, info, lines);
+    noteTrib(run, info, odds);
     if (defy) {
       grantDefy(state, info, odds, defy, lines);
-      out.defy = { chance: odds, reward: defy };
+      out.defy = { chance: odds, reward: defy, tests: info.tests };
     }
     trib.extra.slice(0, gains).forEach((reward) => {
       info.tests.forEach((k) => { run.stats[k] += reward.attr || 0; });
@@ -4054,9 +4127,10 @@ function attemptTribulation(state, rng, method) {
     if (success) {
       const reward = defyReward(state, info, chance);
       enterNextRealm(state, info, lines);
+      noteTrib(run, info, chance);
       if (reward) {
         grantDefy(state, info, chance, reward, lines);
-        defy = { chance: chance, reward: reward };
+        defy = { chance: chance, reward: reward, tests: info.tests };
       }
     } else {
       failTribulation(state, info, lines);
@@ -4407,6 +4481,11 @@ function normalizeRun(state, raw, rng) {
       if (def && def.type === 'story' && run.seen.indexOf(id) < 0) run.seen.push(id);
     });
   }
+  if (Array.isArray(raw.highlights)) {
+    raw.highlights.slice(0, MAX_HIGHLIGHTS).forEach((h) => {
+      if (h && typeof h === 'object' && typeof h.text === 'string' && h.text) run.highlights.push({ score: toCount(h.score, 1000), text: toText(h.text, 60) });
+    });
+  }
   if (Array.isArray(raw.log)) {
     raw.log.slice(-MAX_LOG).forEach((l) => {
       if (l && typeof l === 'object') {
@@ -4459,6 +4538,7 @@ function normalizeRun(state, raw, rng) {
       wick: toCount(death.wick),
       text: toText(death.text, 300)
     };
+    if (toCount(death.record)) run.death.record = toCount(death.record);
     if (toCount(death.heaven, HEAVEN_MAX)) run.death.heaven = toCount(death.heaven, HEAVEN_MAX);
     run.sea = normalizeSea(run, raw.sea);
     run.gear = normalizeGear(raw.gear);
@@ -4542,6 +4622,9 @@ function normalizeState(raw, now, rng) {
   state.run = normalizeRun(state, raw.run, rng);
   state.trainBest = Math.max(toCount(raw.trainBest, TRAIN_MAX), state.run.battle.cleared);
   state.defies = toCount(raw.defies, 1e6);
+  // 老存档没有 bestWick：从墓志里记着的灯芯估一个。
+  if (raw.bestWick !== undefined) state.bestWick = toCount(raw.bestWick);
+  else state.bestWick = state.epitaphs.reduce((m, t) => Math.max(m, Number((/灯芯 \+(\d+)/.exec(t) || [])[1]) || 0), 0);
   // 挑好的前世功法在身死后、投胎选灵根前都要保留。
   const phase = state.run.phase;
   const carried = phase === 'dead' ? !!skillEntry(state.run, raw.carry) && !!findById(SKILLS, raw.carry) : phase === 'root' && !!findById(SKILLS, raw.carry);
@@ -4565,8 +4648,11 @@ function chronicle(state) {
   if (run.phase === 'dead' && run.death) {
     rows.push({ age: run.age, title: '本纪终', text: run.death.text, detail: '灯芯 +' + run.death.wick });
   }
+  const highlights = (run.highlights || []).slice(0, 3).map((h) => h.text);
+  if (run.phase === 'dead' && run.death && run.death.record) highlights.unshift('结算灯芯 ' + run.death.wick + '，破了前世 ' + run.death.record + ' 的纪录');
   return {
     title: '第 ' + number + ' 世本纪',
+    highlights: highlights.slice(0, 3),
     subtitle: (root ? root.name : '未择根骨') + (fate.name ? ' · ' + fate.name : ''),
     intro: '这一世做过 ' + run.choices + ' 次选择，行至' + realmText(run) + '，享年 ' + run.age + ' 岁。',
     rows: rows
@@ -4626,6 +4712,7 @@ module.exports = {
   RARE_ROOTS,
   ROOT_RARITIES,
   rootInfo,
+  bondText,
   REALMS,
   REALM_POWER_GROWTH: content.REALM_POWER_GROWTH,
   STAGES,
@@ -4745,6 +4832,9 @@ module.exports = {
   trainClear,
   trainSweep,
   defyReward,
+  drawScore,
+  topDraw,
+  TOP_DRAW,
   trainLose,
   trainRate,
   trainBag,

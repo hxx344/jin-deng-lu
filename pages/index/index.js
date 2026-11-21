@@ -39,6 +39,13 @@ const GAME_GUIDE = {
   ]
 };
 const DEFAULT_SASH = '#8a6a4a';
+// 全屏特写至少停留这么久才能点掉。
+const SPOT_HOLD_MS = 900;
+const DEFY_KICKERS = ['天劫已散', '劫云碎了', '天道看走了眼'];
+// 根骨揭晓：仙、神档（下标 4 起）或稀有根骨先封着闪金光，再翻开。
+const ROOT_REVEAL_RARITY = 4;
+const ROOT_SEAL_MS = 1100;
+const ROOT_REVEAL_MS = 900;
 // 每个临时动作的时长要盖住 wxss 里对应动画的时长，播完才回到常态。
 const ACTIONS = {
   notice: { ms: 500, bubble: '？' },
@@ -192,6 +199,8 @@ function wrapChars(text, width, maxLines) {
 
 function chronicleLayout(data) {
   const layout = { width: 750, height: 380, intro: wrapChars(data.intro, 27, 2), rows: [] };
+  layout.highlights = (data.highlights || []).map((text) => wrapChars(text, 24, 2));
+  if (layout.highlights.length) layout.height += 70 + layout.highlights.reduce((n, lines) => n + lines.length * 38 + 10, 0);
   data.rows.forEach((row) => {
     const item = {
       age: row.age === null ? '年岁未记' : row.age + ' 岁',
@@ -223,6 +232,24 @@ function drawChronicle(ctx, data, layout) {
     ctx.fillText(line, 48, y);
     y += 36;
   });
+  if (layout.highlights.length) {
+    y += 24;
+    ctx.fillStyle = '#f2c14e';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText('此生高光', 48, y);
+    y += 46;
+    ctx.font = '26px sans-serif';
+    layout.highlights.forEach((lines) => {
+      ctx.fillStyle = '#f2c14e';
+      ctx.fillText('★', 52, y);
+      ctx.fillStyle = '#f5e2b8';
+      lines.forEach((line) => {
+        ctx.fillText(line, 90, y);
+        y += 38;
+      });
+      y += 10;
+    });
+  }
   y += 30;
   ctx.strokeStyle = '#5b4430';
   ctx.lineWidth = 2;
@@ -262,6 +289,7 @@ function drawChronicle(ctx, data, layout) {
 
 Page(Object.assign(starScene(audio), {
   data: {
+    spot: { show: false },
     sparks: Array.from({ length: game.LAMP_INSIGHT }, (_, i) => i + 1),
     hud: {},
     hero: {},
@@ -928,9 +956,83 @@ Page(Object.assign(starScene(audio), {
     this.actTimer = setTimeout(() => {
       this.act = '';
       this.holdRealm = null;
+      // 动作播完后接一段特写（逆天、破境）：特写收起后再接下一个动作。
+      const hook = this.actHooks && this.actHooks[name];
+      if (hook) {
+        delete this.actHooks[name];
+        this.refresh();
+        hook(next);
+        return;
+      }
       if (next) this.play(next);
       this.refresh();
     }, ACTIONS[name].ms);
+  },
+
+  // 全屏特写：spot 是要显示的内容，done 在特写收起后调用。
+  showSpot(spot, done) {
+    if (this.spotOn) {
+      this.spotQueue = (this.spotQueue || []).concat([[spot, done]]);
+      return;
+    }
+    clearTimeout(this.spotTimer);
+    clearTimeout(this.spotCount);
+    this.spotOn = true;
+    this.spotDone = done || null;
+    this.spotReadyAt = Date.now() + (spot.hold || SPOT_HOLD_MS);
+    const view = Object.assign({ show: true, tier: 1, rows: [], links: [] }, spot);
+    if (spot.power) view.power = Object.assign({}, spot.power, { now: game.formatNumber(spot.power.fromValue) });
+    this.setData({ spot: view });
+    if (spot.sound) setTimeout(() => this.spotOn && audio.play(spot.sound), spot.soundAt || 0);
+    if (spot.buzz) wx.vibrateShort({ type: 'heavy' });
+    if (spot.power) this.rollPower(spot.power);
+    this.spotTimer = setTimeout(() => this.closeSpot(), spot.ms || 3000);
+  },
+
+  // 战力数字从旧值滚到新值。
+  rollPower(power) {
+    const steps = 16;
+    let i = 0;
+    const tick = () => {
+      i++;
+      const k = 1 - Math.pow(1 - i / steps, 3);
+      const value = power.fromValue + (power.toValue - power.fromValue) * k;
+      if (!this.spotOn) return;
+      this.setData({ 'spot.power.now': game.formatNumber(i >= steps ? power.toValue : value) });
+      if (i < steps) this.spotCount = setTimeout(tick, 55);
+    };
+    this.spotCount = setTimeout(tick, power.delay || 900);
+  },
+
+  closeSpot() {
+    if (!this.spotOn) return;
+    clearTimeout(this.spotTimer);
+    clearTimeout(this.spotCount);
+    this.spotOn = false;
+    const done = this.spotDone;
+    this.spotDone = null;
+    this.setData({ spot: { show: false } });
+    if (done) done();
+    const queued = (this.spotQueue || []).shift();
+    if (queued) this.showSpot(queued[0], queued[1]);
+    else this.refresh();
+  },
+
+  onSpotTap() {
+    if (Date.now() < this.spotReadyAt) return;
+    this.closeSpot();
+  },
+
+  clearSpot() {
+    clearTimeout(this.spotTimer);
+    clearTimeout(this.spotCount);
+    this.actHooks = {};
+    this.spotQueue = [];
+    this.spotDone = null;
+    if (this.spotOn) {
+      this.spotOn = false;
+      this.setData({ spot: { show: false } });
+    }
   },
 
   stopAct() {
@@ -938,6 +1040,7 @@ Page(Object.assign(starScene(audio), {
     clearTimeout(this.actTimer);
     clearTimeout(this.stormTimer);
     clearTimeout(this.boltTimer);
+    this.clearSpot();
     this.boltFalling = false;
     audio.stop('thunder');
     this.act = '';
@@ -1089,7 +1192,7 @@ Page(Object.assign(starScene(audio), {
     const powder = game.powderInfo(s);
     const mountain = game.mountainReady(s);
     const quest = run.sect && run.sect.quest;
-    const mountainNotice = s.mountainLegacy ? '旧山门来信 · 可回山' :
+    const mountainNotice = s.mountainLegacy ? (s.mountainLegacy.master ? '宗主来信 · 请师父回山' : '旧山门来信 · 可回山') :
       (quest && quest.outcome && !quest.after && quest.due <= run.mountainChoices ? '寒潮退去 · 弟子来报' :
         (run.sect && run.sect.world.event ? '山外有事 · 待决断' :
           (run.cave && run.cave.fruit && run.mode !== 'demon' ? '仙果熟了 · 可服用' : '')));
@@ -2069,6 +2172,7 @@ Page(Object.assign(starScene(audio), {
       title: data.title,
       subtitle: data.subtitle,
       intro: data.intro,
+      highlights: data.highlights || [],
       rows: data.rows.map((row, i) => ({
         key: i,
         age: row.age === null ? '年岁未记' : row.age + ' 岁',
@@ -2215,6 +2319,8 @@ Page(Object.assign(starScene(audio), {
     if (this.chronicleOpen && run.phase === 'dead') return this.chronicleView();
     if (run.phase === 'root' && this.data.tab === 'train') {
       const fate = game.FATES.filter((item) => item.id === run.fate)[0];
+      const sealing = this.rootSealing(run);
+      const revealing = Date.now() < (this.rootRevealUntil || 0);
       return {
         fate: fate ? { name: fate.name, desc: fate.desc, text: fate.text } : null,
         kind: 'root',
@@ -2236,8 +2342,11 @@ Page(Object.assign(starScene(audio), {
           perks.push(root.schools.length === game.SCHOOL_IDS.length
             ? '五系功法都更容易遇到'
             : '更容易遇到' + root.schools.map((k) => game.SCHOOLS[k].name).join('、') + '系功法');
-          return { id: id, name: root.name, text: root.text, desc: perks.join('，'), rarity: root.rarity, rarityName: game.ROOT_RARITIES[root.rarity].name + '骨' };
-        })
+          const rare = root.rarity >= ROOT_REVEAL_RARITY || id.indexOf('r_') === 0;
+          return { id: id, name: root.name, text: root.text, desc: perks.join('，'), rarity: root.rarity, rarityName: game.ROOT_RARITIES[root.rarity].name + '骨',
+            sealed: rare && sealing, revealed: rare && !sealing && revealing };
+        }),
+        flash: sealing
       };
     }
     if (this.result) {
@@ -2257,6 +2366,7 @@ Page(Object.assign(starScene(audio), {
         title: r.title,
         label: r.label,
         defy: !!r.defy,
+        lucky: !!r.lucky,
         text: r.text || '',
         lines: r.lines.map((text, i) => ({ key: i, text: text, hot: text.indexOf('逆天而行') === 0 })),
         impact: r.impact || '',
@@ -2318,6 +2428,7 @@ Page(Object.assign(starScene(audio), {
         kind: 'dead',
         text: run.death.text,
         wick: run.death.wick,
+        record: run.death.record ? '前世最好是 ' + run.death.record + '，这一世多出 ' + (run.death.wick - run.death.record) : '',
         carry: game.canCarry(s) ? this.skillViews().filter((v) => !v.arcane && !v.tome).map((v) => ({ id: v.id, name: v.name, on: s.carry === v.id })) : []
       };
     }
@@ -2558,6 +2669,32 @@ Page(Object.assign(starScene(audio), {
     this.afterAction();
   },
 
+  // 新的一批根骨里有仙、神档或稀有根骨时，先闪一道金光、卡面封着，片刻后再揭晓。
+  rootSealing(run) {
+    const key = this.state.lives + ':' + run.rootRolls + ':' + run.rootChoices.join(',');
+    if (key !== this.rootKey) {
+      this.rootKey = key;
+      const rare = run.rootChoices.some((id) => {
+        const root = game.rootInfo(id);
+        return root && (root.rarity >= ROOT_REVEAL_RARITY || id.indexOf('r_') === 0);
+      });
+      clearTimeout(this.rootTimer);
+      this.rootSealUntil = rare ? Date.now() + ROOT_SEAL_MS : 0;
+      if (rare) {
+        audio.play('star-gold');
+        wx.vibrateShort({ type: 'light' });
+        this.rootTimer = setTimeout(() => {
+          this.rootSealUntil = 0;
+          this.rootRevealUntil = Date.now() + ROOT_REVEAL_MS;
+          audio.play('big');
+          this.refresh();
+          this.rootTimer = setTimeout(() => this.refresh(), ROOT_REVEAL_MS);
+        }, ROOT_SEAL_MS);
+      }
+    }
+    return Date.now() < (this.rootSealUntil || 0);
+  },
+
   onRoot(e) {
     if (!game.chooseRoot(this.state, e.currentTarget.dataset.id, Date.now(), Math.random)) return;
     this.lampOpen = true;
@@ -2664,13 +2801,39 @@ Page(Object.assign(starScene(audio), {
       return;
     }
     this.result = Object.assign({ title: result.title, label: result.label, text: result.text || '', lines: result.lines,
-      impact: result.dead ? '' : this.powerChange(), dead: result.dead }, context);
+      impact: result.dead ? '' : this.powerChange(), dead: result.dead, lucky: !!result.lucky }, context);
     this.eventOpen = false;
     this.replaceHidden = false;
     if (result.dead) wx.vibrateShort({ type: 'heavy' });
     else if (result.tags.includes('bond') || result.tags.includes('insight')) wx.vibrateShort({ type: 'light' });
     this.play(result.dead ? this.deathAct() : actionForTags(result.tags));
     this.afterAction();
+    if (!result.dead) this.choiceSpots(result);
+  },
+
+  // 结果里值得放大的时刻：秘法合成、羁绊点亮、弟子青出于蓝。
+  choiceSpots(result) {
+    if (result.merge) {
+      const color = game.SCHOOLS[result.merge.school].color;
+      this.showSpot({
+        kind: 'merge', title: '《' + result.merge.arcane + '》', kicker: '两卷归一', color: color,
+        left: '《' + result.merge.left + '》', right: '《' + result.merge.right + '》',
+        sub: '天品之上，是为秘法', pop: '威能 ×1.2', ms: 3400, hold: 1100, sound: 'big', soundAt: 900
+      });
+    }
+    result.tags.forEach((tag) => {
+      const m = /^bond:(\w+):(\d)$/.exec(tag);
+      if (!m) return;
+      const school = game.SCHOOLS[m[1]];
+      const count = Number(m[2]);
+      this.showSpot({
+        kind: 'bond', title: school.name + '系 · ' + (count >= 4 ? '四门羁绊' : '两门羁绊'), kicker: '羁绊点亮', color: school.color,
+        sub: game.bondText(m[1], count),
+        links: [1, 2, 3, 4].map((n) => ({ key: n, text: n, on: n <= count, delay: 300 + (n - 1) * 320 })),
+        ms: 2600 + count * 200, hold: 700, sound: 'good', soundAt: 300
+      });
+    });
+    if (result.spot) this.showSpot(Object.assign({ ms: 3400, hold: 1000, sound: 'big', soundAt: 300 }, result.spot));
   },
 
   onOption(e) {
@@ -2778,6 +2941,7 @@ Page(Object.assign(starScene(audio), {
 
   resolveTrib(method) {
     const before = this.state.run.realm;
+    const pre = this.preTrib();
     const result = game.attemptTribulation(this.state, Math.random, method);
     if (!result) {
       this.showBanner(method === 'borrow' ? '机缘不足，借不了这一股势' : '现在还不能渡劫');
@@ -2800,24 +2964,72 @@ Page(Object.assign(starScene(audio), {
       lines: result.lines,
       dead: result.dead,
       defy: !!result.defy
-    }, before, result.broke && (!result.extra || result.success) ? 'ascend' : (result.dead ? this.deathAct() : 'hurt'));
+    }, before, result.broke && (!result.extra || result.success) ? 'ascend' : (result.dead ? this.deathAct() : 'hurt'), pre, result.defy);
+  },
+
+  preTrib() {
+    const run = this.state.run;
+    return { realm: run.realm, ascended: !!run.ascended, power: game.combatPowerDetails(this.state).total };
+  },
+
+  // 逆天渡劫的特写：最后一道雷定格，金光破云，「逆天」两个大字，奖励逐条滚出。把握越低越隆重。
+  defySpot(defy) {
+    const tier = defy.chance < 0.1 ? 3 : (defy.chance < 0.2 ? 2 : 1);
+    const reward = defy.reward;
+    const rows = [];
+    if (reward.attr) (defy.tests || []).forEach((k) => rows.push(game.ATTR_NAMES[k] + ' +' + reward.attr));
+    if (reward.life) rows.push('寿元上限 +' + reward.life + ' 年');
+    if (reward.wick) rows.push('灯芯 +' + reward.wick);
+    const start = [1500, 1300, 1100][tier - 1];
+    return {
+      kind: 'defy', tier: tier, title: '逆天', kicker: DEFY_KICKERS[tier - 1],
+      sub: '只有 ' + percent(defy.chance) + '% 的把握，你还是站着出来了',
+      rows: rows.map((text, i) => ({ key: i, text: text, delay: start + i * 380 })),
+      ms: start + rows.length * 380 + 2200 + tier * 300, hold: 1200, sound: 'big', soundAt: 600, buzz: tier >= 2
+    };
+  },
+
+  // 破大境界的亮相：浮空之后，境界名横过屏幕，换上新境界的衣袍，战力从旧值滚到新值。
+  realmSpot(pre) {
+    const run = this.state.run;
+    const name = game.REALMS[run.realm].name;
+    const after = game.combatPowerDetails(this.state).total;
+    const ascended = run.ascended && !pre.ascended;
+    return {
+      kind: 'realm', tier: 1, title: ascended ? name + '圆满' : name,
+      kicker: ascended ? '终劫已过' : '破境',
+      sub: ascended ? '这一重天走到头了' : '衣袍换成了' + name + '的样子',
+      power: after > pre.power ? { from: game.formatNumber(pre.power), fromValue: pre.power, toValue: after, delay: 1000 } : null,
+      ms: 3800, hold: 1000, sound: 'up', soundAt: 200
+    };
   },
 
   onYuanMethod(e) {
     const data = e.currentTarget.dataset;
     const before = this.state.run.realm;
+    const pre = this.preTrib();
     const result = game.attemptYuanTrial(this.state, Math.random, data.id, Number(data.step));
     if (!result) return;
     this.playTribulation({
       title: result.title, label: result.label, lines: result.lines, dead: result.dead, yuan: true,
       nextTrib: result.success && !result.advanced ? '前往问名关' : ''
-    }, before, result.advanced ? 'ascend' : (result.success ? 'focus' : (result.dead ? this.deathAct() : 'hurt')));
+    }, before, result.advanced ? 'ascend' : (result.success ? 'focus' : (result.dead ? this.deathAct() : 'hurt')), pre, null);
   },
 
-  playTribulation(result, before, nextAct) {
+  playTribulation(result, before, nextAct, pre, defy) {
     this.tribOpen = false;
     this.bracing = false;
     this.result = result;
+    this.actHooks = {};
+    const run = this.state.run;
+    const rose = pre && run.phase === 'alive' && (run.realm > pre.realm || (run.ascended && !pre.ascended));
+    if (defy) {
+      const spot = this.defySpot(defy);
+      this.actHooks.thunder = (next) => this.showSpot(spot, () => { if (next) this.play(next); });
+    }
+    if (rose && nextAct === 'ascend') {
+      this.actHooks.ascend = () => this.showSpot(this.realmSpot(pre));
+    }
     this.stormTimer = setTimeout(() => wx.vibrateShort({ type: 'heavy' }), STORM_HIT_MS);
     this.play('thunder', nextAct);
     this.holdRealm = before;

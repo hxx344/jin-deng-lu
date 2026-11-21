@@ -9,6 +9,39 @@
 
     <canvas wx:if="{{chronicleCanvas.show}}" type="2d" id="chronicleCanvas" class="chronicle-canvas" style="width: {{chronicleCanvas.width}}px; height: {{chronicleCanvas.height}}px;"></canvas>
 
+    <view wx:if="{{spot.show}}" class="spot spot-{{spot.kind}} spot-t{{spot.tier}}" catchtap="onSpotTap" catchtouchmove="noop">
+      <view class="spot-veil"></view>
+      <block wx:if="{{spot.kind === 'defy'}}">
+        <view class="spot-cloud spot-cloud-l"></view>
+        <view class="spot-cloud spot-cloud-r"></view>
+        <image class="spot-bolt" src="/assets/bolt.svg" mode="aspectFit" />
+        <view class="spot-white"></view>
+      </block>
+      <view class="spot-rays"></view>
+      <view class="spot-burst"></view>
+      <block wx:if="{{spot.kind === 'merge'}}">
+        <view class="spot-scroll spot-scroll-l" style="color: {{spot.color}}">{{spot.left}}</view>
+        <view class="spot-scroll spot-scroll-r" style="color: {{spot.color}}">{{spot.right}}</view>
+      </block>
+      <view class="spot-main">
+        <view wx:if="{{spot.kicker}}" class="spot-kicker">{{spot.kicker}}</view>
+        <view class="spot-title" style="{{spot.color ? 'color: ' + spot.color : ''}}">{{spot.title}}</view>
+        <view wx:if="{{spot.sub}}" class="spot-sub">{{spot.sub}}</view>
+        <view wx:if="{{spot.pop}}" class="spot-pop">{{spot.pop}}</view>
+        <view wx:if="{{spot.links.length}}" class="spot-links">
+          <block wx:for="{{spot.links}}" wx:key="key">
+            <view wx:if="{{index}}" class="spot-link-bar {{item.on ? 'spot-link-on' : ''}}" style="animation-delay: {{item.delay}}ms; {{item.on ? 'background: ' + spot.color : ''}}"></view>
+            <view class="spot-link-node {{item.on ? 'spot-link-on' : ''}}" style="animation-delay: {{item.delay}}ms; {{item.on ? 'border-color: ' + spot.color + '; color: ' + spot.color : ''}}">{{item.text}}</view>
+          </block>
+        </view>
+        <view wx:if="{{spot.power}}" class="spot-power">战力 {{spot.power.from}} → <text class="spot-power-to">{{spot.power.now}}</text></view>
+        <view wx:if="{{spot.rows.length}}" class="spot-rows">
+          <view wx:for="{{spot.rows}}" wx:key="key" class="spot-row" style="animation-delay: {{item.delay}}ms">{{item.text}}</view>
+        </view>
+      </view>
+      <view class="spot-tap">轻触继续</view>
+    </view>
+
     <view wx:if="{{banner}}" class="banner">{{banner}}</view>
 
     <view wx:if="{{modal.show}}" class="mask" catchtap="noop" catchtouchmove="noop">

@@ -118,11 +118,25 @@ function progressChoices(run, lines, rng) {
   if (sect) world.tick(run, lines, rng);
 }
 
+// 弟子修为 L 级约当第 L+1 个大境界（3 级约金丹，4 级约化神）。亲手传过功法的弟子越过你的境界，就是青出于蓝。
+function surpasses(run, disciple) {
+  return !!disciple.book && disciple.level + 1 > run.realm;
+}
+
+const SURPASS_TEXT = [
+  '{n}收功的时候，山风停了一下。你看得出来：他的修为已经越过了你。他自己也看出来了，愣了很久，跪下来磕了个头，说：「师父，以后换我挡在前面。」',
+  '{n}替你去山下挑水，回来的时候水桶是飘着跟在身后的。你想了想，当年教他的时候，自己挑水还得用肩膀。',
+  '那卷你亲手抄给{n}的功法，被他练出了你不知道的第三层。他拿着抄本来问你这是不是写错了。你说没写错，是你没练到。'
+];
+
 function archive(run, life) {
   const sect = run.sect;
   if (!sect) return null;
   const heir = find(sect.disciples, sect.heir);
+  const masters = sect.disciples.filter((d) => d.surpassed);
+  const master = heir && heir.surpassed ? heir : masters[0];
   return {
+    master: master ? master.id : '',
     life: life,
     name: sect.name,
     rule: sect.rule,
@@ -132,6 +146,18 @@ function archive(run, life) {
     disciple: (heir || sect.disciples[0]).id,
     book: heir && heir.book ? Object.assign({}, heir.book) : null
   };
+}
+
+function checkSurpass(run, disciple, result, rng) {
+  if (disciple.surpassed || !surpasses(run, disciple)) return;
+  disciple.surpassed = true;
+  const name = find(DISCIPLES, disciple.id).name;
+  result.text = SURPASS_TEXT[Math.floor(rng() * SURPASS_TEXT.length) % SURPASS_TEXT.length].replace(/\{n\}/g, name);
+  result.lines.push('青出于蓝：' + name + '的修为越过了你', '来世回山，他会是这里的宗主');
+  result.chance = 3;
+  result.demon = -5;
+  result.highlight = '亲手带出的弟子' + name + '青出于蓝，修为越过了师父';
+  result.spot = { kind: 'master', title: '青出于蓝', sub: name + '的修为越过了你' };
 }
 
 function questPower(sect, disciple, task) {
@@ -207,8 +233,17 @@ function mountainView(state, page, selected, context) {
       add('inherit', '取回' + skillName(old.book), disciple.name + '留下的抄本。' + capNote, {},
         { book: old.book, disabled: !!learned, note: learned ? '已经习得同品或更高品功法' : '' });
     }
-    const greeting = '你照旧喊了一声「把狗拴好」。' + disciple.name + '一愣，转身去拿钥匙。';
-    add('visit', '认下故人', greeting + '灵材 +' + gift + '。', {}, { greeting: greeting, gift: gift });
+    const master = old.master && find(DISCIPLES, old.master);
+    if (master) {
+      view.title = '重回' + old.name + ' · 宗主' + master.name;
+      view.text = '当年你亲手带出来的' + master.name + '，如今是' + old.name + '的宗主。' + view.text;
+      const greeting = '山门大开，' + master.name + '领着满山门人下阶相迎。他认不出你这张新脸，但认得你喊他名字的腔调。宗主当场跪下，门人跪了一山：「师父回来了。」' +
+        '他把库房钥匙塞给你，又把这些年攒下的东西装了三车，说这是当年那顿打的利息。';
+      add('visit', '受宗主一拜', '宗主回赠：灵材 +' + gift * 2 + '，机缘 +6，寿元 +12 年，心魔 -6。', {}, { greeting: greeting, gift: gift * 2, master: master.name });
+    } else {
+      const greeting = '你照旧喊了一声「把狗拴好」。' + disciple.name + '一愣，转身去拿钥匙。';
+      add('visit', '认下故人', greeting + '灵材 +' + gift + '。', {}, { greeting: greeting, gift: gift });
+    }
     add('farewell', '以过客身份辞别', '坐在旧石阶上，把当年没说完的话说完。心魔 -8。');
     return view;
   }
@@ -267,7 +302,9 @@ function mountainView(state, page, selected, context) {
     view.title = find(DISCIPLES, selected).name;
     view.text = find(DISCIPLES, selected).desc + '。' + (disciple.book ? '已学' + skillName(disciple.book) + '。' : '尚未受传功法。');
     view.stats.push({ label: '修为', value: '第 ' + disciple.level + ' 级' });
-    if (disciple.level < sect.rank + 1) add('train', '指点修行', '弟子修为 +1；巡山多得 1 灵材，处理寒潮时多得 1 进度。',
+    const nearly = !disciple.surpassed && disciple.book && disciple.level + 2 > run.realm ? '这一级会越过你的修为，青出于蓝。' : '';
+    if (disciple.surpassed) view.stats.push({ label: '青出于蓝', value: '修为已越过师父' });
+    if (disciple.level < sect.rank + 1) add('train', '指点修行', '弟子修为 +1；巡山多得 1 灵材，处理寒潮时多得 1 进度。' + nearly,
       { qi: 0.12, material: disciple.level + 1, years: 2 });
     if (!sect.patrol) add('patrol', '差遣巡山', '两次普通机缘后带回 ' + patrolHaul(sect, disciple) + ' 灵材。',
       { years: 1 }, { haul: patrolHaul(sect, disciple) });
@@ -294,7 +331,7 @@ function mountainView(state, page, selected, context) {
   }
   view.people = sect.disciples.map((member) => ({
     id: member.id, name: find(DISCIPLES, member.id).name,
-    detail: '修为 ' + member.level + ' 级' + (member.book ? ' · ' + skillName(member.book) : '')
+    detail: '修为 ' + member.level + ' 级' + (member.book ? ' · ' + skillName(member.book) : '') + (member.surpassed ? ' · 青出于蓝' : '')
   }));
   if (quest.turn < COLD_ROUNDS) {
     view.story = {
@@ -354,7 +391,17 @@ function chooseMountain(state, page, selected, stamp, id, name, context, rng) {
   if (page === 'return') {
     state.mountainLegacy = null;
     if (id === 'inherit') result.book = option.book;
-    else if (id === 'visit') lines.push(option.greeting, '灵材 +' + addMaterials(run, option.gift));
+    else if (id === 'visit') {
+      lines.push('灵材 +' + addMaterials(run, option.gift));
+      result.text = option.greeting;
+      if (option.master) {
+        result.chance = 6;
+        result.life = 12;
+        result.demon = -6;
+        result.highlight = '回到旧山门，当年的弟子' + option.master + '已是宗主，跪迎师父';
+        result.spot = { kind: 'master', title: '青出于蓝', sub: '宗主' + option.master + '跪迎师父回山' };
+      }
+    }
     else result.demon = -8;
     return result;
   }
@@ -396,6 +443,7 @@ function chooseMountain(state, page, selected, stamp, id, name, context, rng) {
     if (id === 'train') {
       disciple.level++;
       lines.push('弟子修为升至 ' + disciple.level + ' 级。');
+      checkSurpass(run, disciple, result, rng);
     } else if (id === 'patrol') {
       sect.patrol = { id: selected, due: run.mountainChoices + PATROL_LENGTH, haul: option.haul };
       lines.push(option.desc);
@@ -405,6 +453,7 @@ function chooseMountain(state, page, selected, stamp, id, name, context, rng) {
     } else {
       disciple.book = option.book;
       lines.push('弟子习得' + skillName(disciple.book) + '。');
+      checkSurpass(run, disciple, result, rng);
     }
   } else if (option.task) {
     quest[option.task] += option.power;
@@ -463,7 +512,9 @@ function normalizeRunMountain(run, raw, yuan, toCount) {
   sect.disciples.forEach((member) => {
     const info = member && find(DISCIPLES, member.id);
     if (!info || find(disciples, info.id) || disciples.length >= rank + 1) return;
-    disciples.push({ id: info.id, level: Math.max(1, toCount(member.level, rank + 1)), book: normalizeBook(member.book, toCount) });
+    const kept = { id: info.id, level: Math.max(1, toCount(member.level, rank + 1)), book: normalizeBook(member.book, toCount) };
+    if (member.surpassed === true && kept.book) kept.surpassed = true;
+    disciples.push(kept);
   });
   if (!disciples.length) return;
   const rawQuest = sect.quest || {};
@@ -497,7 +548,8 @@ function normalizeArchive(raw, lives, toCount) {
     life: life, name: cleanName(raw.name) || rule.defaultName, rule: rule.id, rank: Math.max(1, toCount(raw.rank, MAX_RANK)),
     outcome: Object.prototype.hasOwnProperty.call(OUTCOMES, raw.outcome) ? raw.outcome : 'pending',
     after: ['open', 'seal'].includes(raw.after) ? raw.after : '',
-    disciple: raw.disciple, book: normalizeBook(raw.book, toCount)
+    disciple: raw.disciple, book: normalizeBook(raw.book, toCount),
+    master: find(DISCIPLES, raw.master) ? raw.master : ''
   };
 }
 

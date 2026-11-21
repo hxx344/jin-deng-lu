@@ -674,3 +674,41 @@ test('藏经阁功法不能传给弟子，带着它也能照常授业', () => {
   assert.equal(ids.includes('teach-tm_sw1'), false);
   assert.deepEqual(reload(state), state);
 });
+
+test('亲手传过功法的弟子修为越过师父就青出于蓝，来世回山成了宗主并回赠', () => {
+  let state = cultivator(YUAN);
+  found(state);
+  state.run.sect.rank = 3;
+  // 没传功法的弟子练得再高也不算。
+  fund(state);
+  for (let i = 0; i < 3; i++) act(state, 'sect', 'train', 'li');
+  assert.equal(state.run.sect.disciples[0].level, 4);
+  assert.ok(!state.run.sect.disciples[0].surpassed);
+  state.run.skills.push({ id: 'pi4', level: 2 });
+  fund(state);
+  const taught = act(state, 'sect', 'teach-pi4', 'li');
+  assert.ok(state.run.sect.disciples[0].surpassed);
+  assert.match(taught.text, /阿砺/);
+  assert.equal(taught.spot.title, '青出于蓝');
+  assert.ok(taught.lines.some((line) => /青出于蓝/.test(line)));
+  assert.ok(state.run.highlights.some((h) => /青出于蓝/.test(h.text)));
+  // 只触发一次，读档后仍记得。
+  state = reload(state);
+  assert.ok(state.run.sect.disciples[0].surpassed);
+  assert.ok(game.retire(state));
+  state = reload(state);
+  assert.equal(state.mountainLegacy.master, 'li');
+  assert.ok(game.reincarnate(state, NOW, rng));
+  assert.ok(game.chooseRoot(state, state.run.rootChoices[0], NOW, rng));
+  state.run.realm = KIN;
+  const view = game.mountainView(state, 'return', '');
+  assert.match(view.title, /宗主阿砺/);
+  const chance = state.run.chance;
+  const lifeFlat = state.run.lifeFlat;
+  const gift = act(state, 'return', 'visit');
+  assert.match(gift.text, /师父回来了/);
+  // 第三阶山门的故人礼是 8 灵材，宗主翻倍。
+  assert.equal(state.run.materials, 16);
+  assert.ok(state.run.chance > chance);
+  assert.equal(state.run.lifeFlat, lifeFlat + 12);
+});

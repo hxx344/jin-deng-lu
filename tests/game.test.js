@@ -1745,7 +1745,7 @@ test('结算结果带有动作标签，供界面决定角色做什么', () => {
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'pi1', level: 1 }], rerolls: 0 };
   assert.deepStrictEqual(game.choose(s, 0, () => 0).tags, ['skill:pill', 'upgrade']);
   s.run.event = { kind: 'legacy', intro: 0, offers: [{ id: 'pi2', level: 1 }], rerolls: 0 };
-  assert.deepStrictEqual(game.choose(s, 0, () => 0).tags, ['skill:pill', 'bond']);
+  assert.deepStrictEqual(game.choose(s, 0, () => 0).tags, ['skill:pill', 'bond', 'bond:pill:2']);
 });
 
 test('每做完 10 次普通机缘的选择得一次大机缘，进度跨世保留', () => {
@@ -4312,7 +4312,7 @@ test('逆天渡劫：把握不到三成还渡过了另有加赏，把握越小�
   const wick = low.wick;
   const r = game.attemptTribulation(low, () => 0, 'endure');
   assert.strictEqual(r.success, true);
-  assert.deepStrictEqual(r.defy, { chance: info.chance, reward: info.defy });
+  assert.deepStrictEqual(r.defy, { chance: info.chance, reward: info.defy, tests: info.tests });
   info.tests.forEach((k) => assert.strictEqual(low.run.stats[k], stats[k] + info.defy.attr));
   assert.strictEqual(low.run.lifeFlat, flat + info.lifeBonus + info.defy.life);
   assert.strictEqual(low.wick, wick + info.defy.wick);
@@ -4347,4 +4347,96 @@ test('逆天渡劫：逐道雷按接过的每道必接雷的成功率连乘来�
   sure.run.stats = { edge: 0, body: 16, mind: 16 };
   assert.strictEqual(game.tribulationInfo(sure).defy, null);
   assert.strictEqual(crossTrib(sure, () => 0, 'endure').defy, null);
+});
+
+test('故事线：每个选项都有结果叙述，每条线至少四章且有结局', () => {
+  const stories = game.EVENTS.filter((e) => e.type === 'story');
+  stories.forEach((e) => {
+    e.options.forEach((o) => {
+      const where = e.id + ' / ' + o.label;
+      if (o.risk) assert.ok(o.say || (o.sayWin && o.sayLose), where + ' 缺成败叙述');
+      else assert.ok(o.say, where + ' 缺叙述');
+      [o.say, o.sayWin, o.sayLose].forEach((text) => assert.ok(text === undefined || (typeof text === 'string' && text.length > 0), where));
+    });
+  });
+  const lines = {};
+  stories.forEach((e) => { (lines[e.line] = lines[e.line] || []).push(e); });
+  Object.keys(lines).forEach((line) => {
+    const chapters = lines[line];
+    assert.ok(chapters.length >= 4, line + ' 只有 ' + chapters.length + ' 章');
+    const needed = {};
+    chapters.forEach((e) => e.need.forEach((m) => { needed[m] = true; }));
+    // 结局：这一章的任何选项都不再记下本线其他章节需要的经历。
+    const marksOf = (o) => [o.fx, o.risk && o.risk.win, o.risk && o.risk.lose].filter(Boolean).map((fx) => fx.mark).filter(Boolean);
+    const endings = chapters.filter((e) => e.options.every((o) => marksOf(o).every((m) => !needed[m])));
+    assert.ok(endings.length >= 1, line + ' 没有结局章');
+  });
+});
+
+test('上上签：正向收益随到浮动区间高端时卡面和结算都标出来，数值照旧', () => {
+  const s = born();
+  const def = game.EVENTS.find((e) => e.type === 'adventure' && e.options.some((o) => !o.need && o.fx && o.fx.qi > 0 && !o.risk));
+  const index = def.options.findIndex((o) => !o.need && o.fx && o.fx.qi > 0 && !o.risk);
+  // top 为真时把每项正向收益都摇到浮动区间上沿。
+  const up = (v) => (Number.isInteger(v) ? v + Math.max(1, Math.floor(v * 0.2)) : Math.round(v * 1.2 * 100) / 100);
+  const roll = (top) => def.options.map((o, i) => {
+    const fx = Object.assign({}, o.fx);
+    if (top) Object.keys(fx).forEach((k) => { if (typeof fx[k] === 'number' && fx[k] > 1 && k !== 'demon') fx[k] = up(fx[k]); else if (k === 'qi' && fx[k] > 0) fx[k] = up(fx[k]); });
+    return Object.assign({}, o, { sourceIndex: i, fx: fx });
+  });
+  s.run.event = { kind: 'event', id: def.id, rerolls: 0, options: roll(false) };
+  assert.ok(!game.eventView(s).options.some((o) => o.lucky));
+  s.run.event.options = roll(true);
+  const shown = game.eventView(s).options.find((o) => o.label === def.options[index].label);
+  assert.ok(shown.lucky);
+  const qi = s.run.qi;
+  const r = game.choose(s, game.eventView(s).options.findIndex((o) => o.label === shown.label), () => 0.5);
+  assert.ok(r.lucky && r.tags.includes('lucky'));
+  assert.ok(s.run.qi >= qi);
+  assert.ok(s.run.highlights.some((h) => h.text.indexOf('上上签') >= 0));
+  // 只看正向收益：心魔、折寿这类代价不算签运。
+  assert.equal(game.drawScore({ fx: { demon: 5, life: -10 } }, { fx: { demon: 6, life: -12 } }), null);
+});
+
+test('轮回结算灯芯破了历来单世最高就记新纪录，读档保留，老存档从墓志估出旧纪录', () => {
+  let s = born();
+  assert.ok(game.retire(s));
+  const first = s.run.death.wick;
+  assert.ok(!s.run.death.record, '第一世没有可比的前世');
+  assert.equal(s.bestWick, first);
+  assert.ok(game.reincarnate(s, 0, () => 0));
+  assert.ok(game.chooseRoot(s, s.run.rootChoices[0], 0, () => 0));
+  s.run.realm = 3;
+  assert.ok(game.retire(s));
+  assert.ok(s.run.death.wick > first);
+  assert.equal(s.run.death.record, first);
+  s = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  assert.equal(s.run.death.record, first);
+  assert.match(game.chronicle(s).highlights[0], /破了前世/);
+  const old = JSON.parse(JSON.stringify(s));
+  delete old.bestWick;
+  old.epitaphs = ['享年 30 岁。（灯芯 +7）', '享年 90 岁。（灯芯 +55）'];
+  assert.equal(game.normalizeState(old, 0, () => 0).bestWick, 55);
+});
+
+test('本纪高光：秘法合成、低把握渡劫按分数挑前三条，读档保留', () => {
+  let s = born();
+  give(s, ['sw1', 'sw2'], 4);
+  const merged = game.mergeSkills(s, 'sw1', 'sw2', () => 0.99);
+  assert.ok(merged.merge && merged.merge.arcane);
+  s.run.realm = 2;
+  s.run.qi = game.qiCap(s);
+  const info = game.tribulationInfo(s);
+  if (info && info.ready && !info.bolts) {
+    const r = game.attemptTribulation(s, () => 0, 'endure');
+    if (r && r.success && r.chance < 0.5) assert.ok(s.run.highlights.some((h) => h.text.indexOf('的把握渡过') >= 0));
+  }
+  s = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, () => 0);
+  const lights = game.chronicle(s).highlights;
+  assert.ok(lights.length >= 1 && lights.length <= 3);
+  assert.ok(lights.some((t) => t.indexOf('炼成秘法') >= 0));
+  // 高光按分数排，逆天渡劫排在秘法前面。
+  s.run.highlights.push({ score: 190, text: '以 5% 的把握渡过金丹劫' });
+  s.run.highlights.sort((a, b) => b.score - a.score);
+  assert.equal(game.chronicle(s).highlights[0], '以 5% 的把握渡过金丹劫');
 });

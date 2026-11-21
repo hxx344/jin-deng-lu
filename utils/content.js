@@ -310,7 +310,50 @@ const MARKS = {
   library: '一屋子字',
   academy: '书院欠你人情',
   dog: '摸过村口的狗',
-  dog2: '身后跟着一条狗'
+  dog2: '身后跟着一条狗',
+  // 守骸宗续篇
+  sect3: '宗主跟前的红人',
+  wanted: '守骸宗的通缉犯',
+  fang: '见过宗主的新牙',
+  proof: '宗主的把柄',
+  // 食仙教续篇
+  fake: '尝出了豆腐味',
+  cultbook: '抄过后厨的账',
+  mob: '碗底刻着账',
+  revolt: '教众等你一句话',
+  // 丹盟续篇
+  rival: '赊不死丹铺的股东',
+  hoard: '一缸压箱底的灵石',
+  ious: '手里一叠欠条',
+  lender: '丹盟的债主',
+  // 字续篇
+  draft: '字们在写一部书',
+  manuscript: '一部没写完的书稿',
+  seized: '书稿被书院收了',
+  jailbreak: '字们越狱了',
+  // 黄狗续篇
+  dogbone: '狗叼回一根骨头',
+  dogsky: '狗夜里望着骸山',
+  leash: '一根仙人的狗链',
+  // 旱龙舟（枯海）
+  oar: '一支旱龙舟的桨',
+  crew: '旱龙舟队的桨手',
+  drill: '在盐上练过船',
+  sawn: '被锯成两截的龙舟',
+  drum: '鼓手有了新鼓',
+  champion: '旱龙舟的魁首',
+  // 守漏人（跨三层）
+  clock: '替守漏人挑过水',
+  clock2: '守漏人的挑夫',
+  clock3: '守漏人的老伙计',
+  clock4: '知道海是怎么干的',
+  clock5: '补过守漏人的壶',
+  // 话本
+  tale: '在话本里听见自己',
+  tale2: '话本里的大恶人',
+  tale3: '话本出了续集',
+  tale4: '活着出了殡',
+  tale5: '答应讲最后一回'
 };
 
 const LEGACY_INTROS = [
@@ -490,7 +533,8 @@ const EVENTS = [
       { label: '拍一枚延寿丹', years: 2, cost: { qi: 0.3 }, fx: { life: 12 } },
       { label: '当托儿抬价', years: 2, fx: { qi: 0.25, demon: 5 } },
       { label: '记在账上，拍下压轴的丹方', need: ['credit'], years: 2, fx: { skill: 'pill', karma: 'debt' } },
-      { label: '画一张以假乱真的灵票', school: 'talisman', years: 2, fx: { body: 3, mind: 2, demon: 6 } }
+      { label: '画一张以假乱真的灵票', school: 'talisman', years: 2, fx: { body: 3, mind: 2, demon: 6 } },
+      { label: '让大掌柜替你举牌，记在他欠你的账上', need: ['lender'], years: 2, fx: { skill: 'pill', mind: 1 } }
     ]
   },
   {
@@ -524,7 +568,7 @@ const EVENTS = [
     ]
   },
   {
-    id: 'a_weeding', type: 'adventure', layers: [1], not: ['sect', 'thief'], title: '守骸宗的入门试炼',
+    id: 'a_weeding', type: 'adventure', layers: [1], not: ['sect', 'thief', 'wanted'], title: '守骸宗的入门试炼',
     text: '守骸宗招外门弟子。试炼内容是给一根仙人肋骨除草，为期三年。',
     options: [
       { label: '老实除草', years: 3, fx: { edge: 2, body: 2, mark: 'sect' } },
@@ -540,7 +584,8 @@ const EVENTS = [
       { label: '花灵气改命', years: 1, cost: { qi: 0.3 }, fx: { chance: 2 } },
       { label: '让他算寿数', years: 1, risk: { p: 0.5, win: { life: 10 }, lose: { life: -5 } } },
       { label: '反过来给他算一卦', years: 2, fx: { mind: 2 } },
-      { label: '让他照着你的手相改他的书', school: 'luck', years: 1, fx: { chance: 2, mind: 1 } }
+      { label: '让他照着你的手相改他的书', school: 'luck', years: 1, fx: { chance: 2, mind: 1 } },
+      { label: '问他话本里的你下一回怎样', need: ['tale'], years: 1, fx: { chance: 1, mind: 1 } }
     ]
   },
   {
@@ -550,6 +595,7 @@ const EVENTS = [
       { label: '上船', years: 2, risk: { p: 0.6, win: { qi: 0.5, edge: 1 }, lose: { life: -6, demon: 5 } } },
       { label: '游过去', years: 3, fx: { body: 2 } },
       { label: '等一条白的', years: 2, fx: { qi: 0.1 } },
+      { label: '替船夫划一程，抵船钱', years: 2, fx: { body: 2, mark: 'oar' } },
       { replaces: 1, label: '扛着船过河', school: 'body', years: 2, fx: { body: 3, qi: 0.2 } }
     ]
   },
@@ -571,6 +617,7 @@ const EVENTS = [
       { label: '下去捞', years: 2, risk: { p: 0.5, win: { mind: 3, qi: 0.3 }, lose: { life: -6 } } },
       { label: '打一桶水喝', years: 1, fx: { qi: 0.15 } },
       { label: '扔一枚铜钱许愿', years: 1, risk: { p: 0.3, win: { chance: 2 }, lose: {} } },
+      { label: '替守漏人打一桶井水', years: 1, fx: { mind: 1, mark: 'clock' } },
       { replaces: 2, label: '铜钱自己跳回了手里', school: 'luck', years: 1, fx: { chance: 2 } }
     ]
   },
@@ -582,7 +629,8 @@ const EVENTS = [
       { label: '在台下记笔记', years: 3, fx: { mind: 2 } },
       { label: '趁机卖瓜子', years: 2, fx: { qi: 0.35 } },
       { label: '以过来人的身份讲讲口感', need: ['taste'], years: 2, fx: { mind: 3, demon: 6 } },
-      { label: '把对面的论点写成符贴他脑门上', school: 'talisman', years: 2, fx: { mind: 4 } }
+      { label: '把对面的论点写成符贴他脑门上', school: 'talisman', years: 2, fx: { mind: 4 } },
+      { label: '拿话本里的自己当反面教材', need: ['tale2'], years: 2, fx: { mind: 4, demon: -3 } }
     ]
   },
 
@@ -656,7 +704,7 @@ const EVENTS = [
     options: [
       { label: '把漏壶再拨快些', years: 1, fx: { speed: 0.1, demon: 3 } },
       { label: '守着滴声等一等', years: 1, fx: { chance: 2 } },
-      { label: '帮守漏人换一桶水', years: 1, fx: { mind: 1, demon: -2 } },
+      { label: '帮守漏人换一桶水', years: 1, fx: { mind: 1, demon: -2, mark: 'clock' } },
       { label: '画道符催动水流', school: 'talisman', years: 1, fx: { speed: 0.15, mind: 1 } }
     ]
   },
@@ -697,7 +745,8 @@ const EVENTS = [
       { label: '以工抵债', years: 6, fx: { qi: 0.1 } },
       { label: '赖账', years: 1, fx: { mark: 'deadbeat' }, risk: { p: 0.35, win: { demon: 5 }, lose: { life: -15, demon: 10 } } },
       { label: '让二掌柜徒弟把账抹了', need: ['manager'], years: 1, fx: { mind: 1 } },
-      { label: '当场炼一炉丹抵债', school: 'pill', years: 2, fx: { demon: -5, mark: 'credit' } }
+      { label: '当场炼一炉丹抵债', school: 'pill', years: 2, fx: { demon: -5, mark: 'credit' } },
+      { label: '掏出大掌柜的欠条，两清', need: ['lender'], years: 1, fx: { mind: 2, demon: -6 } }
     ]
   },
   {
@@ -819,6 +868,7 @@ const EVENTS = [
       { label: '睡一觉', years: 1, fx: { demon: -6 } },
       { label: '淋着雨练功', years: 1, fx: { body: 1 } },
       { label: '接雨水泡茶', years: 1, fx: { qi: 0.12 } },
+      { label: '替守漏人接一缸雨水', years: 1, fx: { demon: -2, mark: 'clock' } },
       { replaces: 0, label: '淋着雨睡', school: 'body', years: 1, fx: { body: 1, demon: -6 } }
     ]
   },
@@ -849,7 +899,8 @@ const EVENTS = [
       { label: '接受现实', years: 1, fx: { mind: 1 } },
       { label: '炼一颗驻颜丹', years: 1, cost: { qi: 0.15 }, fx: { life: 3 } },
       { label: '把镜子砸了', years: 1, fx: { edge: 1, demon: 2 } },
-      { replaces: 1, label: '随手搓一颗驻颜丹', school: 'pill', years: 1, fx: { life: 4 } }
+      { replaces: 1, label: '随手搓一颗驻颜丹', school: 'pill', years: 1, fx: { life: 4 } },
+      { label: '让镜子里的自己晚一刻老', need: ['clock2'], years: 1, fx: { life: 5 } }
     ]
   },
   {
@@ -859,6 +910,7 @@ const EVENTS = [
       { label: '买三本垫桌脚', years: 1, fx: { body: 1 } },
       { label: '跟他讲价', years: 1, fx: { mind: 1 } },
       { label: '当众揭穿他', years: 1, risk: { p: 0.5, win: { qi: 0.2 }, lose: { life: -1 } } },
+      { label: '在说书摊前坐下听一回', years: 1, fx: { mind: 1, mark: 'tale' } },
       { label: '随手翻开一本，居然是真的', school: 'luck', years: 1, fx: { mind: 2 } }
     ]
   },
@@ -888,7 +940,8 @@ const EVENTS = [
     options: [
       { label: '照样喝', years: 1, fx: { demon: -2 } },
       { label: '重新煮一壶', years: 2, fx: { qi: 0.12 } },
-      { label: '数一数茶叶', years: 1, fx: { mind: 1 } }
+      { label: '数一数茶叶', years: 1, fx: { mind: 1 } },
+      { label: '把漏刻拨回一刻，茶又热了', need: ['clock2'], years: 1, fx: { mind: 1, demon: -4 } }
     ]
   },
   {
@@ -915,7 +968,8 @@ const EVENTS = [
     options: [
       { label: '重新数一遍', years: 1, fx: { mind: 1 } },
       { label: '把松动的瓦按回去', years: 1, fx: { body: 1 } },
-      { label: '数错就再数一遍', years: 2, fx: { mind: 2, demon: -1 } }
+      { label: '数错就再数一遍', years: 2, fx: { mind: 2, demon: -1 } },
+      { label: '趴在屋脊上听隔壁茶馆说书', years: 1, fx: { demon: -1, mark: 'tale' } }
     ]
   },
 
@@ -959,103 +1013,518 @@ const EVENTS = [
     ]
   },
   // 故事线：type 为 story，need 里的经历齐了才会出现，每世每章只出现一次。line 是故事线的名字。
+  // 选项的 say 是选完后结果卡上的一段叙述；带 risk 的选项可以另写 sayWin / sayLose，按成败显示。
+  // 每条线都有一章结局：结局章不再记下本线后续章节要用的经历。
+  // —— 守骸宗：外门 → 内门 → 宗主跟前 → 被冤偷牙 → 找到把柄 → 宗主登门。偷骨被通缉的也会并进来。
   {
     id: 's_sect2', type: 'story', line: '守骸宗', layers: [1], need: ['sect'], not: ['sect2'], title: '外门的差事',
     text: '执事派你去巡山。巡的是仙人的左脚，一圈下来要三年。',
     options: [
-      { label: '认真巡完', years: 3, fx: { edge: 2, body: 1, mark: 'sect2' } },
-      { label: '找个脚趾缝睡觉', years: 2, fx: { qi: 0.3 } },
-      { label: '路过食仙教的摊子，没忍住', need: ['taste'], years: 1, fx: { body: 4, demon: 10 } }
+      { label: '认真巡完', years: 3, fx: { edge: 2, body: 1, mark: 'sect2' }, say: '你把仙人左脚的每个脚趾都巡了三遍，数清了一共五个。执事很满意，说内门就缺你这种识数的。' },
+      { label: '找个脚趾缝睡觉', years: 2, fx: { qi: 0.3 }, say: '脚趾缝里冬暖夏凉，就是偶尔有风。你睡得很好，醒来灵气涨了一截，名字却从巡山册上掉了。' },
+      { label: '路过食仙教的摊子，没忍住', need: ['taste'], years: 1, fx: { body: 4, demon: 10 }, say: '摊主切了一片脚背肉给你，说是就地取材。你吃完抹了抹嘴，才想起这正是你在巡的那只脚。' }
     ]
   },
   {
     id: 's_sect3', type: 'story', line: '守骸宗', layers: [1], need: ['sect2'], title: '宗主的茶',
     text: '宗主请你喝茶。茶叶是从仙人耳朵里采的，他说这叫耳听为实。',
     options: [
-      { label: '请教剑法', years: 2, fx: { skill: 'sword', edge: 3 } },
-      { label: '请宗主指点渡劫', years: 1, fx: { edge: 4, mind: 4 } },
-      { label: '把茶泼了，亮明食仙教的身份', need: ['cult'], years: 1, risk: { p: 0.5, win: { body: 8, demon: 10, unmark: ['sect', 'sect2'] }, lose: { life: -15 } } }
+      { label: '请教剑法', years: 2, fx: { skill: 'sword', edge: 3, mark: 'sect3' }, say: '宗主拿茶匙比划了一套剑法，茶没洒一滴。临走他拍拍你的肩：往后夜里守山的差事，就交给你了。' },
+      { label: '请宗主指点渡劫', years: 1, fx: { edge: 4, mind: 4, mark: 'sect3' }, say: '宗主说渡劫和喝茶一样，烫的时候别急着咽。你连连点头，他很受用，从此走到哪儿都带着你。' },
+      {
+        label: '把茶泼了，亮明食仙教的身份', need: ['cult'], years: 1, risk: { p: 0.5, win: { body: 8, demon: 10, unmark: ['sect', 'sect2'] }, lose: { life: -15 } },
+        sayWin: '一杯茶泼在宗主脸上，耳听为实成了眼见为实。你在满山弟子的追赶下逃回教里，教主亲手给你加了一块肉。',
+        sayLose: '宗主抹了把脸，说茶凉了。你被扔下山崖，一路滚到山脚，路上顺便数清了仙人有几根肋骨。'
+      }
     ]
   },
   {
     id: 's_thief', type: 'story', line: '守骸宗', layers: [1], need: ['thief'], title: '守骸宗的通缉',
     text: '山门口贴了你的画像，画得比你本人好看。',
     options: [
-      { label: '把骨头还回去', years: 1, fx: { demon: -8, unmark: 'thief' } },
-      { label: '躲几年风头', years: 4, fx: { body: 1 } },
-      { label: '卖给食仙教', years: 1, fx: { qi: 0.6, demon: 10, mark: 'taste', unmark: 'thief' } }
+      { label: '把骨头还回去', years: 1, fx: { demon: -8, unmark: 'thief' }, say: '你趁夜把仙骨放回山门口。守门弟子收了骨头，顺手揭走一张画像，说留着自己挂。' },
+      { label: '躲几年风头', years: 4, fx: { body: 1, mark: 'wanted' }, say: '你在山沟里躲了四年，画像越贴越多，赏格越涨越高。你开始有点骄傲，也开始好奇是谁在出这笔钱。' },
+      { label: '卖给食仙教', years: 1, fx: { qi: 0.6, demon: 10, mark: 'taste', unmark: 'thief' }, say: '食仙教给的价很公道，还送你一碗用它熬的汤。守骸宗的画像从此改了一行字：此人已入魔，见之可煮。' }
     ]
   },
+  {
+    id: 's_sect4', type: 'story', line: '守骸宗', layers: [1], need: ['sect3'], not: ['wanted'], title: '少了一颗门牙',
+    text: '仙人的门牙一夜之间少了一颗，有半间屋子那么大。执事们查了三天，查到你头上：那晚守夜的是你，离嘴最近的也是你。宗主没有露面，只派人送来一句话：清者自清。',
+    options: [
+      { label: '认下，先背着这口锅', years: 2, fx: { mind: 4, demon: 8, mark: 'wanted', unmark: ['sect', 'sect2', 'sect3'] }, say: '你被摘了腰牌，赶出山门。山门口贴出新画像，这回画得很丑，旁边写着：偷牙贼，见者扭送。' },
+      { label: '连夜下山', years: 1, fx: { body: 4, mark: 'wanted', unmark: ['sect', 'sect2', 'sect3'] }, say: '你连夜跑了。第二天全宗都说，跑得这么快，不是你还能是谁。你的画像比上一任通缉犯的大了两号。' },
+      {
+        label: '张嘴让执事们验', years: 1, risk: { p: 0.5, win: { mind: 5, demon: -6 }, lose: { life: -5, mark: 'wanted', unmark: ['sect', 'sect2', 'sect3'] } },
+        sayWin: '执事们挨个看了你的牙，确认颗颗都是你自己的。他们赔了个笑脸，转头去查下一个嘴大的人。',
+        sayLose: '执事们看了半天，说你牙缝里有骨渣。那是你早上啃的饼。你挨了一顿打，被扔下山去，腰牌留下了。'
+      }
+    ]
+  },
+  {
+    id: 's_sect5', type: 'story', line: '守骸宗', layers: [0, 1], need: ['wanted'], not: ['fang'], title: '画像上的人',
+    text: '画通缉像的画师找上门来，说他画了一辈子贼，这回越画越不对劲：最大的那个贼不是你。他从袖子里抖出另一张画：上月宗主过寿，请他去画像，宗主一笑，嘴里多了一颗不合尺寸的牙，大得合不拢。',
+    options: [
+      { label: '请画师把那颗牙画仔细些', years: 2, fx: { mind: 4, mark: 'fang' }, say: '画师凭记忆描了三天，牙根上的纹路和仙人嘴里那个豁口严丝合缝。他收笔时说：这张不收钱，挂出去再收。' },
+      { label: '请画师喝酒，套他的话', years: 1, fx: { demon: -4, mark: 'fang' }, say: '画师喝到第三壶，说宗主那颗牙夜里会发光，照得卧房跟白天一样，所以宗主睡觉从来不闭嘴。' },
+      { label: '劝画师别多管闲事', years: 1, fx: { qi: 0.3 }, say: '画师叹了口气，把画撕了，转头又给你画了张新通缉像。这回画得比你本人还好看，赏格也跟着涨了。' },
+      { label: '拿兜里的仙骨跟画上的牙比一比', need: ['thief'], years: 1, fx: { mind: 3, mark: 'fang' }, say: '仙骨的断口和画上的牙根对得上。原来你掰的那一小块，是宗主拔牙时崩下来的渣。你偷的是人家的边角料。' }
+    ]
+  },
+  {
+    id: 's_sect6', type: 'story', line: '守骸宗', layers: [1], need: ['fang'], not: ['proof'], title: '宗主的鼾声',
+    text: '你摸进宗主的卧房。宗主仰面睡着，嘴张得像山门，那颗牙在黑里发着白光，照亮了半面墙上的宗规：仙骸一丝一毫不得私取。他打一声鼾，牙跟着一震，墙上的字也跟着晃一晃。',
+    options: [
+      { label: '借着牙光把宗规拓下来', years: 2, fx: { mind: 5, mark: 'proof' }, say: '你把宗规连同宗主的嘴一起拓在纸上。拓片上，规矩和犯规的东西挨得很近，近得像一句自问自答。' },
+      {
+        label: '在他枕边留张字条', years: 1, risk: { p: 0.5, win: { edge: 4, mark: 'proof' }, lose: { life: -8 } },
+        sayWin: '你留了张字条：牙不错。第二天宗主闭着嘴主持晨课，一句话没说。弟子们交头接耳，你知道把柄已经攥在手里了。',
+        sayLose: '字条写到一半，宗主翻了个身，牙光正照在你脸上。他没醒，你却吓得撞翻了香炉，被巡夜弟子追了八里地。'
+      },
+      { label: '悄悄退出去', years: 1, fx: { body: 2, demon: 5 }, say: '你退到门口，听见宗主在梦里说：这牙真好使。你忽然觉得这口锅背得有点冤，又有点想笑。' },
+      { label: '叫教友来认这颗牙', need: ['cult'], years: 1, fx: { body: 4, demon: 6, mark: 'proof' }, say: '教友一眼认出来：这牙宗主拿到教里押过三顿流水席，后来又赎回去了。押条上还按着他的手印。' }
+    ]
+  },
+  {
+    id: 's_sect_end', type: 'story', line: '守骸宗', layers: [0, 1], need: ['wanted', 'proof'], title: '宗主登门',
+    text: '拓片还没贴出去，宗主先来了。他亲自提着礼盒，身后跟着当初查你的三个执事，每人背着一捆撕下来的画像。宗主闭着嘴笑，笑得很辛苦。他说误会，全是误会，那颗牙是替仙人保管的。',
+    options: [
+      { label: '收下赔礼，把拓片烧了', years: 1, fx: { slot: 1, mind: 6, demon: -15, unmark: ['wanted', 'proof', 'fang', 'thief'] }, say: '礼盒里是宗主压箱底的一门心法，外加一张内门长老的名帖。你当着他的面烧了拓片，他长出一口气，牙光都暗了三分。' },
+      { label: '让他当众把牙安回仙人嘴里', years: 2, fx: { edge: 10, body: 6, demon: -12, unmark: ['wanted', 'proof', 'fang', 'thief'] }, say: '宗主扛着牙爬上仙人的下巴，全宗弟子在底下看着。牙安回去那一刻，满山的风换了调子。执事们把你的画像裱起来，挂进了祠堂。' },
+      { label: '不要礼，只要他那套剑谱', years: 1, fx: { skill: 'sword', edge: 6, unmark: ['wanted', 'proof', 'fang', 'thief'] }, say: '宗主犹豫了很久，最后从怀里掏出剑谱。扉页上有一个牙印。你说没关系，你不嫌弃。' }
+    ]
+  },
+  // —— 食仙教：入教 → 护法 → 尝出豆腐味 → 抄下后厨的账 → 被罚洗碗 → 教主收买 → 掀桌。
   {
     id: 's_cult2', type: 'story', line: '食仙教', layers: [1], need: ['cult'], not: ['cult2'], title: '教主的提议',
     text: '教主说你有慧根，尤其是牙口。',
     options: [
-      { label: '当护法', years: 2, fx: { body: 6, demon: 15, mark: 'cult2' } },
-      { label: '婉拒', years: 1, fx: { mind: 1 } },
-      { label: '答应下来，转头告诉守骸宗', need: ['sect'], years: 1, fx: { edge: 3, mind: 2, mark: 'sect2', unmark: 'cult' } }
+      { label: '当护法', years: 2, fx: { body: 6, demon: 15, mark: 'cult2' }, say: '教主赐你一双银筷，说护法的职责是替教众试菜。你试了两年，牙口越来越好，心也越来越黑。' },
+      { label: '婉拒', years: 1, fx: { mind: 1 }, say: '教主没生气，只是盯着你的胳膊看了很久。你回去以后，把袖子放长了三寸。' },
+      { label: '答应下来，转头告诉守骸宗', need: ['sect'], years: 1, fx: { edge: 3, mind: 2, mark: 'sect2', unmark: 'cult' }, say: '你连夜上山告密。宗主当场提你进了内门，又叮嘱你别把教主给的银筷扔了，留着当证物。' }
     ]
   },
   {
     id: 's_cult3', type: 'story', line: '食仙教', layers: [1], need: ['cult2'], title: '分食大典',
     text: '教中大典，分食一整只仙人手掌。按资历，你分到一根小指。',
     options: [
-      { label: '吃完', years: 2, fx: { body: 12, demon: 25 } },
-      { label: '只啃指甲', years: 1, fx: { body: 5, demon: 8 } },
-      { label: '趁乱带走教典', years: 1, risk: { p: 0.5, win: { skill: 'body', qi: 0.5 }, lose: { life: -10 } } }
+      { label: '吃完', years: 2, fx: { body: 12, demon: 25, mark: 'fake' }, say: '你把小指啃得干干净净，浑身发热。只是嚼到最后一口，舌头尝出一股豆腥味，像是哪里不太对。' },
+      { label: '只啃指甲', years: 1, fx: { body: 5, demon: 8, mark: 'fake' }, say: '指甲又硬又脆，你啃着啃着，发现上面有刀刻的纹路，刻得很匀，像是厨子一刀一刀雕出来的。' },
+      {
+        label: '趁乱带走教典', years: 1, risk: { p: 0.5, win: { skill: 'body', qi: 0.5 }, lose: { life: -10 } },
+        sayWin: '你把教典塞进怀里，混在抢骨头的人堆里溜了出来。翻开一看，第一页写着：吃什么补什么。',
+        sayLose: '教典比你想的沉，你跑了三步就被护法按住。他们没把你怎么样，只是让你当了一晚上的配菜。'
+      }
     ]
   },
+  {
+    id: 's_cult4', type: 'story', line: '食仙教', layers: [1], need: ['fake'], not: ['cultbook'], title: '后厨',
+    text: '你半夜摸进教里的后厨。十几个厨子围着几大块豆腐，正往上雕指纹，雕完刷一层酱，看着跟仙人手指一模一样。墙角码着一排木箱，封条上写着：真货，发丹盟，轻放。',
+    options: [
+      { label: '把出货的账抄下来', years: 2, fx: { mind: 4, mark: 'cultbook' }, say: '账记得很细：真仙肉一斤换丹盟三颗延寿丹，归教主一人。教众吃的豆腐，按斤报的却是仙肉的价。' },
+      { label: '撬开箱子尝一口真的', years: 1, fx: { body: 8, demon: 12 }, say: '真货果然不一样，一口下去，你听见骨头里有人叹气。你舔了舔手指，决定先不声张，再观察几年。' },
+      { label: '跟老厨子学雕豆腐', years: 2, fx: { qi: 0.3, mind: 2, mark: 'cultbook' }, say: '老厨子手很稳，边雕边骂：教主说仙肉太贵，教众舌头又不灵，糊弄糊弄得了。你学会了雕指甲，也记下了他每一句话。' },
+      { label: '凭老主顾的面子去丹盟对账', need: ['credit'], years: 1, fx: { qi: 0.4, mark: 'cultbook' }, say: '丹盟掌柜一听是老主顾，把进货单全翻给你看。单子上盖着教主的私印，印泥里还掺着肉末。' }
+    ]
+  },
+  {
+    id: 's_cult5', type: 'story', line: '食仙教', layers: [1], need: ['cultbook'], not: ['mob'], title: '洗碗的护法',
+    text: '账本还没捂热，教主先动了手。他说你最近口味不对，撤了你的护法，罚你去后厨洗碗，洗满三千只为止。碗都是教众吃完豆腐仙肉剩下的，每一只碗底都舔得锃亮。',
+    options: [
+      { label: '洗碗时把账刻在碗底', years: 3, fx: { mind: 4, demon: -4, mark: 'mob', unmark: 'cult2' }, say: '你每洗一只碗，就在碗底刻一行账。三个月后，全教的人喝完汤都盯着碗底发愣，有人开始把碗翻过来吃饭。' },
+      { label: '往豆腐里掺回一丝真肉', years: 2, fx: { body: 4, demon: 6, mark: 'mob', unmark: 'cult2' }, say: '你往每块豆腐里塞了一丝真货。教众吃出了区别，饭桌上开始小声议论：今天的仙肉，怎么比往常像仙肉？' },
+      { label: '老实洗完三千只', years: 3, fx: { body: 5, demon: -8, unmark: 'cult2' }, say: '你洗完三千只碗，手泡得发白，心却静了。教主很满意，说你这人能处。你觉得他说得对，你确实挺能忍。' }
+    ]
+  },
+  {
+    id: 's_cult6', type: 'story', line: '食仙教', layers: [1], need: ['mob'], not: ['revolt'], title: '教主的家宴',
+    text: '教主听说了碗底的事，请你去吃家宴。席上只有你们两个，一盘真仙肉切得薄如蝉翼。教主亲自给你夹菜，说教里缺个懂账的长老，往后有肉同吃、有账同记，碗底就别再刻了。',
+    options: [
+      { label: '吃了，从此闭嘴', years: 2, fx: { body: 10, demon: 18, unmark: 'mob' }, say: '肉是真好吃。你吃完抹抹嘴，第二天碗底的字就被磨平了。教众又低头喝汤，只是喝得没以前香了。' },
+      { label: '假意答应，顺手锯了桌腿', years: 1, fx: { edge: 3, mind: 4, mark: 'revolt' }, say: '你一边夸肉嫩，一边用袖里的薄刃把桌腿锯得只剩一层皮。教主拍着桌子大笑，桌子晃了晃，没塌，你也跟着笑。' },
+      {
+        label: '把席上的肉端出去分给教众', years: 1, risk: { p: 0.5, win: { body: 4, mark: 'revolt' }, lose: { life: -10 } },
+        sayWin: '你说带回去孝敬师父，端着一盘真肉穿过整座教坛，见者一片。那晚全教的人都失眠了，因为头一回吃到真的。',
+        sayLose: '你刚把盘子端起来，教主的笑就收了。护法们把你按在桌上，你当了半个时辰的砧板，桌腿倒是没断。'
+      }
+    ]
+  },
+  {
+    id: 's_cult_end', type: 'story', line: '食仙教', layers: [1], need: ['revolt'], title: '掀桌',
+    text: '分食大典又到了。教主站在主桌后面，举刀要切今年的仙人脚掌。台下三百个教徒捧着碗，碗底朝天，刻满了账。你走上前，把手搭在桌沿上。所有人都在等你一句话。',
+    options: [
+      { label: '掀了', years: 1, fx: { skill: 'body', body: 10, demon: -10, unmark: ['cult', 'revolt'] }, say: '桌子翻过去，豆腐脚掌摔成八瓣，箱子里的真货滚了一地。教主坐在地上，被三百只碗围着。教众把教典塞进你怀里，说往后按碗底的规矩办。' },
+      { label: '掀了，再坐上主位', years: 2, fx: { slot: 1, body: 12, demon: 20 }, say: '你掀完桌子，扶正，坐了上去。教众给你磕头，叫你新教主。你宣布第一条教规：仙肉按人头分，豆腐另算。' },
+      { label: '掀了，把教主交给守骸宗', years: 1, fx: { edge: 8, mind: 6, demon: -20, chance: 2, unmark: ['cult', 'cult2', 'revolt'] }, say: '守骸宗派了十个执事来押人。教主被押下山时还在喊冤，说豆腐也是仙人身上长的豆子。宗主送来一面锦旗：口下留山。' }
+    ]
+  },
+  // —— 丹盟：老主顾被杀熟、黑名单抱团，都并进“赊不死”；被砸、丹盟亏空，最后大掌柜登门借钱。
   {
     id: 's_black', type: 'story', line: '丹盟', layers: [0, 1], need: ['deadbeat'], title: '丹盟的黑名单',
     text: '丹盟每间铺子门口都贴了你的名字，下面一行小字：此人与狗不得赊账。',
     options: [
-      { label: '认栽，连本带利还清', years: 1, cost: { qi: 0.5 }, fx: { mark: 'credit', unmark: 'deadbeat' } },
-      { label: '蒙面去买', years: 1, risk: { p: 0.5, win: { qi: 0.4 }, lose: { demon: 6 } } },
-      { label: '让二掌柜徒弟把名字划了', need: ['manager'], years: 1, fx: { demon: -5, unmark: 'deadbeat' } }
+      { label: '认栽，连本带利还清', years: 1, cost: { qi: 0.5 }, fx: { mark: 'credit', unmark: 'deadbeat' }, say: '掌柜收了钱，亲手把你的名字从门口揭下来，又在背面添了一行：老主顾，可赊。' },
+      {
+        label: '蒙面去买', years: 1, risk: { p: 0.5, win: { qi: 0.4 }, lose: { demon: 6 } },
+        sayWin: '你蒙着脸进门，掌柜热情招呼，还多送了一颗。出门时你听见他跟伙计说：黑名单上那个，今天又来了。',
+        sayLose: '掌柜一眼认出了你的鞋。他什么也没说，只是把门口的告示往高处挪了一寸，方便你看清。'
+      },
+      { label: '让二掌柜徒弟把名字划了', need: ['manager'], years: 1, fx: { demon: -5, unmark: 'deadbeat' }, say: '徒弟拿朱笔在你名字上画了个圈，说这就算划掉了。全城的铺子连夜重贴告示，你的名字成了一个红圈。' }
     ]
   },
   {
     id: 's_pill', type: 'story', line: '丹盟', layers: [0, 1], need: ['credit'], title: '老主顾的请柬',
     text: '掌柜请老主顾试吃新炉的丹。请柬上写着：这回是真的管饭。',
     options: [
-      { label: '吃', years: 1, risk: { p: 0.7, win: { qi: 0.6, life: 5 }, lose: { life: -4 } } },
-      { label: '讨一张丹方', years: 1, cost: { qi: 0.4 }, fx: { skill: 'pill' } },
-      { label: '让徒弟带你走后门', need: ['manager'], years: 1, fx: { skill: 'pill', qi: 0.4 } }
+      {
+        label: '吃', years: 1, risk: { p: 0.7, win: { qi: 0.6, life: 5 }, lose: { life: -4 } },
+        sayWin: '新丹入口即化，你多活了五年。掌柜在本子上记了一笔：老主顾，耐吃。',
+        sayLose: '新丹入口即化，化完你就倒了。掌柜把你扶起来，说这炉还在改，下回再来，照样管饭。'
+      },
+      { label: '讨一张丹方', years: 1, cost: { qi: 0.4 }, fx: { skill: 'pill' }, say: '掌柜给了你一张丹方，又收了你一笔抄写费。他说老主顾嘛，讲究个有来有往。' },
+      { label: '让徒弟带你走后门', need: ['manager'], years: 1, fx: { skill: 'pill', qi: 0.4 }, say: '徒弟领你从后厨进去，顺手往你怀里揣了张丹方。掌柜在前门等了半天，请柬白写了。' }
     ]
   },
+  {
+    id: 's_dan_kill', type: 'story', line: '丹盟', layers: [0, 1, 2], need: ['credit'], not: ['rival'], title: '老主顾价',
+    text: '你在丹盟柜台前站了一刻钟，看见新客买延寿丹打九折，你的老主顾价却比他贵三成。掌柜笑得很诚恳：老主顾信得过我们，我们也信得过老主顾，信得过的东西，就值这个价。',
+    options: [
+      { label: '认了，照价买', years: 1, cost: { qi: 0.4 }, fx: { life: 10, mind: 2 }, say: '你付了钱，掌柜在你名字后面添了颗星，说这是至尊老主顾。下回再来，还要再贵一成。' },
+      { label: '去对面黑名单开的铺子看看', years: 1, fx: { qi: 0.3, mark: 'rival', unmark: 'credit' }, say: '对面铺子叫“赊不死”，掌柜是你在黑名单上见过的名字。他说老主顾在丹盟受了委屈，到这边入一股，往后自己定价。你入了。' },
+      { label: '当场撕了老主顾的名帖', years: 1, fx: { edge: 3, demon: -5, unmark: 'credit' }, say: '名帖撕成两半，掌柜心疼得直哆嗦。不是心疼你，是心疼那张帖子的工本费。你走出门，浑身轻了三成。' }
+    ]
+  },
+  {
+    id: 's_dan_black', type: 'story', line: '丹盟', layers: [0, 1, 2], need: ['deadbeat'], not: ['rival'], title: '黑名单互助会',
+    text: '茶馆二楼坐满了人，个个都在丹盟的黑名单上。会长敲着桌子说：咱们三百号人，丹盟一颗都不肯赊，那就自己开一家。铺名都想好了，叫“赊不死”。就缺个能扛事的东家，大家看了一圈，都看向你。',
+    options: [
+      { label: '当东家', years: 2, fx: { edge: 2, mind: 3, mark: 'rival' }, say: '你在门口挂起招牌，下面一行小字：丹盟的人与狗，概不赊账。开张头一天，排队的人从街这头一直排到丹盟门口。' },
+      { label: '只入一股，不出面', years: 1, cost: { qi: 0.3 }, fx: { chance: 1, mark: 'rival' }, say: '你出了一笔灵石，换来一张股契。契上写着：盈亏自负，丹盟来砸，大家一起扛。' },
+      { label: '去丹盟告密', years: 1, fx: { qi: 0.5, demon: 10, unmark: 'deadbeat' }, say: '丹盟赏了你一笔钱，把你的名字从黑名单挪到了“线人”那一栏。茶馆二楼从此空了，你路过时总觉得楼上有人在看你。' }
+    ]
+  },
+  {
+    id: 's_dan4', type: 'story', line: '丹盟', layers: [0, 1, 2], need: ['rival'], not: ['hoard'], title: '算盘砸门',
+    text: '赊不死开张第三年，丹盟来了二十个打手，每人一把铁算盘，见柜台就砸，见丹炉就推。领头的账房边砸边念：砸一张柜台十两，推一座丹炉三十两，回头一并记在你们账上。',
+    options: [
+      { label: '赔着笑脸让他们砸', years: 1, fx: { mind: 3, demon: 8, mark: 'hoard' }, say: '他们砸到最后一块地砖，砖底下露出一口大缸，满满一缸灵石。黑名单上的人从不借钱给别人，攒了一辈子。账房愣住，算盘珠子掉了一地。' },
+      {
+        label: '抄起丹炉砸回去', years: 1, fx: { mark: 'hoard' }, risk: { p: 0.5, win: { edge: 5 }, lose: { life: -8 } },
+        sayWin: '你一炉子扣在账房头上，二十个打手扛着他跑了。收拾残局时，你掀开碎地砖，底下埋着一缸灵石，是会员们攒了几百年的私房。',
+        sayLose: '你被二十把算盘按在地上算了一遍，伤得不轻。打手们撬地砖找值钱的，撬出一缸灵石，没搬动，骂骂咧咧地走了。'
+      },
+      { label: '关门歇业', years: 2, fx: { body: 2, life: 4, unmark: 'rival' }, say: '你锁了门，回家养了两年鸡。赊不死的招牌被雨泡烂了，丹盟门口的告示上又多了几个名字。' }
+    ]
+  },
+  {
+    id: 's_dan5', type: 'story', line: '丹盟', layers: [0, 1, 2], need: ['hoard'], not: ['ious'], title: '丹盟的窟窿',
+    text: '街上都在传：丹盟把钱借给了食仙教和守骸宗。食仙教把上门收账的伙计吃了，守骸宗说仙人还没死透，押的骨头不算数。丹盟的炼丹师三个月没拿到工钱，正蹲在赊不死门口晒太阳。',
+    options: [
+      { label: '把炼丹师都请进铺子', years: 2, fx: { qi: 0.4, mind: 3, mark: 'ious' }, say: '你按丹盟的两倍开工钱。炼丹师们扛着丹炉过街，丹盟门口只剩一个掌柜，和一块写着“老主顾”的牌子。' },
+      { label: '在鬼市收丹盟的旧欠条', years: 1, cost: { qi: 0.4 }, fx: { mind: 5, mark: 'ious' }, say: '食仙教和守骸宗打给丹盟的欠条在鬼市论斤卖，你全收了。如今他们欠你的，丹盟欠他们的，绕了一圈，也都欠着你。' },
+      { label: '搬把椅子看热闹', years: 1, fx: { body: 2, demon: -6 }, say: '你坐在门口嗑了三年瓜子。丹盟的窟窿越来越大，你脚边的瓜子皮越堆越高，两样东西都没人去扫。' }
+    ]
+  },
+  {
+    id: 's_dan_end', type: 'story', line: '丹盟', layers: [0, 1, 2], need: ['ious'], title: '大掌柜来借钱',
+    text: '百炼丹盟的大掌柜亲自登门，带着一把算盘、两个打手和一张写好的欠条，欠款人一栏写着：百炼丹盟。他在门口站了很久，看着你招牌下那行小字，最后把打手打发走了，自己进来作揖。',
+    options: [
+      { label: '借，利钱照丹盟的规矩算', years: 1, fx: { qi: 0.6, chance: 3, mark: 'lender', unmark: ['deadbeat', 'rival', 'hoard', 'ious'] }, say: '你拨着他带来的算盘，一笔一笔算利滚利。大掌柜越听脸越白，签字时手直抖。你送他出门：先借后还，童叟无欺。' },
+      { label: '不借，把他写上黑名单', years: 1, fx: { edge: 4, mind: 8, demon: -15, unmark: ['deadbeat', 'rival', 'hoard', 'ious'] }, say: '你提笔在门口告示上添了一行：百炼丹盟大掌柜，此人与狗不得赊账。大掌柜盯着那行字看了半晌，说字写得不错。' },
+      { label: '借，拿他的镇店丹方作押', years: 1, fx: { skill: 'pill', slot: 1, mark: 'lender', unmark: ['deadbeat', 'rival', 'hoard', 'ious'] }, say: '大掌柜交出镇店丹方时，眼泪掉进了砚台。你收好丹方，答应他还清以后原样奉还，前提是他还得清。' }
+    ]
+  },
+  // —— 字：养字 → 字生字 → 一屋子字要写书 → 书稿被书院抄走 → 字狱越狱 → 书院来求书。
   {
     id: 's_word2', type: 'story', line: '字', layers: [0, 1], need: ['petword'], not: ['library'], title: '字生了字',
     text: '你养的那个字半夜生了一窝偏旁，满屋子乱爬。',
     options: [
-      { label: '教它们排队', years: 2, fx: { mind: 3, mark: 'library' } },
-      { label: '连窝卖给书院', years: 1, fx: { qi: 0.5, mark: 'academy', unmark: 'petword' } },
-      { label: '放生', years: 1, fx: { demon: -8, unmark: 'petword' } }
+      { label: '教它们排队', years: 2, fx: { mind: 3, mark: 'library' }, say: '你教它们按笔画排队，排到第二年，它们自己学会了按意思排。屋里从此安静了，只偶尔有个“吵”字插队。' },
+      { label: '连窝卖给书院', years: 1, fx: { qi: 0.5, mark: 'academy', unmark: 'petword' }, say: '书院的先生拎着笼子来，数了数偏旁，按斤给了钱。临走他说，你这字养得好，膘肥。' },
+      { label: '放生', years: 1, fx: { demon: -8, unmark: 'petword' }, say: '你把它们放在河边。字们排成一行游走了，远远看去，像一句没说完的话。' }
     ]
   },
   {
     id: 's_word3', type: 'story', line: '字', layers: [0, 1], need: ['library'], title: '一屋子字',
     text: '字们自己凑成了一篇谁也没见过的功法，有几处语病。',
     options: [
-      { label: '照着抄下来', years: 2, fx: { skill: 'talisman', mind: 2 } },
-      { label: '让它们自己念给你听', years: 3, fx: { mind: 6 } },
-      { label: '请书院的先生来校对', need: ['academy'], years: 1, fx: { skill: 'talisman', mind: 4 } }
+      { label: '照着抄下来', years: 2, fx: { skill: 'talisman', mind: 2 }, say: '你连语病一起抄了下来。练起来居然没走火，只是每回运功，都忍不住想改个错字。' },
+      { label: '让它们自己念给你听', years: 3, fx: { mind: 6, mark: 'draft' }, say: '字们轮流念了三年，越念越顺，念到后来不肯停了，说要写一部真正的书。' },
+      { label: '请书院的先生来校对', need: ['academy'], years: 1, fx: { skill: 'talisman', mind: 4, mark: 'draft' }, say: '先生改完语病，眼睛发亮，说这些字是写书的好材料。他走的时候，多看了你的屋子两眼。' }
     ]
   },
   {
     id: 's_academy', type: 'story', line: '字', layers: [0, 1], need: ['petword'], not: ['academy'], title: '缄默书院的搜查',
     text: '书院的人挨家挨户搜字。你养的那个字钻进了你的领口。',
     options: [
-      { label: '把字含在嘴里', years: 1, risk: { p: 0.6, win: { mind: 2 }, lose: { demon: 6, unmark: ['petword', 'library'] } } },
-      { label: '交出去', years: 1, fx: { qi: 0.3, mark: 'academy', unmark: ['petword', 'library'] } },
-      { label: '说它是你自己写的', years: 1, risk: { p: 0.4, win: { mind: 4, mark: 'academy' }, lose: { life: -6 } } }
+      {
+        label: '把字含在嘴里', years: 1, risk: { p: 0.6, win: { mind: 2 }, lose: { demon: 6, unmark: ['petword', 'library'] } },
+        sayWin: '搜查的人让你张嘴，你说了一声“啊”。他们走了，那个字在你舌头底下笑出了声。',
+        sayLose: '你憋了半天，一个喷嚏把它喷了出来，它的偏旁们也全跟着跑了出来。书院的人一网打尽，还谢你帮忙。'
+      },
+      { label: '交出去', years: 1, fx: { qi: 0.3, mark: 'academy', unmark: ['petword', 'library'] }, say: '书院的人把字装进信封，在封口按了个手印，按的是你的手。他们说念你主动上交，记你一份人情。' },
+      {
+        label: '说它是你自己写的', years: 1, risk: { p: 0.4, win: { mind: 4, mark: 'academy' }, lose: { life: -6 } },
+        sayWin: '先生让你当场再写一个。你写的字丑得像在逃跑，他信了，记下你的名字，说书院欠你个人情。',
+        sayLose: '先生让你当场再写一个。你写的字刚落纸就跑了，他气得拿戒尺打你手心，一直打到天黑。'
+      }
     ]
   },
+  {
+    id: 's_word4', type: 'story', line: '字', layers: [0, 1], need: ['draft'], not: ['manuscript'], title: '书名',
+    text: '字们决定写一部书，写这世上的事：骸山怎么成的山，枯海怎么干的海。可开头就吵翻了天。“书”字不肯进书名，嫌俗；“死”字非要排第一个，说它见得最多；“我”字躲在墙角，说还没想好自己算不算一个字。',
+    options: [
+      { label: '给它们当编辑', years: 3, fx: { mind: 5, mark: 'manuscript' }, say: '你定下规矩：吵架的罚抄自己一百遍。三年后书稿摞到了房梁，“死”字排进了第三章，“我”字终于站了出来，站在书名最后。' },
+      { label: '去集市给它们招新字', years: 2, fx: { body: 2, chance: 2, mark: 'manuscript' }, say: '你在集市贴了告示：招字，管饭。来了一群从说书摊上逃出来的字，满嘴江湖话。书稿厚了一倍，多了很多“且听下回分解”。' },
+      { label: '劝它们别写了', years: 1, fx: { demon: -6, unmark: 'draft' }, say: '你说写书伤神。字们沉默了很久，各自回到墙上，排成一句“好吧”。那句话在墙上挂了很多年。' },
+      { label: '请书院的先生作序', need: ['academy'], years: 1, fx: { mind: 4, mark: 'manuscript' }, say: '先生写了一篇很长的序，夸得天花乱坠。字们很高兴，没注意先生每夸一句，就往袖子里抄一页。' }
+    ]
+  },
+  {
+    id: 's_word5', type: 'story', line: '字', layers: [0, 1], need: ['manuscript'], not: ['seized'], title: '书院抄家',
+    text: '缄默书院来了三十个先生，抬着铁笼，说接到举报，此处私藏逃字、聚众著书。他们把书稿一页页撕下来，字们被抖进笼子，挤成一团乱码。领头的院正说：字是天下的字，书院替天下收着。',
+    options: [
+      { label: '眼看着它们被收走', years: 1, fx: { mind: 2, demon: 10, mark: 'seized' }, say: '笼子抬走时，“我”字从栏杆缝里伸出一笔，朝你挥了挥。屋里空了，墙上只剩一个落下的逗号，你把它供在了桌上。' },
+      { label: '把最后一页塞进嘴里', years: 1, fx: { mind: 4, mark: 'seized' }, say: '先生们没搜你的嘴。他们走后，你吐出最后一页，纸上只剩三个字：等我们。' },
+      {
+        label: '跟院正讲道理', years: 1, fx: { mark: 'seized' }, risk: { p: 0.45, win: { mind: 6 }, lose: { life: -6 } },
+        sayWin: '你问院正，书院把字收了，字就不写书了吗？院正被问住了，临走留下一张收条：暂押，候审。',
+        sayLose: '你讲到第三条道理，院正拿戒尺封了你的嘴。他说书院只收字，不收道理，又罚你抄了六年《缄默经》。'
+      }
+    ]
+  },
+  {
+    id: 's_word6', type: 'story', line: '字', layers: [0, 1], need: ['seized'], not: ['jailbreak'], title: '字狱',
+    text: '书院的字狱在地底下，一本本大字典就是一间间牢房，被抓的字钉在释义里动弹不得。你去探监，发现自家的字没闲着：它们在字典里悄悄挪位置，已经把“书院”的释义改成了“一间关字的屋子”。',
+    options: [
+      { label: '帮它们把整本字典改完', years: 3, fx: { mind: 6, mark: 'jailbreak' }, say: '你每回探监都带进去一支笔。三年后整本字典的释义都换了。看守翻开查“看守”，查到的是“睡着的人”，于是他睡着了。' },
+      {
+        label: '送一把剪刀进去', years: 1, risk: { p: 0.55, win: { edge: 4, mark: 'jailbreak' }, lose: { life: -4, demon: 8 } },
+        sayWin: '字们剪开释义，顺着页边溜了出来，一个接一个钻进你的袖子。看守只听见一阵翻书声，以为是风。',
+        sayLose: '剪刀被看守搜了出来。你被记过一次，罚在门口站岗，天天听着字们在地底下骂人。'
+      },
+      { label: '在字典扉页写一句“出来吧”', years: 2, fx: { mind: 3, demon: -5, mark: 'jailbreak' }, say: '那句话一落笔，所有的字都认出了你的笔迹。那夜字狱里的字典全空了，第二天先生们上课，发现课本也是空的。' }
+    ]
+  },
+  {
+    id: 's_word_end', type: 'story', line: '字', layers: [0, 1], need: ['jailbreak'], title: '书院来求书',
+    text: '字们在你屋里把书写完了，厚厚一部，书名叫《还有》。缄默书院那边，藏书楼十万卷书一夜之间全成了白纸，字都跑来投奔这部书。院正带着全院先生站在你门口，求你借几个字回去，好歹把校训写上。',
+    options: [
+      { label: '借，按字收租', years: 1, fx: { qi: 0.6, mind: 4, chance: 3, unmark: ['seized', 'jailbreak'] }, say: '你立了个规矩：常用字一年一两，生僻字半价，“之乎者也”白送。先生们算了半天，连校训都租不起，只好先租了个“静”字。' },
+      { label: '请院正来当编辑', years: 2, fx: { skill: 'talisman', mind: 10 }, say: '院正坐在你屋里改了两年错字，改着改着哭了，说这辈子头一回看见字自己愿意待在纸上。他回去后，把字狱改成了阅览室。' },
+      { label: '把书印出来，人手一本', years: 2, fx: { slot: 1, mind: 6, demon: -10 }, say: '书印了一万本，字们轮流住进每一本里。书院门口排起长队，先生们捧着书，像捧着一窝刚孵出来的鸟。' }
+    ]
+  },
+  // —— 黄狗：摸狗 → 收留 → 狗啃仙骨 → 狗不吃饭、只望骸山 → 仙人手上的狗链 → 鸡犬升天。
   {
     id: 's_dog', type: 'story', line: '黄狗', layers: [0, 1], need: ['dog'], not: ['dog2'], title: '跟上来的黄狗',
     text: '村口那条黄狗不知什么时候跟上了你，走一步叹一口气。',
     options: [
-      { label: '收留它', years: 1, fx: { demon: -10, mark: 'dog2' } },
-      { label: '给它指回村的路', years: 1, fx: { mind: 1, unmark: 'dog' } },
-      { label: '问它到底叹什么', years: 2, fx: { mind: 2 } }
+      { label: '收留它', years: 1, fx: { demon: -10, mark: 'dog2' }, say: '你给它起名叫阿黄，它没理你。但那天晚上它睡在你门口，叹气声小了一点。' },
+      { label: '给它指回村的路', years: 1, fx: { mind: 1, unmark: 'dog' }, say: '你给它指了路。它看看你的手指，又看看你，叹了一口最长的气，转身走了。' },
+      { label: '问它到底叹什么', years: 2, fx: { mind: 2 }, say: '它没回答，只是望着骸山的方向看了两年。你也跟着看，看出那山像一个人侧身躺着。' }
+    ]
+  },
+  {
+    id: 's_dog2', type: 'story', line: '黄狗', layers: [0, 1], need: ['dog2'], not: ['dogbone'], title: '狗啃了仙骨',
+    text: '阿黄出门溜了三天，叼回来一根骨头，比它自己还长。守骸宗的执事追到门口，说这是仙人的尾椎骨，按宗规要赔。阿黄把骨头护在肚子底下，头一回没叹气，冲执事龇了龇牙。',
+    options: [
+      { label: '照价赔', years: 1, cost: { qi: 0.4 }, fx: { demon: -4, mark: 'dogbone' }, say: '你赔了一大笔灵石。执事要拿走骨头，阿黄死活不松口。执事说算了，被狗啃过的仙骨，宗里也没人肯供了。' },
+      {
+        label: '说这狗不是你的', years: 1, fx: { mark: 'dogbone' }, risk: { p: 0.5, win: { qi: 0.3 }, lose: { life: -5, demon: 6 } },
+        sayWin: '执事转头去问阿黄。阿黄看看他，叹了口气，叼着骨头走到你身后躺下。执事说狗都不认你，你又何必认狗，就走了。',
+        sayLose: '你话音刚落，阿黄就叼着骨头钻进你怀里。执事气得给你记了一笔，说包庇狗也算包庇。'
+      },
+      { label: '让阿黄自己去跟执事谈', years: 2, fx: { mind: 3, mark: 'dogbone' }, say: '阿黄跟着执事上了山，两年后自己回来了，骨头没还，执事也没再来。听说宗主见了它一面，就下了令：此狗所到之处，骨头随便啃。' }
+    ]
+  },
+  {
+    id: 's_dog3', type: 'story', line: '黄狗', layers: [0, 1], need: ['dogbone'], not: ['dogsky'], title: '狗不吃饭',
+    text: '阿黄跟了你这些年，一口饭也没吃过。它只在天亮前舔一口草尖上的露水，然后蹲在门口望着骸山，一望就是一整天。丹盟的兽医路过，说它病得不轻；算命先生路过，说它骨相清奇，像是吃过仙丹。',
+    options: [
+      { label: '买丹盟的药', years: 1, cost: { qi: 0.3 }, fx: { demon: 3, mark: 'dogsky' }, say: '药喂下去，阿黄打了个嗝，嗝出一缕金光。兽医当场改口，说这狗没病，有病的是他，把药钱退了一半。' },
+      { label: '陪它一起望', years: 3, fx: { mind: 6, demon: -6, mark: 'dogsky' }, say: '你陪它望了三年，看出了门道：骸山像一个人侧躺着，右手伸向天上，像要拉谁一把。阿黄每回看到那只手，就叹一口气。' },
+      {
+        label: '请算命先生给它算一卦', years: 1, risk: { p: 0.5, win: { chance: 3, mark: 'dogsky' }, lose: { demon: 6 } },
+        sayWin: '先生摸了摸狗骨，脸色发白，说这卦他算不了，此狗的命比他的大。他卦金都没收，收拾摊子连夜搬了家。',
+        sayLose: '阿黄一口咬住了先生的签筒。先生说狗咬签是大凶，劝你早点把它送走。阿黄看了他一眼，他就不说了。'
+      }
+    ]
+  },
+  {
+    id: 's_dog4', type: 'story', line: '黄狗', layers: [1], need: ['dogsky'], not: ['leash'], title: '仙人指上的狗链',
+    text: '阿黄领你走上骸山，一直走到仙人伸向天上的那只右手。手指上缠着一根锈透了的链子，另一头空着，链环上刻着两个小篆。阿黄蹲下来，把脖子伸到空着的那一头，伸了很久，然后回头看你。',
+    options: [
+      { label: '把链子解下来给它戴上', years: 2, fx: { body: 4, demon: -8, mark: 'leash' }, say: '链扣合上的一刻，整座骸山轻轻震了一下，像一个人在梦里翻了个身。阿黄没有叹气，摇了摇尾巴。你头一回见它摇尾巴。' },
+      { label: '念出链环上的字', years: 1, fx: { mind: 5, mark: 'leash' }, say: '你认出那两个字：阿黄。你给它起名那天它没理你，原来它早就叫这个名字，只是很久没人这么叫过了。' },
+      { label: '劝它别想过去的事', years: 1, fx: { mind: 2, demon: 4 }, say: '阿黄听完，把头埋进爪子里，叹了这辈子最长的一口气。你们下山时，链子在身后叮当作响，像在叫它。' }
+    ]
+  },
+  {
+    id: 's_dog_end', type: 'story', line: '黄狗', layers: [0, 1, 2], need: ['leash'], title: '鸡犬升天',
+    text: '那夜阿黄开口说话了，声音很老。它说当年主人得道飞升，一人得道，鸡犬升天，鸡和它都上去了，主人自己卡在天门外，掉下来摔成了骸山。它下来陪了他一万年，看人在他身上种地、开宗、摆流水席。它说它累了，想找个人替它记着主人。',
+    options: [
+      { label: '替它的主人立一块碑', years: 3, fx: { mind: 10, demon: -20, chance: 2 }, say: '你在仙人掌心立了块碑：此处躺着一个差半步的人。守骸宗、食仙教、丹盟的人路过，都停下来看了一会儿。那天骸山上没人动筷子。' },
+      { label: '跟它学那半步怎么走', years: 2, fx: { slot: 1, mind: 6 }, say: '阿黄教你走了半步。就半步，你走了两年。走完回头，你还站在原地，丹田里却多出一间屋子，屋里有盏灯，灯下趴着一条狗。' },
+      { label: '挠挠它的下巴', years: 1, fx: { life: 20, demon: -10, chance: 3 }, say: '阿黄眯起眼，喉咙里咕噜一声，一万年来头一回没叹气。第二天你醒来，门口放着一根仙骨，上面有它的牙印，算是谢礼。' },
+      { label: '带它回守骸宗认亲', need: ['sect'], years: 1, fx: { edge: 6, mind: 4, demon: -6 }, say: '宗主一见阿黄，扑通跪下，喊了声祖师的狗。全宗弟子跟着跪了一地，阿黄绕着他们走了一圈，挑了个最矮的，在他鞋上趴下了。' }
+    ]
+  },
+  // —— 旱龙舟（枯海）：捡到桨 → 入队 → 盐上练船 → 船被盐商锯断 → 去沉船借鼓 → 竞渡。
+  {
+    id: 's_race1', type: 'story', line: '旱龙舟', layers: [2], need: ['oar'], not: ['crew'], title: '凑不齐的船队',
+    text: '枯海的盐民每年端午还赛龙舟，在盐上划。卖灯阿婆的孙子组了一条船：一个鼓手，一个瞎了眼的舵手，一只据说当年会游水的老龟，还缺一个桨手。他看见你手里的桨，眼睛亮了：道友，桨都带了。',
+    options: [
+      { label: '入队', years: 1, fx: { body: 3, mark: 'crew' }, say: '你在队旗上按了手印。队旗是一块床单，上面画着一条龙，画得像根油条。孙子说不要紧，在盐上划船，样子不重要。' },
+      { label: '当教头', years: 1, fx: { mind: 3, mark: 'crew' }, say: '你站在船头讲了半天划桨的要领。老龟听完点点头，慢慢爬回船尾。鼓手翻译：讲得好，但你也得划。' },
+      { label: '劝他们别赛了', years: 1, fx: { demon: -3, unmark: 'oar' }, say: '孙子低着头听完，把你的桨要了回去，说桨是他爹的。那天夜里，你听见盐滩上有人一个人在划，划了很久。' }
+    ]
+  },
+  {
+    id: 's_race2', type: 'story', line: '旱龙舟', layers: [2], need: ['crew'], not: ['drill'], title: '盐上练桨',
+    text: '盐比水硬，一桨下去，溅起来的是白花花的盐粒，打在脸上生疼。一个月磨秃一支桨，三个月磨掉一层皮。舵手说海还在的时候，划一下能滑出去十丈；如今划一下，船挪半寸，地上多一道沟。',
+    options: [
+      { label: '天天划，划到盐化成卤', years: 3, fx: { body: 8, mark: 'drill' }, say: '你划了三年，汗把船底的盐泡成了卤，船终于滑起来了。盐民们说，这是枯海三千年来头一回有船在滑，虽然只滑了一丈。' },
+      { label: '给船底抹油', years: 2, fx: { qi: 0.3, mind: 3, mark: 'drill' }, say: '你试了猪油、灯油、丹盟的润肠丹，最后发现鱼油最好使。可枯海哪来的鱼？阿婆从箱底翻出一罐，说是她出嫁时的嫁妆。' },
+      { label: '躺在船里晒盐', years: 2, fx: { life: 3, demon: -6 }, say: '你在船里躺了两年，晒出一身盐霜，活像一条咸鱼。孙子没说什么，只是从此划船都绕开你那一侧。' }
+    ]
+  },
+  {
+    id: 's_race3', type: 'story', line: '旱龙舟', layers: [2], need: ['drill'], not: ['sawn'], title: '盐商的船',
+    text: '赛前一夜，盐商的船队开进了海床。他们的龙舟描金镶玉，船底装着轮子，十二个桨手都是重金请来的金丹修士。盐商站在船头，看了一眼你们的油条龙旗，笑了。第二天一早，你们的船被锯成了两截，锯口很齐。',
+    options: [
+      { label: '把两截绑起来', years: 2, fx: { body: 4, mark: 'sawn' }, say: '你用麻绳、铁丝和阿婆的裹脚布把船绑了回去。船看着更像油条了，还是拧过的那种。盐商路过，笑得从船头掉了下去。' },
+      { label: '锯成两截就划两条', years: 1, fx: { mind: 4, mark: 'sawn' }, say: '一条船变成两条，你带老龟一条，孙子带舵手一条。规矩里没说不行，裁判翻了半天章程，只好在名册上多添一行。' },
+      {
+        label: '钻到盐商船底看看', years: 1, fx: { mark: 'sawn' }, risk: { p: 0.5, win: { edge: 2, mind: 5 }, lose: { life: -6 } },
+        sayWin: '你钻到盐商船底，看见一排轮子，轮轴上刻着丹盟的记号。你什么也没碰，只记下了轮子有多宽，盐地上哪几段是软的。',
+        sayLose: '你刚钻到船底就被金丹桨手拖了出来，一顿好打。临走他们在你脸上写了个“慢”字，说给你们队讨个彩头。'
+      }
+    ]
+  },
+  {
+    id: 's_race4', type: 'story', line: '旱龙舟', layers: [2], need: ['sawn'], not: ['drum'], title: '借鼓',
+    text: '鼓手的鼓也被人戳破了。舵手说，海床北边有条沉了三千年的龙舟，桅杆还立着，风一吹就像有人在击鼓，那鼓从来没停过。他说那船上的人赛了一辈子龙舟，最后一场没赛完，海就干了。',
+    options: [
+      { label: '去沉船上借', years: 2, fx: { mind: 4, demon: 4, mark: 'drum' }, say: '你在桅杆底下鞠了三个躬，说明来意。风停了一会儿，盐壳里浮出一面鼓，鼓皮上还留着手印。你扛着鼓往回走，鼓声一路跟在身后。' },
+      { label: '拿自己的肚皮当鼓', years: 1, fx: { body: 6, mark: 'drum' }, say: '鼓手试着在你肚皮上敲了两下，声音闷得像打雷前的云。他说能用，就是你得憋着气，一口气憋一整场。' },
+      { label: '找盐商买一面', years: 1, cost: { qi: 0.4 }, fx: { mind: 1, mark: 'drum' }, say: '盐商卖给你一面鼓，价钱是市价的三倍。敲起来很响，响的是鼓皮上刻的四个字：盐商赞助。' }
+    ]
+  },
+  {
+    id: 's_race_end', type: 'story', line: '旱龙舟', layers: [2], need: ['drum'], title: '竞渡',
+    text: '端午那天，枯海上站满了人。盐商的金龙舟一马当先，你们那条拧成麻花的油条船落在最后。鼓声一响，北边沉船的桅杆跟着响了，三千年前的桨手从盐里坐起来，一个个抓起了桨。海床底下，有什么东西翻了个身。',
+    options: [
+      { label: '划', years: 2, fx: { body: 12, edge: 6, mark: 'champion' }, say: '盐地下涌出卤水，越涌越多，你们的船浮了起来，像枯海记起了自己曾经是海。盐商的轮子陷在卤里空转。你们头一个撞线，锦标是半碗海水。' },
+      { label: '让三千年前的桨手先过线', years: 2, fx: { mind: 10, demon: -20, chance: 3, mark: 'champion' }, say: '你们在终点前停了桨。沉船上的人慢慢划过去，划完了三千年前那最后一场，化成盐粒落回海床。裁判把锦标给了你们，盐民说那晚的盐是甜的。' },
+      { label: '在浪头上悟桨法', years: 3, fx: { slot: 1, body: 6, mark: 'champion' }, say: '那股浪只来了一刻。你在浪头上划完这一刻，悟出一个道理：桨不在手里，在下一桨里。盐商的船沉进卤里，只剩个船头露在外面，像块碑。' }
+    ]
+  },
+  // —— 守漏人（跨三层）：替他挑水 → 挑扁担 → 骸山的时辰 → 枯海是他挑干的 → 漏壶裂了 → 替他守一夜。
+  {
+    id: 's_clock1', type: 'story', line: '守漏人', layers: [0, 1, 2], need: ['clock'], not: ['clock2'], title: '守漏人的扁担',
+    text: '守漏人挑着一根扁担从你门口过，两头各一只木桶，一桶装着尘壤的时辰，一桶装着骸山的。他老得腰都直不起来，走三步歇一步，每歇一步，天就暗一下。他说道友，你上回帮过我，这回再帮我挑一程？',
+    options: [
+      { label: '接过扁担', years: 3, fx: { body: 5, mark: 'clock2' }, say: '扁担压在肩上，比看着沉一万倍。你每走一步，就听见身后有人在长大，有人在变老。守漏人跟在旁边说：别回头，回头就洒了。' },
+      { label: '只挑尘壤那一头', years: 1, fx: { body: 2, life: 3, mark: 'clock2' }, say: '你只挑了一头，扁担翘得老高。尘壤那一桶晃来晃去，路过的村子里，鸡一会儿打鸣一会儿不打，村里人以为又要变天。' },
+      { label: '问他水是从哪来的', years: 1, fx: { mind: 3 }, say: '守漏人想了很久，说他也忘了，反正桶空了往东走，总能打满。他挑起扁担往东去了，背影越走越矮。' }
+    ]
+  },
+  {
+    id: 's_clock2', type: 'story', line: '守漏人', layers: [1, 2], need: ['clock2'], not: ['clock3'], title: '骸山的时辰',
+    text: '你跟着守漏人上了骸山。山上的时辰走得慢，仙人的尸骸太沉，把时辰压弯了，守骸宗的弟子活了八百岁还在外门。骸山那只桶底裂了道缝，时辰滴滴答答往外漏，路边一棵草一会儿开花，一会儿结籽。',
+    options: [
+      { label: '用手捂住裂缝', years: 4, fx: { body: 4, mind: 4, life: -6, mark: 'clock3' }, say: '你捂了四年，手背上的皮老了，手心的皮倒年轻了。守漏人说这叫一手阴阳，又说别得意，往后你会想念对称的日子。' },
+      { label: '拿符纸糊上', years: 1, fx: { mind: 4, mark: 'clock3' }, say: '符纸糊上去，漏是不漏了，就是这一桶时辰从此带着墨香。骸山上的人往后做梦，都梦见自己在抄书。' },
+      {
+        label: '舀一勺骸山的时辰喝', years: 1, risk: { p: 0.5, win: { life: 12, mark: 'clock3' }, lose: { life: -10 } },
+        sayWin: '一勺下肚，你的心跳慢了半拍，寿元却多出一截。守漏人瞪了你一眼，在账本上记下：挑夫偷喝一勺，从工钱里扣。',
+        sayLose: '那一勺时辰在你肚子里倒着走，你吐了三天，吐出来的全是去年吃的饭。守漏人说早告诉过你，骸山的时辰不好消化。'
+      }
+    ]
+  },
+  {
+    id: 's_clock3', type: 'story', line: '守漏人', layers: [2], need: ['clock3'], not: ['clock4'], title: '海是怎么干的',
+    text: '桶空了。守漏人领你往东走，一直走到枯海边。他蹲下来用手在盐里刨，刨出一小洼水，舀进桶里。你忽然明白了：这片海是被他一桶一桶挑干的，一滴是一刻，挑了一万年。盐民们认出了他的扁担，抄起了盐耙。',
+    options: [
+      { label: '替守漏人挡着', years: 2, fx: { body: 6, demon: 6, mark: 'clock4' }, say: '盐耙一下一下落在你背上，打得你骨头缝里全是盐。守漏人趁乱挑满了两桶，回头对你说了声对不住，声音比海还干。' },
+      { label: '跟盐民讲清楚这是一万年的时辰', years: 2, fx: { mind: 6, mark: 'clock4' }, say: '你讲了两年。盐民们放下盐耙，有人哭了：原来海没走，是变成了日子，被大家过掉了。他们放守漏人走，只要他打一张欠条。' },
+      { label: '把桶里的水倒回海里', years: 1, fx: { life: -5, demon: -10 }, say: '水倒回去，枯海边多了一小洼海，盐民们围着它跪了一圈。守漏人看着空桶没说话，那天尘壤的天黑得特别早。' }
+    ]
+  },
+  {
+    id: 's_clock4', type: 'story', line: '守漏人', layers: [0, 1, 2], need: ['clock4'], not: ['clock5'], title: '漏壶裂了',
+    text: '回到漏刻房，守漏人的漏壶裂了，从壶嘴一直裂到壶底。时辰往外渗，窗外的人一会儿快一会儿慢：有个孩子刚学会走路就长了胡子，有个老人在门口坐着坐着又会爬了。守漏人坐在地上，说他补不动了。',
+    options: [
+      { label: '和泥补壶', years: 3, fx: { body: 4, mind: 4, mark: 'clock5' }, say: '你拿枯海的盐、骸山的骨粉和尘壤的黄泥和了一团泥，补了三年。补过的地方颜色不一样，像一道疤。守漏人摸着它说，挺好，这壶总算有点来历了。' },
+      { label: '拿自己的寿元去填', years: 1, fx: { mind: 6, life: -15, mark: 'clock5' }, say: '你把手按在裂缝上，寿元一点点流进壶里。窗外孩子的胡子掉了，老人又站了起来。你照镜子，多了几根白发，镜子里的人冲你点了点头。' },
+      {
+        label: '把漏壶砸了，大家慢慢过', years: 1, risk: { p: 0.4, win: { speed: 0.2, demon: -8 }, lose: { life: -8, demon: 8 } },
+        sayWin: '壶碎了，时辰流了一地，渗进土里。从此世上的日子不快不慢，只是没人知道几时几刻。大家照样过，过得也挺好。',
+        sayLose: '壶碎了，时辰却没流走，全扑到了你身上。你一天之内过了好几个季节，一会儿冻得发抖一会儿热得流汗，落了一身病。'
+      }
+    ]
+  },
+  {
+    id: 's_clock_end', type: 'story', line: '守漏人', layers: [0, 1, 2], need: ['clock5'], title: '替他守一夜',
+    text: '守漏人说他想歇一歇，就歇一夜，让你替他守着漏壶。他靠着墙睡着了，打起了一万年来的第一个呼噜。漏壶滴答滴答，整个世上的时辰从你手边一滴一滴流过去，快一点、慢一点，全凭你一句话。',
+    options: [
+      { label: '一滴不差地守到天亮', years: 1, fx: { mind: 10, demon: -15, chance: 3 }, say: '你守了一夜，一滴没多，一滴没少。天亮守漏人醒了，看了看壶，说比他自己守得还准，在扁担上刻下了你的名字。' },
+      { label: '往自己那一桶多滴几滴', years: 1, fx: { life: 20, speed: 0.1 }, say: '你只多滴了三滴，三滴就是三十年。守漏人醒来闻了闻，说怎么有股偷吃的味道。他没追究，只在账本上画了个笑脸。' },
+      { label: '往枯海那一桶倒回半桶', years: 2, fx: { slot: 1, mind: 6, demon: -10 }, say: '那一夜枯海涨了一回潮，盐民们站在没膝的海水里，谁也不敢出声。天亮潮退，你在丹田里摸到一处湿漉漉的空当，像是潮水替你多冲开了一间屋子。' }
+    ]
+  },
+  // —— 话本：听见话本里的自己 → 成了大恶人 → 续集里你死了 → 说书先生病倒 → 你自己讲最后一回。
+  {
+    id: 's_tale1', type: 'story', line: '话本', layers: [0, 1], need: ['tale'], not: ['tale2'], title: '话本里的你',
+    text: '茶馆的说书先生正讲到精彩处：那人姓甚名谁与你一字不差，三岁偷鸡，七岁欺师，十五岁赊了丹盟一千颗丹不还，如今正在骸山脚下吃人。满堂听客拍案叫好，有人回头打量你，问你怎么跟那恶人长得一样。',
+    options: [
+      {
+        label: '上台更正', years: 1, fx: { mark: 'tale2' }, risk: { p: 0.4, win: { mind: 4 }, lose: { life: -3, demon: 6 } },
+        sayWin: '你一条一条更正，先生听得直点头，当场改了词：此人赊丹不还，是丹盟先坑的他。听客们更爱听了，说恶人也有苦衷。',
+        sayLose: '你一上台，听客们就扔花生壳，说恶人还敢露面。先生顺势加了一段：恶人现身茶馆，被众人打了出去。这段反响最好。'
+      },
+      { label: '塞给先生几块灵石，让他改', years: 1, cost: { qi: 0.3 }, fx: { mind: 1, mark: 'tale2' }, say: '先生收了钱，下一回就改了：恶人其实有个苦命的娘。听客们哭成一片，越发恨你，说有娘还这样。' },
+      { label: '坐下来听完', years: 2, fx: { mind: 3, demon: -2 }, say: '你听完了全本，听到恶人死在第一百回，满堂叫好。你也跟着叫了一声，觉得这辈子算是有了交代。' }
+    ]
+  },
+  {
+    id: 's_tale2', type: 'story', line: '话本', layers: [0, 1], need: ['tale2'], not: ['tale3'], title: '书迷',
+    text: '话本越讲越红，你走到哪儿都有人认得。小孩见了你就哭，寡妇见了你就关窗，丹盟掌柜见了你，二话不说先把账本藏起来。只有一个书生追着你要签名，说他最喜欢你吃人那一回，写得太好了。',
+    options: [
+      { label: '给他签', years: 1, fx: { mind: 2, mark: 'tale3' }, say: '你签了名。书生如获至宝，第二天把签名裱起来挂在书摊上卖，价钱比话本贵十倍，还顺手出了一本《恶人亲笔》，里面全是他自己写的。' },
+      { label: '吓唬他一下', years: 1, fx: { edge: 2, demon: 4, mark: 'tale3' }, say: '你龇牙咧嘴扑过去，书生吓得一屁股坐在地上，又爬起来大喊：是真的！他回去把这事写成了续集，比原本还火。' },
+      { label: '躲进山里', years: 3, fx: { body: 3, demon: -4 }, say: '你在山里躲了三年，出来时话本已经讲完了，新的一部讲一条会叹气的狗。听客们早忘了你，你还有点失落。' }
+    ]
+  },
+  {
+    id: 's_tale3', type: 'story', line: '话本', layers: [0, 1], need: ['tale3'], not: ['tale4'], title: '续集里你死了',
+    text: '书生写的续集卖得到处都是，第三回你就死了：被守骸宗一剑穿心，挂在山门口示众。如今你走在街上，熟人见了你脸色发白，有人给你烧纸，有人来认领遗产，还有个散修拿着契书，说你生前把洞府卖给了他。',
+    options: [
+      { label: '当街证明自己还活着', years: 1, fx: { body: 3, demon: 5, mark: 'tale4' }, say: '你当街打了一套拳，吃了三碗面，又跟认领遗产的人打了一架。大家这才信你还活着，只是有点失望：死了的那版好看些。' },
+      { label: '将错就错，去吃自己的席', years: 2, fx: { qi: 0.5, demon: -3, mark: 'tale4' }, say: '你的头七办得很热闹，丹盟送了花圈，食仙教送了一口锅。你坐在角落吃完了自己的席，收了一桌份子钱，觉得死一回也不亏。' },
+      {
+        label: '把散修的契书撕了', years: 1, risk: { p: 0.5, win: { edge: 4, mark: 'tale4' }, lose: { life: -6 } },
+        sayWin: '你一把撕了契书，散修大喊有鬼，扭头就跑，跑掉了一只鞋。你捡起来看看，比你脚上那双还新，就收下了。',
+        sayLose: '散修不认账，说书上都写着呢，书上写的还能有假？你们打了一架，他赢了，你在自己的洞府门口睡了半年。'
+      }
+    ]
+  },
+  {
+    id: 's_tale4', type: 'story', line: '话本', layers: [0, 1], need: ['tale4'], not: ['tale5'], title: '先生病了',
+    text: '说书先生病倒了，躺在茶馆后屋，嗓子哑得只剩气声。他这些年讲你讲得太多，讲着讲着自己信了，一闭眼就梦见你来吃他。门口围满了听客，拍着门要听下一回。先生拉着你的手说：道友，最后一回，你自己讲吧。',
+    options: [
+      { label: '替他煎药', years: 2, fx: { mind: 3, demon: -8, mark: 'tale5' }, say: '你煎了两年药，先生的嗓子一点点回来了。他说原来恶人也会煎药，这段他要写进去。你说你写吧，写好看点。' },
+      { label: '翻他的稿子', years: 1, fx: { mind: 5, mark: 'tale5' }, say: '稿子里写满了你：你没干过的坏事，和你干过却没人知道的好事，混在一处，难分真假。最后一页空着，题头写着：大结局，待本人亲述。' },
+      { label: '趁机把话本烧了', years: 1, fx: { edge: 2, demon: 6 }, say: '稿子烧了，灰飘出窗外，落在听客们头上。他们以为先生要讲新的，等了一夜。第二天，街上传开了一个更离谱的版本。' }
+    ]
+  },
+  {
+    id: 's_tale_end', type: 'story', line: '话本', layers: [0, 1], need: ['tale5'], title: '最后一回',
+    text: '茶馆里挤得水泄不通，丹盟掌柜、守骸宗执事、食仙教的教徒都来了，写续集的书生坐在第一排，手里攥着笔。你一拍醒木，满堂鸦雀无声。先生靠在后台的门框上，冲你点了点头。',
+    options: [
+      { label: '照实讲', years: 2, fx: { mind: 10, demon: -15, chance: 2 }, say: '你讲了你这一世：哪年挑过水，哪年摸过狗，哪年赊过账。没有吃人，也没有欺师。听客们没鼓掌，静了很久，有人小声说：原来是这样。第二天，街上的小孩不哭了。' },
+      { label: '讲得比原本还离谱', years: 1, fx: { qi: 0.6, mind: 6, chance: 3 }, say: '你讲自己一口吞了半座骸山，又把丹盟大掌柜吊在了月亮上。满堂喝彩，赏钱扔了一地。先生在后台笑出了眼泪，说青出于蓝。' },
+      { label: '把先生请上台，讲他自己', years: 2, fx: { slot: 1, mind: 6 }, say: '先生讲了一辈子别人，头一回讲自己。听客们听得入神，书生连笔都忘了动。散场时先生说，讲故事和修行一样，得给后面留地方。你回去打坐，丹田里真空出了一块。' }
     ]
   },
   {
@@ -1064,7 +1533,8 @@ const EVENTS = [
     options: [
       { label: '沿着雷痕拆开盐壳', years: 4, fx: { edge: 9, demon: 7, gear: 1 } },
       { label: '背着桅杆走到岸上', years: 4, fx: { body: 9 } },
-      { label: '坐在断口旁听完一通鼓', years: 3, fx: { mind: 8 } }
+      { label: '坐在断口旁听完一通鼓', years: 3, fx: { mind: 8 } },
+      { label: '从盐壳里拔出一支断桨', years: 2, fx: { body: 3, mark: 'oar' } }
     ]
   },
   {
@@ -1073,7 +1543,9 @@ const EVENTS = [
     options: [
       { label: '替她守灯', years: 2, fx: { demon: -8 } },
       { label: '记下几段潮声', years: 2, fx: { mind: 4 } },
-      { label: '把温热的盐倒进阵眼', years: 1, fx: { qi: 0.12 } }
+      { label: '把温热的盐倒进阵眼', years: 1, fx: { qi: 0.12 } },
+      { label: '替阿婆的孙子扛桨', years: 1, fx: { body: 1, mark: 'oar' } },
+      { label: '把锦标里的半碗海水倒进灯里', need: ['champion'], years: 1, fx: { mind: 4, demon: -10 } }
     ]
   },
   // 给装备和锻材的机缘：装备补身上装备分最低的槽位，阶比历练眼下掉的高，品级也更好。
@@ -1084,7 +1556,8 @@ const EVENTS = [
       { label: '把身上最破的一件递进去', years: 2, cost: { qi: 0.3 }, fx: { gear: 1 } },
       { label: '赌他炉底压着的那件', years: 2, risk: { p: 0.45, win: { gear: 2 }, lose: { life: -6, forge: 2 } } },
       { label: '帮他拉一天风箱', years: 3, fx: { body: 2, forge: 4 } },
-      { replaces: 0, label: '徒手从炉里捞一件', school: 'body', years: 2, fx: { gear: 1, body: 2 } }
+      { replaces: 0, label: '徒手从炉里捞一件', school: 'body', years: 2, fx: { gear: 1, body: 2 } },
+      { label: '请铁匠给旱龙舟的桨包一层铁', need: ['oar'], years: 1, fx: { edge: 2, forge: 4 } }
     ]
   },
   {
@@ -1104,7 +1577,8 @@ const EVENTS = [
       { label: '挑一件顺眼的', years: 1, cost: { qi: 0.4 }, fx: { gear: 1 } },
       { label: '买下那口没开封的箱子', years: 2, cost: { qi: 0.6 }, fx: { gear: 2 } },
       { label: '替掌柜抄一天当票', years: 2, fx: { mind: 2, qi: 0.15 } },
-      { replaces: 0, label: '闭着眼摸一件', school: 'luck', years: 1, fx: { gear: 2 } }
+      { replaces: 0, label: '闭着眼摸一件', school: 'luck', years: 1, fx: { gear: 2 } },
+      { label: '把龙舟锦标押在柜上', need: ['champion'], years: 1, fx: { gear: 1, mind: 1 } }
     ]
   },
   {
