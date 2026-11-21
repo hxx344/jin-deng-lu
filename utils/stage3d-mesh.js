@@ -117,7 +117,29 @@ function Mesh() {
   this.d = [];
   this.swayBase = 0;
   this.swayK = 0;
+  this.xf = null;
 }
+// 在 mat 变换下画 fn 里的东西（可嵌套），方便把耳朵、角这类小件转个方向再放上去。
+Mesh.prototype.at = function (mat, fn) {
+  const prev = this.xf;
+  this.xf = prev ? mul(prev, mat) : mat;
+  fn();
+  this.xf = prev;
+};
+const xfDir = (m, n) => norm([m[0] * n[0] + m[4] * n[1] + m[8] * n[2], m[1] * n[0] + m[5] * n[1] + m[9] * n[2], m[2] * n[0] + m[6] * n[1] + m[10] * n[2]]);
+// 每个顶点各带法线的三角形（平滑着色）。
+Mesh.prototype.triN = function (a, b, c, na, nb, nc, col, emit) {
+  const e = emit || 0;
+  const pts = [a, b, c];
+  const ns = [na, nb, nc];
+  for (let i = 0; i < 3; i++) {
+    let p = pts[i];
+    let n = ns[i];
+    if (this.xf) { p = apply(this.xf, p); n = xfDir(this.xf, n); }
+    const sw = this.swayK > 0 ? Math.max(0, p[1] - this.swayBase) * this.swayK : 0;
+    this.d.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2], sw, e);
+  }
+};
 // center 给出时，法线朝离开 center 的方向翻转，省得管顶点绕序。
 Mesh.prototype.tri = function (a, b, c, col, emit, center) {
   let n = norm(cross(sub(b, a), sub(c, a)));
@@ -127,8 +149,9 @@ Mesh.prototype.tri = function (a, b, c, col, emit, center) {
   }
   const e = emit || 0;
   const pts = [a, b, c];
+  if (this.xf) n = xfDir(this.xf, n);
   for (let i = 0; i < 3; i++) {
-    const p = pts[i];
+    const p = this.xf ? apply(this.xf, pts[i]) : pts[i];
     const sw = this.swayK > 0 ? Math.max(0, p[1] - this.swayBase) * this.swayK : 0;
     this.d.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2], sw, e);
   }
@@ -155,7 +178,13 @@ Mesh.prototype.frustum = function (x, y0, z, r0, y1, r1, segs, col, opt) {
   for (let i = 0; i < segs; i++) {
     const k = (i + 1) % segs;
     const cv = opt.vary ? shade(col, 1 + (R() - 0.5) * opt.vary) : col;
-    if (hi) {
+    if (hi && opt.smooth) {
+      const slope = (r0 - r1) / Math.max(1e-6, y1 - y0);
+      const nr = (p) => norm([p[0] - x, slope * Math.hypot(p[0] - x, p[2] - z) / Math.max(1e-6, (r0 + r1) / 2), p[2] - z]);
+      this.triN(lo[i], lo[k], hi[k], nr(lo[i]), nr(lo[k]), nr(hi[k]), cv, opt.emit);
+      this.triN(lo[i], hi[k], hi[i], nr(lo[i]), nr(hi[k]), nr(hi[i]), cv, opt.emit);
+      if (opt.capTop) this.tri(hi[i], hi[k], [x, y1, z], opt.capCol || cv, opt.emit, [x, y1 - 1, z]);
+    } else if (hi) {
       this.tri(lo[i], lo[k], hi[k], cv, opt.emit, center);
       this.tri(lo[i], hi[k], hi[i], cv, opt.emit, center);
       if (opt.capTop) this.tri(hi[i], hi[k], [x, y1, z], opt.capCol || cv, opt.emit, [x, y1 - 1, z]);
@@ -200,7 +229,7 @@ Mesh.prototype.blob = function (x, y, z, sx, sy, sz, col, opt) {
   opt = opt || {};
   const R = opt.rand || Math.random;
   const j = opt.jitter || 0;
-  const ico = icoLevel(opt.detail ? 1 : 0);
+  const ico = icoLevel(opt.detail || 0);
   const vs = ico.v.map((v) => {
     const k = 1 + (R() - 0.5) * j;
     return [x + v[0] * sx * k, y + v[1] * sy * k, z + v[2] * sz * k];
@@ -212,7 +241,46 @@ Mesh.prototype.blob = function (x, y, z, sx, sy, sz, col, opt) {
       if (!opt.keep(c)) continue;
     }
     const cv = opt.vary ? shade(col, 1 + (R() - 0.5) * opt.vary) : col;
-    this.tri(vs[f[0]], vs[f[1]], vs[f[2]], cv, opt.emit, [x, y, z]);
+    if (opt.smooth) {
+      const nn = (k) => norm([ico.v[k][0] / sx, ico.v[k][1] / sy, ico.v[k][2] / sz]);
+      this.triN(vs[f[0]], vs[f[1]], vs[f[2]], nn(f[0]), nn(f[1]), nn(f[2]), cv, opt.emit);
+    } else {
+      this.tri(vs[f[0]], vs[f[1]], vs[f[2]], cv, opt.emit, [x, y, z]);
+    }
+  }
+};
+// 平滑的圆管，从 a 到 b，两头半径 r0、r1，端头各一个球，用来做四肢、尾巴、触手。
+Mesh.prototype.tube = function (a, b, r0, r1, col, opt) {
+  opt = opt || {};
+  const segs = opt.segs || 8;
+  const ax = sub(b, a);
+  const len = Math.hypot(ax[0], ax[1], ax[2]) || 1e-6;
+  const w = [ax[0] / len, ax[1] / len, ax[2] / len];
+  const up = Math.abs(w[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const u = norm(cross(up, w));
+  const v = cross(w, u);
+  const slope = (r0 - r1) / len;
+  const ring = (c, r) => {
+    const pts = [];
+    const ns = [];
+    for (let i = 0; i < segs; i++) {
+      const t = i / segs * Math.PI * 2;
+      const d = [u[0] * Math.cos(t) + v[0] * Math.sin(t), u[1] * Math.cos(t) + v[1] * Math.sin(t), u[2] * Math.cos(t) + v[2] * Math.sin(t)];
+      pts.push([c[0] + d[0] * r, c[1] + d[1] * r, c[2] + d[2] * r]);
+      ns.push(norm([d[0] + w[0] * slope, d[1] + w[1] * slope, d[2] + w[2] * slope]));
+    }
+    return [pts, ns];
+  };
+  const A = ring(a, r0);
+  const B = ring(b, r1);
+  for (let i = 0; i < segs; i++) {
+    const k = (i + 1) % segs;
+    this.triN(A[0][i], A[0][k], B[0][k], A[1][i], A[1][k], B[1][k], col, opt.emit);
+    this.triN(A[0][i], B[0][k], B[0][i], A[1][i], B[1][k], B[1][i], col, opt.emit);
+  }
+  if (opt.caps !== false) {
+    if (r0 > 0.004) this.blob(a[0], a[1], a[2], r0, r0, r0, col, { smooth: true, emit: opt.emit });
+    if (r1 > 0.004) this.blob(b[0], b[1], b[2], r1, r1, r1, col, { smooth: true, emit: opt.emit });
   }
 };
 // 长方体，可绕 z 再绕 y 转。

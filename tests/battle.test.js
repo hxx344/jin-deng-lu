@@ -182,6 +182,44 @@ test('历练：引气后自己打，不耗寿元、机缘和劫期；关卡不�
   assert.notStrictEqual(game.trainFoe(s, 5).name, game.trainFoe(s, 10).name);
 });
 
+test('历练：骸山、枯海换一批对手，模样和名字不同，打法和尘壤同一位置的一样', () => {
+  const content = require('../utils/content');
+  const fs = require('fs');
+  const path = require('path');
+  const F = require('../utils/stage3d-foes');
+  assert.strictEqual(content.TRAIN_FOE_LAYERS.length, content.LAYERS.length);
+  const ids = new Set();
+  content.TRAIN_FOE_LAYERS.forEach((list, layer) => {
+    assert.strictEqual(list.length, content.TRAIN_FOES.length);
+    list.forEach((def, i) => {
+      const base = content.TRAIN_FOES[i];
+      assert.ok(!ids.has(def.id), def.id + ' 重复');
+      ids.add(def.id);
+      assert.ok(def.mob && def.name && def.text && def.skill.name, def.id);
+      for (const k of ['interval', 'reduce', 'resist']) assert.strictEqual(def[k], base[k], def.id + ' ' + k);
+      assert.strictEqual(def.skill.every, base.skill.every);
+      assert.strictEqual(def.skill.mult, base.skill.mult);
+      assert.ok(F.FOE_NAMES.indexOf(def.sprite) >= 0, def.sprite + ' 没有 3D 模型');
+      assert.ok(fs.existsSync(path.join(__dirname, '../assets/foes', (def.art || def.sprite) + '.svg')), def.id + ' 没有平面图');
+    });
+  });
+
+  // 同一关换到骸山：名字和模样变了，气血攻击不变。
+  const low = cultivator(20, 20, 20);
+  const high = cultivator(20, 20, 20);
+  high.run.realm = content.REALMS.findIndex((r) => r.layer === 1);
+  for (const stage of [3, 5, 10]) {
+    const a = game.trainFoe(low, stage);
+    const b = game.trainFoe(high, stage);
+    assert.notStrictEqual(a.name, b.name);
+    assert.strictEqual(a.hp, b.hp);
+    assert.strictEqual(a.atk, b.atk);
+  }
+  high.run.battle.cleared = 4;
+  const fight = game.trainEncounter(high, 0, () => 0.5);
+  assert.ok(content.TRAIN_FOE_LAYERS[1].some((d) => d.sprite === fight.sprite && d.art === fight.art));
+});
+
 test('历练：按顺序过关，过关不耗东西，储物袋攒得更快，首领关涨得更多', () => {
   const s = cultivator(30, 30, 30);
   const age = s.run.age;

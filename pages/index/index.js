@@ -1916,6 +1916,7 @@ Page(Object.assign(starScene(audio), {
       foe: fight ? {
         name: fight.foe.name,
         sprite: fight.sprite,
+        art: fight.art || fight.sprite,
         boss: fight.boss,
         tag: f.gate ? fight.tier : (fight.boss ? '首领' : ''),
         pct: pct(f.foe, fight.foe.max),

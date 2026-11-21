@@ -34,6 +34,7 @@ const PATH_COUNTER = content.PATH_COUNTER;
 const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
 const TRAIN_FOES = content.TRAIN_FOES;
+const TRAIN_FOE_LAYERS = content.TRAIN_FOE_LAYERS;
 const GATES = content.GATES;
 const LAMP_SCROLLS = content.LAMP_SCROLLS;
 const LAMP_INSIGHT = 3;
@@ -2780,14 +2781,15 @@ function trainWaves(stage) {
   return stage === 1 || trainBoss(stage) ? 1 : TRAIN_MOBS;
 }
 
-// 第 stage 关（从 1 起）来的是谁。每五关换一轮：前四关各是一种小怪，第五关的首领轮着当。
-function trainFoeDef(stage) {
+// 第 stage 关（从 1 起）来的是谁。每五关换一轮：前四关各是一种小怪，第五关的首领轮着当。对手按人所在的墟层换一批。
+function trainFoeDef(state, stage) {
   const round = Math.floor((stage - 1) / TRAIN_BOSS_EVERY);
-  return TRAIN_FOES[((stage - 1) % TRAIN_BOSS_EVERY + round) % TRAIN_FOES.length];
+  const list = TRAIN_FOE_LAYERS[layerIndex(state.run)] || TRAIN_FOES;
+  return list[((stage - 1) % TRAIN_BOSS_EVERY + round) % list.length];
 }
 
 function trainFoe(state, stage) {
-  const def = trainFoeDef(stage);
+  const def = trainFoeDef(state, stage);
   if (stage === 1) return battle.foeFighter({ name: '叼刀的野狗', hp: 8, atk: 2, interval: def.interval });
   const boss = trainBoss(stage);
   const scale = 1 + HEAVEN_REQ * state.run.heaven;
@@ -2826,13 +2828,15 @@ function trainEncounter(state, wave, rng) {
   const waves = trainWaves(stage);
   const at = Math.max(0, Math.min(waves - 1, Math.floor(wave) || 0));
   const fight = battle.simulate(trainFighter(state), trainFoe(state, stage), rng);
+  const def = trainFoeDef(state, stage);
   return {
     stage: stage,
     wave: at,
     waves: waves,
     last: at === waves - 1,
     boss: trainBoss(stage),
-    sprite: trainFoeDef(stage).sprite,
+    sprite: def.sprite,
+    art: def.art || def.sprite,
     win: fight.win,
     seconds: fight.seconds,
     timeline: fight.timeline,
@@ -3406,7 +3410,7 @@ function trainView(state) {
     const boss = Math.ceil(stage / TRAIN_BOSS_EVERY) * TRAIN_BOSS_EVERY;
     (boss === stage ? [stage] : [stage, boss]).forEach((no) => {
       const foe = trainFoe(state, no);
-      const def = trainFoeDef(no);
+      const def = trainFoeDef(state, no);
       stages.push({
         stage: no,
         now: no === stage,

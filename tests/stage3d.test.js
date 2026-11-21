@@ -133,20 +133,49 @@ test('角色：衣着随境界换色，门派色取渐变里的第一个颜色',
   assert.ok(allFinite(H.buildLamp()));
 });
 
-test('对手：assets/foes 里每张图都有 3D 模型，数据完整，高矮合适', () => {
+test('对手：assets/foes 里每张图都有 3D 模型，部件完整，高矮合适，出手挨打时各部件会动', () => {
   const sprites = fs.readdirSync(path.join(__dirname, '../assets/foes')).filter((f) => f.endsWith('.svg')).map((f) => f.slice(0, -4));
   assert.ok(sprites.length >= 20);
-  for (const name of sprites) {
-    assert.ok(F.FOE_NAMES.indexOf(name) >= 0, name + ' 没有 3D 模型');
+  assert.ok(F.FOE_NAMES.length >= 30);
+  for (const name of sprites) assert.ok(F.FOE_NAMES.indexOf(name) >= 0, name + ' 没有 3D 模型');
+  const tops = (rig) => {
+    let lo = 1e9, hi = -1e9;
+    for (const [p, m] of rig) {
+      for (let i = 0; i < p.data.length; i += M.STRIDE) {
+        const q = M.apply(m, [p.data[i], p.data[i + 1], p.data[i + 2]]);
+        lo = Math.min(lo, q[1]);
+        hi = Math.max(hi, q[1]);
+      }
+    }
+    return [lo, hi];
+  };
+  for (const name of F.FOE_NAMES) {
     const foe = F.buildFoe(name);
-    assert.ok(['hop', 'sway', 'float', 'stomp', 'flicker'].indexOf(foe.style) >= 0, name);
-    assert.ok(foe.data.length > 0 && foe.data.length % M.STRIDE === 0 && allFinite(foe.data), name);
-    let top = 0;
-    for (let i = 1; i < foe.data.length; i += M.STRIDE) top = Math.max(top, foe.data[i]);
-    assert.ok(top > 0.9 && top < 2, name + ' 高 ' + top);
+    assert.ok(['biped', 'quad', 'bird', 'float', 'crawl', 'blob'].indexOf(foe.kind) >= 0, name);
+    assert.ok(foe.parts.length >= 2 && foe.parts[0].parent === 'root', name);
+    const seen = { root: true };
+    for (const p of foe.parts) {
+      assert.ok(seen[p.parent], name + '.' + p.name + ' 的父部件要先出现');
+      seen[p.name] = true;
+      assert.ok(p.data.length > 0 && p.data.length % M.STRIDE === 0 && allFinite(p.data), name + '.' + p.name);
+    }
+    const idle = F.rigFoe(foe, 1.3, -1, 0);
+    const [lo, hi] = tops(idle);
+    assert.ok(hi - lo > 0.6 && hi < 2, name + ' 高 ' + lo.toFixed(2) + '~' + hi.toFixed(2));
+    assert.ok(lo > -0.1, name + ' 陷进地里 ' + lo.toFixed(2));
+    // 出手到一半、挨打时，部件矩阵和站着时不一样。
+    const strike = F.rigFoe(foe, 1.3, 0.35, 0);
+    const hurt = F.rigFoe(foe, 1.3, -1, 1);
+    const moved = (a, b) => a.some((x, i) => x[1].some((v, j) => Math.abs(v - b[i][1][j]) > 1e-3));
+    assert.ok(moved(idle, strike), name + ' 出手不动');
+    assert.ok(moved(idle, hurt), name + ' 挨打不动');
   }
+  // 出手节奏：先蓄力再打出去，结束后归零。
+  assert.deepStrictEqual(F.attackCurve(-1), { wind: 0, strike: 0 });
+  assert.ok(F.attackCurve(0.2).wind > 0.8 && F.attackCurve(0.4).strike > 0.99);
+  assert.deepStrictEqual(F.attackCurve(1), { wind: 0, strike: 0 });
   // 不认识的图退回一个通用的样子，不报错。
-  assert.ok(F.buildFoe('nobody').data.length > 0);
+  assert.ok(F.buildFoe('nobody').parts.length > 0);
 });
 
 test('对手站位：在镜头的正右方，离角色固定远，那里不长东西', () => {

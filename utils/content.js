@@ -1236,6 +1236,33 @@ const TRAIN_FOES = [
   { id: 'scavenger', sprite: 'scavenger', mob: '拾荒人', name: '拾荒人的头儿', text: '他说这片破烂归他管，包括你。', interval: 1.6, reduce: 0.1, resist: 0.4,
     skill: { name: '这也是我的', every: 5, mult: 2 } }
 ];
+// 骸山、枯海的历练换一批对手。第 i 个和尘壤的第 i 个打法一样（出手间隔、减伤、抗性、招式节奏和倍率），只换模样和名字，
+// 所以换层不改平衡。art 是没有 3D 时用的平面图，借用模样相近的现成图。
+const TRAIN_FOE_LOOKS = [
+  [
+    { id: 'bonehound', art: 'dog', mob: '骨犬', name: '守坟的骨头狗', text: '主人埋在哪儿它早忘了，只记得见人就咬。', skill: '刨坟' },
+    { id: 'skeleton', art: 'scavenger', mob: '骸卒', name: '没领到军饷的骸卒', text: '仗打完三百年了，他还在等人来发饷。', skill: '列阵' },
+    { id: 'skullwisp', art: 'kilnfire', mob: '磷火', name: '找不到坟的磷火', text: '它绕着骸山找了一夜，觉得你像它的坟。', skill: '鬼打墙' },
+    { id: 'snowape', art: 'saltfigure', mob: '雪猿', name: '雪岭上的老猿', text: '它在雪里蹲了一冬，就等个会喘气的过来。', skill: '雪崩' },
+    { id: 'vulture', art: 'kilncrow', mob: '秃鹫', name: '盘了三天的秃鹫', text: '它看你走路的样子，觉得不用等太久。', skill: '啄眼' }
+  ],
+  [
+    { id: 'leapfish', art: 'saltcrab', mob: '跳鱼', name: '上了岸的跳鱼', text: '海干了它也不回去，说岸上的东西好咬。', skill: '甩尾' },
+    { id: 'hermit', art: 'saltcrab', mob: '寄居蟹', name: '背着破船的寄居蟹', text: '船是它捡的，它说船上的人也该归它。', skill: '横冲' },
+    { id: 'jelly', art: 'tombthunder', mob: '水母', name: '飘在干海上的水母', text: '没有水托着，它就飘在风里，碰谁蜇谁。', skill: '蜇' },
+    { id: 'drowned', art: 'saltferryman', mob: '老水手', name: '沉船上的老水手', text: '他的船沉在没水的海里，每天照样起锚。', skill: '收锚' },
+    { id: 'octopus', art: 'inkblot', mob: '章鱼', name: '捡破烂的章鱼', text: '八只手都占着，还想腾一只来拿你的灯。', skill: '缠' }
+  ]
+];
+// 按墟层排的历练对手：TRAIN_FOE_LAYERS[层][i]。
+const TRAIN_FOE_LAYERS = [TRAIN_FOES].concat(TRAIN_FOE_LOOKS.map((looks) => looks.map((look, i) => {
+  const base = TRAIN_FOES[i];
+  return {
+    id: look.id, sprite: look.id, art: look.art, mob: look.mob, name: look.name, text: look.text,
+    interval: base.interval, reduce: base.reduce, resist: base.resist,
+    skill: { name: look.skill, every: base.skill.every, mult: base.skill.mult }
+  };
+})));
 // 关隘：这几场天劫要先凑齐材料才肯落下。材料只在对应的秘境里打赢对手才有，每打一场耗机缘。
 // trib 是 TRIBS 的下标，人在这个境界时秘境开着；need 是要凑的材料数。
 // foes 从下品到上品：stage 是它相当于历练第几关的首领，gain 是打赢给几份材料，其余和 TRAIN_FOES 的写法一样。
@@ -1296,6 +1323,7 @@ const PATH_COUNTER = { sword: 'talisman', talisman: 'body', body: 'luck', luck: 
 
 module.exports = {
   TRAIN_FOES,
+  TRAIN_FOE_LAYERS,
   GATES,
   TRIB_ASPECTS,
   PATH_COUNTER,

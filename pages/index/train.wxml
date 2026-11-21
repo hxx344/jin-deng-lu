@@ -133,7 +133,7 @@
       <view class="foe-shadow"></view>
       <view class="foe-move {{bar.foeAct ? 'foe-lunge' + bar.foeAct : ''}}">
         <view class="foe-bob">
-          <image class="foe-img {{bar.foeHit ? 'foe-hit' + bar.foeHit : ''}}" src="/assets/foes/{{bar.foe.sprite}}.svg" mode="aspectFit" />
+          <image class="foe-img {{bar.foeHit ? 'foe-hit' + bar.foeHit : ''}}" src="/assets/foes/{{bar.foe.art}}.svg" mode="aspectFit" />
         </view>
       </view>
     </view>

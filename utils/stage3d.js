@@ -16,6 +16,7 @@ const FEET_RPX = 70;
 // 历练时角色让出右半边，和 wxss 里 .stage-fray .actor 的偏移一致（rpx）。
 // 历练时角色往左让，对手站在右边，两者隔 W.FOE_GAP（约 400rpx），和原来平面场景的站位一致。
 const FRAY_SHIFT_RPX = 190;
+const FOE_ACT_MS = 450;
 const FOV = 40 * Math.PI / 180;
 const TILE_RADIUS = 17;
 // 每帧最多新建几个地块；刚进一个场景时多建一些，配合淡入盖住。
@@ -40,7 +41,7 @@ const LIT_FS = [
   'precision mediump float;',
   'uniform vec3 uCam; uniform vec3 uL0p; uniform vec3 uL0c; uniform vec3 uL1p; uniform vec3 uL1c;',
   'uniform vec3 uMoon; uniform vec3 uMoonC; uniform vec3 uSky; uniform vec3 uLow; uniform vec3 uFog;',
-  'uniform vec2 uFogP; uniform vec4 uTint; uniform float uFlash;',
+  'uniform vec2 uFogP; uniform vec4 uTint; uniform float uFlash; uniform vec4 uRim; uniform float uFill;',
   'varying vec3 vW; varying vec3 vN; varying vec3 vC; varying float vE;',
   'vec3 pt(vec3 p, vec3 c, vec3 n){ vec3 L = p - vW; float d2 = dot(L, L); float nd = dot(n, L * inversesqrt(d2 + 0.0001));',
   '  return c * clamp(nd*0.65+0.35, 0.0, 1.0) / (1.0 + d2*0.55); }',
@@ -49,8 +50,11 @@ const LIT_FS = [
   '  vec3 amb = mix(uLow, uSky, n.y*0.5+0.5) * (1.0 + uFlash*2.5);',
   '  float m = smoothstep(0.05, 0.55, dot(n, uMoon));',
   '  vec3 light = amb + uMoonC*m + pt(uL0p, uL0c, n) + pt(uL1p, uL1c, n);',
+  // 角色和对手：正面补一点光，轮廓描一圈暖边，夜里也看得清五官和身形
+  '  float nv = max(dot(n, normalize(uCam - vW)), 0.0);',
+  '  light += uFill * nv * vec3(0.55, 0.5, 0.46);',
   '  vec3 base = mix(vC, uTint.rgb, uTint.a);',
-  '  vec3 col = base * light + base * vE * 1.5;',
+  '  vec3 col = base * light + base * vE * 1.5 + uRim.rgb * pow(1.0 - nv, 3.0) * uRim.a;',
   '  float d = length(vW - uCam);',
   '  float f = 1.0 - exp(-max(d - uFogP.x, 0.0) * uFogP.y);',
   '  col = mix(col, uFog, clamp(f, 0.0, 1.0));',
@@ -356,11 +360,11 @@ function createStage(gl, opts) {
     if (!info || !info.sprite) { foe = null; return null; }
     const key = info.sprite + '|' + info.state;
     if (!foe || foe.key !== key) foe = { key: key, at: now };
-    const style = F.buildFoe(info.sprite).style;
+    const spec = F.buildFoe(info.sprite);
     const fk = (now - foe.at) / 1000;
     const gap = W.FOE_GAP * camDist;
     const size = info.boss ? 1.3 : 1;
-    let off = 0, lift = 0, tilt = 0, sq = 1, sc = size, tintK = 0, sink = 0, alpha = 1;
+    let off = 0, lift = 0, tilt = 0, sq = 1, sc = size, tintK = 0, sink = 0, alpha = 1, act = -1, hitK = 0;
     if (info.state === 'in') {
       const k = Math.min(1, fk / 0.7);
       off = 3 * (1 - W.ease(k));
@@ -381,26 +385,24 @@ function createStage(gl, opts) {
       alpha = 1 - k;
     }
     if (info.state === 'in' || info.state === 'on') {
-      if (style === 'hop') { lift += Math.abs(Math.sin(t * 4)) * 0.07; sq = 1 + 0.05 * Math.sin(t * 8); }
-      else if (style === 'sway') tilt += 0.07 * Math.sin(t * 2);
-      else if (style === 'float') { lift += 0.22 + 0.08 * Math.sin(t * 2.2); tilt += 0.04 * Math.sin(t * 1.3); }
-      else if (style === 'flicker') sq = 1 + 0.04 * Math.sin(t * 7) + 0.02 * Math.sin(t * 13);
-      else sq = 1 + 0.025 * Math.sin(t * 3);
-      // 扑上来咬一口
-      const la = (now - foeActAt) / 360;
+      if (spec.hop) lift += Math.abs(Math.sin(t * 4)) * 0.06;
+      if (spec.kind === 'float') lift += spec.float + 0.07 * Math.sin(t * 2.2);
+      // 出手：蓄一下力再扑上来，手脚由骨架摆
+      const la = (now - foeActAt) / FOE_ACT_MS;
       if (la >= 0 && la < 1) {
-        const a = la < 0.4 ? W.ease(la / 0.4) : 1 - W.ease((la - 0.4) / 0.6);
-        off -= gap * 0.35 * a;
-        tilt += 0.3 * a;
-        lift += 0.1 * a;
+        act = la;
+        const c = F.attackCurve(la);
+        off += gap * 0.04 * c.wind - gap * 0.3 * c.strike;
+        lift += (spec.hop || spec.kind === 'quad' ? 0.12 : 0.04) * Math.sin(Math.min(1, c.strike) * Math.PI / 2) * (la < 0.5 ? 1 : 0.5);
       }
       // 挨了一下：往后一缩，发白
       const ha = (now - hitFoeAt) / 300;
       if (ha >= 0 && ha < 1) {
         const b = Math.sin(ha * Math.PI);
+        hitK = b;
         off += 0.25 * b;
-        tilt -= 0.12 * b;
-        sq *= 1 - 0.06 * b;
+        tilt -= 0.08 * b;
+        sq *= 1 - 0.05 * b;
         tintK = Math.max(tintK, 0.75 * (1 - ha));
       }
     }
@@ -409,7 +411,7 @@ function createStage(gl, opts) {
     const ground = world.height(origin[0] + bx, origin[2] + bz) - sink;
     const pos = [bx + rx * off, ground + lift, bz + rz * off];
     const model = M.chain(M.translate(pos[0], pos[1], pos[2]), M.rotY(az), M.rotZ(tilt), M.rotY(-0.6), M.scale(sc, sc * sq, sc));
-    return { sprite: info.sprite, boss: !!info.boss, pos: pos, ground: ground, lift: lift, size: sc, model: model, tintK: tintK, alpha: alpha };
+    return { sprite: info.sprite, boss: !!info.boss, pos: pos, ground: ground, lift: lift, size: sc, model: model, tintK: tintK, alpha: alpha, rig: F.rigFoe(spec, t, act, hitK) };
   }
 
   // 页面每帧调用。input：actor、bar 是页面数据，place 是角色停在第几关，walk 是 { from, to, at, ms }。
@@ -563,6 +565,8 @@ function createStage(gl, opts) {
     gl.uniform3fv(lit.u.uL1c, accentC);
     gl.uniform1f(lit.u.uFlash, flash);
     gl.uniform4fv(lit.u.uTint, [0, 0, 0, 0]);
+    gl.uniform4fv(lit.u.uRim, [0, 0, 0, 0]);
+    gl.uniform1f(lit.u.uFill, 0);
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
       const ox = tile.tx * W.TILE - origin[0];
@@ -574,7 +578,9 @@ function createStage(gl, opts) {
     // 灯
     const swing = walkStand * Math.sin(t * 9) * 0.25 + combatK * Math.sin(t * 5) * 0.06;
     drawMesh(lamp, M.chain(M.translate(lampPos[0], lampPos[1], lampPos[2]), M.rotY(heroYaw), M.rotX(swing)));
-    // 角色
+    // 角色和对手
+    gl.uniform4fv(lit.u.uRim, [1, 0.72, 0.42, 0.45]);
+    gl.uniform1f(lit.u.uFill, 0.32);
     if (actor.show) {
       const parts = heroParts(actor);
       if (p.tintK > 0 && p.tint) gl.uniform4fv(lit.u.uTint, [p.tint[0], p.tint[1], p.tint[2], Math.min(1, p.tintK)]);
@@ -593,9 +599,12 @@ function createStage(gl, opts) {
     }
     // 对手
     if (foeView) {
-      if (!foeBufs[foeView.sprite]) foeBufs[foeView.sprite] = mkBuf(F.buildFoe(foeView.sprite).data);
       if (foeView.tintK > 0) gl.uniform4fv(lit.u.uTint, [1, 1, 1, Math.min(1, foeView.tintK)]);
-      drawMesh(foeBufs[foeView.sprite], foeView.model);
+      for (let i = 0; i < foeView.rig.length; i++) {
+        const key = foeView.sprite + ':' + i;
+        if (!foeBufs[key]) foeBufs[key] = mkBuf(foeView.rig[i][0].data);
+        drawMesh(foeBufs[key], M.mul(foeView.model, foeView.rig[i][1]));
+      }
       gl.uniform4fv(lit.u.uTint, [0, 0, 0, 0]);
     }
     unbind(gl, lit);
