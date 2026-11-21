@@ -123,6 +123,21 @@ test('历练：引气后自己打，不耗寿元、机缘和劫期；关卡不�
   assert.ok(game.trainReason(mortal));
   assert.strictEqual(game.trainStage(mortal), 0);
   assert.strictEqual(game.trainEncounter(mortal, 0, () => 0.5), null);
+  const scrolls = game.lampView(mortal);
+  for (const opt of scrolls.options) {
+    const trial = game.normalizeState(mortal, 0, () => 0);
+    assert.ok(game.chooseLamp(trial, scrolls.stamp, opt.id));
+    const fight = game.trainEncounter(trial, 0, () => 0.5);
+    assert.ok(fight.win && fight.last);
+    assert.strictEqual(fight.foe.name, '叼刀的野狗');
+    const clear = game.trainClear(trial, 1, () => 0.99);
+    assert.strictEqual(clear.drop.item.slot, 'weapon');
+    assert.ok(clear.drop.worn);
+    assert.strictEqual(game.trainStage(trial), 0);
+    assert.strictEqual(game.trainClear(trial, 1), null);
+    trial.run.realm = 1;
+    assert.strictEqual(game.trainStage(trial), 2);
+  }
 
   const s = cultivator(30, 30, 30);
   assert.strictEqual(game.trainStage(s), 1);
@@ -132,8 +147,11 @@ test('历练：引气后自己打，不耗寿元、机缘和劫期；关卡不�
   assert.strictEqual(JSON.stringify(s), saved);
   assert.strictEqual(first.stage, 1);
   assert.strictEqual(first.boss, false);
-  assert.strictEqual(first.waves, game.TRAIN_MOBS);
-  assert.strictEqual(first.last, false);
+  assert.strictEqual(first.waves, 1);
+  assert.strictEqual(first.last, true);
+  game.trainClear(s, 1, () => 0.5);
+  assert.strictEqual(game.trainEncounter(s, 0, () => 0.5).waves, game.TRAIN_MOBS);
+  assert.strictEqual(game.trainEncounter(s, 0, () => 0.5).last, false);
   assert.strictEqual(game.trainEncounter(s, game.TRAIN_MOBS - 1, () => 0.5).last, true);
   // 越界的场次收回到这一关的最后一场。
   assert.strictEqual(game.trainEncounter(s, 99, () => 0.5).wave, game.TRAIN_MOBS - 1);
@@ -390,14 +408,16 @@ test('历练掉装备：首领关必掉，寻常的关有保底；空槽位直�
   const s = cultivator(13, 13, 13);
   // 随机数一直是 0.99：寻常的关不掉，连着 TRAIN_DROP_PITY 关没掉后必掉。
   const never = () => 0.99;
-  for (let stage = 1; stage <= game.TRAIN_DROP_PITY; stage++) assert.strictEqual(game.trainClear(s, stage, never).drop, null);
-  const pity = game.trainClear(s, game.TRAIN_DROP_PITY + 1, never);
-  assert.ok(pity.drop && pity.drop.worn);
-  assert.strictEqual(pity.drop.item.tier, game.TRAIN_DROP_PITY + 1);
+  assert.strictEqual(game.trainClear(s, 1, never).drop.item.slot, 'weapon');
+  for (let stage = 2; stage < 5; stage++) assert.strictEqual(game.trainClear(s, stage, never).drop, null);
   const boss = game.trainClear(s, 5, never);
   assert.strictEqual(boss.boss, true);
   assert.ok(boss.drop);
   assert.ok(/得/.test(s.run.log[s.run.log.length - 1].text));
+  for (let stage = 6; stage < 6 + game.TRAIN_DROP_PITY; stage++) assert.strictEqual(game.trainClear(s, stage, never).drop, null);
+  const pity = game.trainClear(s, 6 + game.TRAIN_DROP_PITY, never);
+  assert.ok(pity.drop);
+  assert.strictEqual(pity.drop.item.tier, 6 + game.TRAIN_DROP_PITY);
   assert.ok(game.gearScore(s) > 0);
   const power = game.combatPowerDetails(s);
   assert.ok(power.sources.find((source) => source.id === 'gear').value > 0);

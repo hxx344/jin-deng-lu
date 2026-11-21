@@ -1,7 +1,7 @@
 const game = require('../../utils/game');
 const audio = require('../../utils/audio').createAudio(wx);
 const cloudSync = require('../../utils/cloud-sync');
-const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, pickSave, friendlyError } = require('../../utils/cloud-score');
+const { scoreOf, scoreKey, autoDaoName, cleanDaoName, preferCloudProgress, pickSave, friendlyError } = require('../../utils/cloud-score');
 
 const SAVE_KEY = 'jindeng_save_v1';
 const SAVE_META_KEY = 'jindeng_save_meta_v1';
@@ -114,6 +114,7 @@ function actionForTags(tags) {
   if (has('lose')) return has('life-') ? 'hurt' : (has('demon+') ? 'demon' : 'shake');
   if (has('life-')) return 'cough';
   if (has('stageup')) return 'breakthrough';
+  if (has('insight')) return 'resonate';
   if (has('big')) return 'resonate';
   if (has('bigup')) return 'cheer';
   if (has('bond')) return 'resonate';
@@ -230,6 +231,7 @@ function drawChronicle(ctx, data, layout) {
 
 Page({
   data: {
+    sparks: Array.from({ length: game.LAMP_INSIGHT }, (_, i) => i + 1),
     hud: {},
     hero: {},
     actor: {},
@@ -290,6 +292,7 @@ Page({
     this.state = game.normalizeState(raw, now);
     this.lastSave = now;
     this.result = null;
+    this.lampOpen = false;
     this.act = '';
     this.replaceHidden = false;
     this.guideOpen = false;
@@ -536,7 +539,7 @@ Page({
       const row = pulled.data;
       // 云端已有这一行就要记住它的 id，否则回写会走成新建，撞 owner_id 唯一约束。
       if (row && row.id) this.cloudSaveId = row.id;
-      if (row && pickSave(this.localSavedAt, row.savedAt, isBlankSave(this.state)) === 'cloud') {
+      if (row && pickSave(this.localSavedAt, row.savedAt, preferCloudProgress(this.state, row.state)) === 'cloud') {
         if (!this.adoptCloud(row)) throw { code: 'BAD_SAVE', message: '云端存档已损坏，本地进度未动' };
         ok = true;
       } else if (row && !force && Number(row.savedAt) === Number(this.localSavedAt)) {
@@ -585,6 +588,7 @@ Page({
     this.lastCloudPush = Date.now();
     this.cloudSaveId = row.id || this.cloudSaveId;
     this.result = null;
+    this.lampOpen = false;
     this.clearGate();
     this.eventOpen = false;
     this.seaOpen = false;
@@ -843,7 +847,7 @@ Page({
       this.autoStuck = false;
       return;
     }
-    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.guideOpen || this.cloudOpen || this.arenaOpen || this.trainOpen || this.gateOpen || (this.fray && this.fray.gate) || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
+    if (this.act === 'thunder' || this.bracing || this.data.modal.show || this.result || this.lampOpen || this.guideOpen || this.cloudOpen || this.arenaOpen || this.trainOpen || this.gateOpen || (this.fray && this.fray.gate) || this.seaOpen || this.mountainPanel || this.tribOpen || this.mergeOpen || this.chronicleOpen) return;
     // 没有稳妥选项的机缘留给玩家，等他处理完再接着走。
     if (this.autoStuck && run.event) return;
     this.autoStuck = false;
@@ -956,6 +960,7 @@ Page({
     const left = game.yearsLeft(s);
     const born = run.phase !== 'root';
     return {
+      powerValue: power,
       realm: born ? game.realmText(run) : '尚未投胎',
       where: (born ? game.layerName(run) + ' · ' : '') + '第 ' + (s.lives + (run.phase === 'dead' ? 0 : 1)) + ' 世',
       wick: game.formatNumber(s.wick),
@@ -1045,7 +1050,17 @@ Page({
     const term = game.tribTerm(s);
     const path = !boarding && game.pathReady(s);
     const gate = !boarding && !run.trib ? game.tribGate(s) : null;
+    const lamp = run.lamp;
+    const ready = game.lampReady(s);
+    const lampName = lamp.school ? game.SCHOOLS[lamp.school].name + '卷' : '灯传';
     return {
+      lamp: !lamp.spent && !boarding && !run.trib,
+      lampName: lampName,
+      sparks: lamp.sparks,
+      hasScroll: !!lamp.school,
+      lampAction: ready === 'open' ? '开卷选招' : (ready === 'insight' ? '点灯顿悟' : ''),
+      lampHint: !lamp.school || lamp.sparks === game.LAMP_INSIGHT ? '先了结手中事' : '再历 ' + (game.LAMP_INSIGHT - lamp.sparks) + ' 次机缘可顿悟',
+      trialWon: run.realm === 0 && run.battle.cleared > 0,
       gate: gate && gate.short ? gate.scene : '',
       gateSub: gate ? gate.material + ' ' + gate.have + ' / ' + gate.need : '',
       term: run.mode === 'demon' ? '' : (term.overdue ? '劫期已过 ' + (term.used - term.term) + ' 次：每次机缘多折 ' + term.years + ' 年寿元' : '劫期：这一境界还能从容做 ' + term.left + ' 次机缘'),
@@ -1079,14 +1094,12 @@ Page({
       return { at: 'sheet', text: '欢迎。先挑一副这一世的根骨，点下面任意一项。', next: '' };
     }
     if (run.phase !== 'alive' || run.pending) return none;
-    if (this.result) {
-      return { at: 'sheet', text: '这是刚才那个选择的结果，中间的小人也会跟着做动作。点“收起”。', next: '' };
-    }
+    if (this.result || this.lampOpen || this.fray && this.fray.stage === 1) return none;
     if (run.event && this.eventOpen) {
-      return { at: 'sheet', text: '每个选项都写明了代价和收益，右边是要耗掉的寿元。挑一个点下去。', next: '' };
+      return run.choices === 0 ? { at: 'sheet', text: '右边是要花的寿元。亲历一项，灯就亮一点。闭关不添火。', next: '' } : none;
     }
     if (run.choices === 0) {
-      return { at: 'main', text: '灵气会随年岁自己涨。你要做的只有一件事：点这里翻开机缘。', next: '' };
+      return { at: 'main', text: '翻开一桩机缘，选一条愿意花寿元走的路。', next: '' };
     }
     const info = TIP_INFO[this.tipStep];
     return { at: info.at, text: info.text, next: this.tipStep === TIP_INFO.length - 1 ? '开始修行' : '下一步' };
@@ -1124,7 +1137,8 @@ Page({
     const rows = [].concat(
         sec('怎么玩', [
           '灵气和机缘跟着年岁涨：每耗掉 1 年寿元，灵气和机缘就各涨一截。一世之内不用等，想走多快走多快。',
-          '你要做的只有一件事：翻开机缘，在几个选项里挑一个。选过的选项会写明代价和收益；没选过的只写牵涉哪几样，后果要亲自试一次才知道，试过就永远记得（跨世保留）。',
+          '选根骨后，挑一卷灯传功法，再用它试招。往后亲历三次机缘便能顿悟，精进旧法、合参同门，也可以把灯火拿来冲脉。闭关不添火。每个大境界能悟一次，未用的火可留到下一境。',
+          '普通机缘会记住你选过的路，下一次就能看见它的具体收益。',
           '寿元只在做选择和静坐时流逝，放着不动、离线都不扣。寿元耗尽就身死，然后带着灯芯重来。'
         ]),
         sec('机缘', [
@@ -1202,7 +1216,7 @@ Page({
           '对战次数每小时回 1 次，最多存 ' + game.ARENA_MAX + ' 次，换一世也带着。同一个人可以反复打；“连战”会把剩下的次数一口气用完。'
         ]),
         sec('历练', [
-          '引气之后，会有东西冲着灯找上门，他坐在灯前自己打，战况就在场景里：左上角是他的气血和打到第几关，右上角是眼前这只的气血。',
+          '开卷后就能在灯前试招。第一关只有一只叼刀的野狗，打赢必得兵器；引气之后继续推关。左上角是你的气血和关数，右上角是对手的气血。',
           '历练不耗寿元和机缘，也不算进劫期。关卡没有尽头，越往后越硬：寻常的关连打 ' + game.TRAIN_MOBS + ' 只小的，每 ' + game.TRAIN_BOSS_EVERY + ' 关是一个首领。败了调息一阵，退回 ' + game.TRAIN_RETREAT + ' 关再一关一关打回来；重打的关不再掉装备，储物袋也不会因此变慢。',
           '每过一关，储物袋攒灵气就快一档，过首领关涨得更多。储物袋跟着现实时间攒，关掉游戏也在攒，最多存 ' + game.TRAIN_BAG_HOURS + ' 小时的量；点场景上方的“储物袋”把灵气收进丹田。',
           '每过一关得 ' + game.TRAIN_STONE + ' 块筑石，过首领关得 ' + game.TRAIN_BOSS_STONE + ' 块筑石和 ' + game.TRAIN_BOSS_DEW + ' 滴玉露；储物袋里每攒一件装备也带 1 块筑石。筑石修洞府，玉露浇仙树，筑基后期洞府开放后用得上。',
@@ -1652,7 +1666,7 @@ Page({
       if (!this.act && !this.data.sheet.kind) this.play('cheer', null, true);
     } else if (drop) {
       audio.play('coin');
-      this.showBanner('第 ' + r.stage + ' 关 · ' + drop);
+      this.showBanner(r.stage === 1 ? '试招取胜 · ' + drop : '第 ' + r.stage + ' 关 · ' + drop);
     }
     this.afterAction();
   },
@@ -1793,7 +1807,7 @@ Page({
     return {
       show: true,
       scene: f.gate || '',
-      title: f.gate ? f.scene : '第 ' + f.stage + ' 关',
+      title: f.gate ? f.scene : (f.stage === 1 ? '试招' : '第 ' + f.stage + ' 关'),
       pips: f.gate ? [] : pips,
       rest: rest,
       note: rest ? (f.gate ? '没打过' : '败了一阵 · ' + (f.back ? '退回第 ' + f.back + ' 关' : '调息中')) : '',
@@ -2128,6 +2142,7 @@ Page({
         else if (r.gate) nextText = r.nextGate;
         else if (r.nextMountain && !run.pending && game.mountainReady(s)) nextText = '返回山门';
         else if (r.voyage && game.atSea(run)) nextText = '继续探索';
+        else if (r.fromEvent && game.lampReady(s) === 'insight') nextText = '点灯顿悟';
         else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && !run.pending && game.canDraw(s)) nextText = '下一个机缘（剩 ' + Math.floor(run.chance) + '）';
         else if (!r.nextMountain && !r.voyage && !r.yuan && !r.arena && game.canMeditate(s) && game.meditateYears(s) < game.yearsLeft(s)) nextText = '再静坐一阵';
       }
@@ -2137,9 +2152,23 @@ Page({
         label: r.label,
         text: r.text || '',
         lines: r.lines.map((text, i) => ({ key: i, text: text })),
+        impact: r.impact || '',
+        lampProgress: r.fromEvent && run.phase === 'alive' && run.lamp.school && !run.lamp.spent && run.lamp.sparks < game.LAMP_INSIGHT,
         okText: r.dead ? '……' : (run.pending ? '取舍功法' : '收起'),
         nextText: nextText
       };
+    }
+    if (this.lampOpen) {
+      const view = game.lampView(s);
+      if (view) {
+        const opening = view.kind === 'open';
+        return {
+          kind: 'lamp', stamp: view.stamp, opening: opening,
+          title: opening ? '从灯里取一卷功法' : game.SCHOOLS[run.lamp.school].name + '卷顿悟',
+          text: opening ? '灯照出三行字。你选的那一行，会成为这一世的灯传。' : '三点火照亮残页。选一条路，这一境的灯火便用尽了。',
+          options: view.options.map((o) => Object.assign({ glyph: o.school ? game.SCHOOLS[o.school].name : (o.id === 'channel' ? '气' : '芯') }, o))
+        };
+      }
     }
     if (this.arenaOpen && run.phase === 'alive') return this.arenaView(power);
     if (this.trainOpen && run.phase === 'alive') return this.trainSheet();
@@ -2411,7 +2440,32 @@ Page({
 
   onRoot(e) {
     if (!game.chooseRoot(this.state, e.currentTarget.dataset.id, Date.now(), Math.random)) return;
+    this.lampOpen = true;
     this.play('born');
+    this.afterAction();
+  },
+
+  onLamp() {
+    if (this.act === 'thunder' || this.fray && this.fray.gate || !game.lampReady(this.state)) return;
+    this.lampOpen = true;
+    audio.play('pick');
+    this.refresh();
+  },
+
+  onLampPick(e) {
+    if (!this.lampOpen || this.data.sheet.kind !== 'lamp') return;
+    const data = e.currentTarget.dataset;
+    const opening = this.data.sheet.opening;
+    const result = game.chooseLamp(this.state, data.stamp, data.id, Math.random);
+    if (!result) return;
+    this.lampOpen = false;
+    if (!opening || this.state.run.pending || result.dead) {
+      this.finishChoice(result);
+      return;
+    }
+    const impact = this.powerChange();
+    this.showBanner('开卷 · ' + game.skillInfo(data.id).name + (impact ? '　' + impact : ''));
+    this.play(actionForTags(result.tags));
     this.afterAction();
   },
 
@@ -2475,6 +2529,13 @@ Page({
     this.finishChoice(result, { voyage: true, nextTrib: yuan && yuan.ready ? '渡元婴劫' : '' });
   },
 
+  powerChange() {
+    const before = this.data.hud.powerValue;
+    const after = game.combatPowerDetails(this.state).total;
+    if (before === undefined || before === after) return '';
+    return '战力 ' + game.formatNumber(before) + ' → ' + game.formatNumber(after);
+  },
+
   finishChoice(result, context) {
     if (!result) {
       this.showBanner('灵气不足，选不了这一项');
@@ -2482,20 +2543,22 @@ Page({
       this.refresh();
       return;
     }
-    this.result = Object.assign({ title: result.title, label: result.label, text: result.text || '', lines: result.lines, dead: result.dead }, context);
+    this.result = Object.assign({ title: result.title, label: result.label, text: result.text || '', lines: result.lines,
+      impact: result.dead ? '' : this.powerChange(), dead: result.dead }, context);
     this.eventOpen = false;
     this.replaceHidden = false;
     if (result.dead) wx.vibrateShort({ type: 'heavy' });
+    else if (result.tags.includes('bond') || result.tags.includes('insight')) wx.vibrateShort({ type: 'light' });
     this.play(result.dead ? this.deathAct() : actionForTags(result.tags));
     this.afterAction();
   },
 
   onOption(e) {
-    this.finishChoice(game.choose(this.state, Number(e.currentTarget.dataset.index), Math.random));
+    this.finishChoice(game.choose(this.state, Number(e.currentTarget.dataset.index), Math.random), { fromEvent: true });
   },
 
   onFallback() {
-    this.finishChoice(game.choose(this.state, -1, Math.random));
+    this.finishChoice(game.choose(this.state, -1, Math.random), { fromEvent: true });
   },
 
   onReroll() {
@@ -2506,6 +2569,7 @@ Page({
 
   onSheetClose() {
     audio.play('tap');
+    this.lampOpen = false;
     this.eventOpen = false;
     this.seaOpen = false;
     this.mountainPanel = '';
@@ -2535,6 +2599,7 @@ Page({
       this.refresh();
     } else if (result && result.nextTrib) this.onTrib();
     else if (result && result.gate) this.onGate();
+    else if (result && result.fromEvent && game.lampReady(this.state) === 'insight') this.onLamp();
     else this.onMain();
   },
 
@@ -2721,6 +2786,7 @@ Page({
       danger: true
     }, function () {
       this.state = game.createState(Date.now());
+      this.lampOpen = false;
       this.stopAct();
       this.clearGate();
       this.tipDone = false;

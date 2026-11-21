@@ -79,6 +79,13 @@ function isBlankSave(state) {
     && toInt(run.choices, 0) === 0;
 }
 
+// 只开了卷时，优先恢复另一台设备已经玩起来的那一世。
+// 若云端也还在开局，则按时间取舍，防止旧投胎页覆盖刚选的功法和试招兵器。
+function preferCloudProgress(local, cloud) {
+  const opened = local && local.run && local.run.lamp && local.run.lamp.school;
+  return isBlankSave(local) && (!opened || !isBlankSave(cloud));
+}
+
 // 云端比本地新才用云端的；本地还是空档时无条件让给云端。
 // 时间戳相同或缺失都保留本地，避免被旧档覆盖。
 function pickSave(localSavedAt, cloudSavedAt, localBlank) {
@@ -111,6 +118,7 @@ module.exports = {
   autoDaoName,
   cleanDaoName,
   isBlankSave,
+  preferCloudProgress,
   pickSave,
   friendlyError
 };

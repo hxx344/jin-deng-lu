@@ -92,6 +92,110 @@ test('新存档先投胎：三选一灵根，选定后开局带三分之一的�
   assert.strictEqual(game.chooseRoot(s, 'pill', 1000, () => 0), false);
 });
 
+test('灯传在普通机缘之外开卷，亲历添火；可重进面板，不能重复领或点过期的卷', () => {
+  const s = born('sword');
+  const start = game.lampView(s);
+  assert.strictEqual(start.kind, 'open');
+  assert.strictEqual(new Set(start.options.map((o) => o.school)).size, 3);
+  const sw = start.options.find((o) => o.id === 'sw1');
+  assert.ok(sw.note.includes('追斩'));
+  const chance = s.run.chance;
+  const power = game.combatPowerDetails(s).total;
+  assert.ok(game.chooseLamp(s, start.stamp, sw.id));
+  assert.strictEqual(game.chooseLamp(s, start.stamp, sw.id), null);
+  assert.ok(game.combatPowerDetails(s).total > power);
+  assert.strictEqual(s.run.age, 0);
+  assert.strictEqual(s.run.chance, chance);
+  assert.strictEqual(s.run.choices, 0);
+
+  const rng = mulberry(91);
+  assert.ok(game.drawEvent(s, rng));
+  assert.ok(game.choose(s, -1, rng));
+  assert.strictEqual(s.run.lamp.sparks, 0);
+  for (let i = 1; i <= game.LAMP_INSIGHT; i++) {
+    assert.ok(game.drawEvent(s, rng));
+    assert.strictEqual(game.lampView(s), null);
+    const index = game.eventView(s).options.findIndex((o) => !o.disabled && !o.fatal);
+    assert.ok(index >= 0);
+    assert.ok(game.choose(s, index, rng));
+    assert.strictEqual(s.run.lamp.sparks, i);
+  }
+  const loaded = game.normalizeState(JSON.parse(JSON.stringify(s)), 0, rng);
+  const view = game.lampView(loaded);
+  assert.deepStrictEqual(view, game.lampView(s));
+  assert.strictEqual(view.kind, 'insight');
+  assert.strictEqual(game.chooseLamp(loaded, start.stamp, 'sw1'), null);
+  assert.strictEqual(game.chooseLamp(loaded, view.stamp, 'tm_sw1'), null);
+  const up = view.options.find((o) => o.action === '精进');
+  const level = loaded.run.skills.find((skill) => skill.id === up.id).level;
+  assert.ok(game.chooseLamp(loaded, view.stamp, up.id));
+  assert.strictEqual(loaded.run.skills.find((skill) => skill.id === up.id).level, level + 1);
+  assert.strictEqual(game.chooseLamp(loaded, view.stamp, up.id), null);
+  assert.strictEqual(game.lampView(game.normalizeState(loaded, 0, rng)), null);
+});
+
+test('灯传顿悟兑现同门羁绊、冲脉或留芯；渡劫开放下一次，跨世从开卷重来', () => {
+  const ready = () => {
+    const s = born('sword');
+    game.chooseLamp(s, game.lampView(s).stamp, 'sw1');
+    s.run.lamp.sparks = game.LAMP_INSIGHT;
+    return s;
+  };
+  const s = ready();
+  let view = game.lampView(s);
+  const pair = view.options.find((o) => o.action === '合参');
+  const odds = game.tribulationInfo(s).chance;
+  assert.ok(pair.note.includes('追剑必暴击'));
+  const r = game.chooseLamp(s, view.stamp, pair.id);
+  assert.ok(r.tags.includes('bond') && r.lines.some((line) => line.includes('渡劫加成最高 +10%')));
+  assert.strictEqual(game.trainFighter(s).schools.sword.count, 2);
+  assert.ok(game.tribulationInfo(s).chance > odds);
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  assert.ok(crossTrib(s, () => 0, 'endure').broke);
+  assert.deepStrictEqual(s.run.lamp, { school: 'sword', sparks: 0, spent: false });
+  assert.strictEqual(game.chooseLamp(s, view.stamp, pair.id), null);
+  game.retire(s);
+  assert.ok(game.reincarnate(s, 0, () => 0));
+  assert.deepStrictEqual(s.run.lamp, { school: '', sparks: 0, spent: false });
+
+  const qi = ready();
+  qi.run.qi = 12.5;
+  assert.ok(game.chooseLamp(qi, game.lampView(qi).stamp, 'channel').tags.includes('stageup'));
+  assert.strictEqual(qi.run.stage, 1);
+  assert.strictEqual(qi.run.qi, 0);
+  const full = ready();
+  full.run.stage = game.STAGES.length - 1;
+  full.run.qi = game.qiCap(full);
+  view = game.lampView(full);
+  assert.ok(!view.options.some((o) => o.id === 'channel'));
+  assert.ok(game.chooseLamp(full, view.stamp, 'wick'));
+  assert.strictEqual(full.wick, 2);
+  assert.strictEqual(full.totalWick, 2);
+});
+
+test('旧档可在未决事务后开卷；功法已满沿用取舍，未花的灯火可带进下一境', () => {
+  const old = born('sword');
+  delete old.run.lamp;
+  setEvent(old, 'a_feast');
+  const s = game.normalizeState(old, 0, () => 0);
+  assert.strictEqual(game.lampView(s), null);
+  assert.strictEqual(s.run.event.id, 'a_feast');
+  assert.ok(game.choose(s, -1, () => 0));
+  const v = game.lampView(s);
+  give(s, ['pi1', 'pi2', 'pi3', 'pi4', 'pi5', 'pi7', 'ta1', 'bo1']);
+  assert.ok(game.lampView(s).options.find((o) => o.id === 'sw1').note.includes('已满'));
+  game.chooseLamp(s, v.stamp, 'sw1');
+  assert.strictEqual(s.run.pending.id, 'sw1');
+  assert.strictEqual(s.run.skills.length, game.maxSkills(s));
+  assert.ok(game.resolveReplace(s, 0));
+  s.run.lamp.sparks = 3;
+  s.run.stage = game.STAGES.length - 1;
+  s.run.qi = game.qiCap(s);
+  assert.ok(crossTrib(s, () => 0, 'endure').broke);
+  assert.strictEqual(game.lampView(s).kind, 'insight');
+});
+
 test('灵根特性：药体加产出，石身加寿元，歪运加机缘上限', () => {
   near(game.qiRate(born('pill')), 1.15);
   const s = game.createState(0, seq([0, 0.99, 0, 0.99]));

@@ -35,6 +35,8 @@ const SUDDENS = content.SUDDENS;
 const EVENTS = content.EVENTS;
 const TRAIN_FOES = content.TRAIN_FOES;
 const GATES = content.GATES;
+const LAMP_SCROLLS = content.LAMP_SCROLLS;
+const LAMP_INSIGHT = 3;
 
 const BASE_QI_CAP = 100;
 const BASE_LIFE = 60;
@@ -323,6 +325,7 @@ function newRun(state, rng) {
     speed: 0,
     stats: { edge: 0, body: 0, mind: 0 },
     skills: [],
+    lamp: { school: '', sparks: 0, spent: false },
     chance: 0,
     event: null,
     pending: null,
@@ -1697,11 +1700,118 @@ function gainSkill(state, id, level, lines, tags) {
     run.skills.push({ id: id, level: level });
     lines.push('习得' + skillTitle(skill, level));
     const count = setCounts(run)[skill.school];
-    if (count === 2 || count === 4) tags.push('bond');
+    if (count === 2 || count === 4) {
+      tags.push('bond');
+      lines.push(bondText(skill.school, count));
+    }
   } else {
     run.pending = { id: id, level: level };
     lines.push('得到' + skillTitle(skill, level) + '，但功法已满，需要取舍');
   }
+}
+
+function bondText(school, count) {
+  const def = SCHOOLS[school];
+  const move = count === 2 ? LAMP_SCROLLS[school].pairMove : '';
+  const bonus = school === 'sword' && count === 2 ? '渡劫加成最高 +10%（随考核属性折算）' : def['set' + count];
+  return def.name + '系' + count + '门成势 · ' + [move, bonus].filter(Boolean).join('，');
+}
+
+// 灯传独立于随机机缘。已经打开的事件、取舍、雷劫、航行和连续突发应先办完。
+function lampReady(state) {
+  const run = state.run;
+  if (run.phase !== 'alive' || run.event || run.pending || run.trib || atSea(run) || run.sudden) return '';
+  if (!run.lamp.school) return 'open';
+  return !run.lamp.spent && run.lamp.sparks === LAMP_INSIGHT ? 'insight' : '';
+}
+
+function lampSkillOption(state, skill, opening) {
+  const run = state.run;
+  const owned = skillEntry(run, skill.id);
+  const level = owned ? Math.min(owned.level + 1, MAX_GRADE) : 1;
+  const school = skill.school;
+  const count = setCounts(run)[school] + 1;
+  const full = !owned && run.skills.length >= maxSkills(state);
+  const rank = owned && level > owned.level ? gradeName(owned.level) + ' → ' + gradeName(level) : gradeName(level) + '品';
+  let note = LAMP_SCROLLS[school].move;
+  if (full) note = '功法位已满，收下后可选一门替换。';
+  else if (owned && owned.level === MAX_GRADE) note = '已至天品，定为灯传后可在此系顿悟';
+  else if (!owned && (count === 2 || count === 4)) note = bondText(school, count);
+  else if (!opening && !owned) note = '习得后共有 ' + count + ' 门' + SCHOOLS[school].name + '系功法';
+  return {
+    id: skill.id, school: school, level: level, action: opening ? '开卷' : (owned ? '精进' : '合参'),
+    title: skill.name, rank: rank, note: note,
+    desc: owned && level > owned.level ? skillUpgradeDesc(skill, owned.level, level) : skillDesc(skill, level)
+  };
+}
+
+function lampView(state) {
+  const kind = lampReady(state);
+  if (!kind) return null;
+  const run = state.run;
+  const school = run.lamp.school;
+  const options = [];
+  if (kind === 'open') {
+    const schools = [run.path].concat(rootOf(run).schools, ['sword', 'pill', 'body']);
+    Array.from(new Set(schools.filter(Boolean))).slice(0, 3).forEach((id) => {
+      options.push(lampSkillOption(state, skillInfo(LAMP_SCROLLS[id].first), true));
+    });
+  } else {
+    const scroll = LAMP_SCROLLS[school];
+    const ids = [scroll.first, scroll.pair].concat(SKILLS.filter((s) => s.school === school && !(s.life < 0)).map((s) => s.id));
+    const upgrade = ids.find((id) => {
+      const owned = skillEntry(run, id);
+      return owned && owned.level < MAX_GRADE;
+    });
+    const learn = ids.find((id) => !skillEntry(run, id));
+    if (upgrade) options.push(lampSkillOption(state, skillInfo(upgrade), false));
+    if (learn) options.push(lampSkillOption(state, skillInfo(learn), false));
+    if (!isFull(state)) {
+      const next = run.stage + 1;
+      const title = REALMS[run.realm].name + (next < STAGES.length ? STAGES[next].name : '圆满');
+      options.push({ id: 'channel', action: '冲脉', title: title, rank: '灵气',
+        desc: '填满当前丹田，现有灵气 ' + formatNumber(run.qi) + ' / ' + formatNumber(qiCap(state)),
+        note: next < STAGES.length ? '当场突破一个小境界' : '后期圆满，仍须亲自渡劫' });
+    } else {
+      options.push({ id: 'wick', action: '留火', title: '凝成灯芯', rank: '跨世',
+        desc: '灯芯 +' + (2 + run.realm), note: '这一世丹田已满，留下的灯芯可点亮灯纹' });
+    }
+  }
+  return { kind: kind, stamp: [state.lives, run.realm, kind].join('/'), options: options };
+}
+
+function chooseLamp(state, stamp, id, rng) {
+  const view = lampView(state);
+  if (!view || view.stamp !== stamp) return null;
+  const opt = findById(view.options, id);
+  if (!opt) return null;
+  const run = state.run;
+  const before = snapshot(state);
+  const opening = view.kind === 'open';
+  const title = opening ? '灯下开卷' : SCHOOLS[run.lamp.school].name + '卷顿悟';
+  const lines = [];
+  const tags = [];
+  if (opening) run.lamp.school = opt.school;
+  else {
+    run.lamp.spent = true;
+    run.lamp.sparks = 0;
+  }
+  if (id === 'channel') {
+    addQiWithLines(state, qiCap(state) - run.qi, lines, tags);
+    if (tags.includes('stageup')) maybeSudden(state, rng || Math.random, 'meridian');
+  } else if (id === 'wick') {
+    gainLiveWick(state, 2 + run.realm);
+    lines.push(opt.desc);
+    tags.push('big');
+  } else {
+    const owned = skillEntry(run, id);
+    if (owned && owned.level === MAX_GRADE) lines.push('《' + opt.title + '》已至天品，定为本世灯传');
+    else gainSkill(state, id, opt.level, lines, tags);
+  }
+  const label = opt.action + ' · ' + opt.title;
+  run.log.push({ age: run.age, title: title, text: label + '，' + lines.join('，'), detail: changeText(before, snapshot(state)) });
+  run.log = run.log.slice(-MAX_LOG);
+  return { title: title, label: label, lines: lines, tags: tags, dead: checkDeath(state) };
 }
 
 function randomSkill(state, school, rng) {
@@ -2096,6 +2206,13 @@ function choose(state, index, rng) {
   checkFall(state);
   run.choices++;
   run.realmChoices++;
+  if (index !== -1 && run.lamp.school && !run.lamp.spent && run.lamp.sparks < LAMP_INSIGHT) {
+    run.lamp.sparks++;
+    if (run.lamp.sparks === LAMP_INSIGHT) {
+      lines.push('三点灯火齐了，可以顿悟');
+      tags.push('insight');
+    }
+  }
   if (overdue) lines.push('劫期已过，多折 ' + overdue + ' 年');
   const tick = sumSkills(run, 'tick');
   if (tick) addQiWithLines(state, qiRewardAmount(state, tick), lines, tags);
@@ -2465,7 +2582,7 @@ function arenaFight(state, row, rng, times) {
   const dead = checkDeath(state);
   return { title: '竞技场', label: label, win: wins > 0, wins: wins, losses: losses, fights: fights, lines: lines, tags: tags, dead: dead };
 }
-// 历练：引气后角色在场景里自己打，不耗寿元和机缘，也不计入劫期。战斗由 battle.js 一次算完，页面只负责播放。
+// 历练：开卷后可在凡胎试招第一关，引气后继续推关。战斗由 battle.js 一次算完，页面只负责播放。
 // 关卡不限数量：寻常的关连打 TRAIN_MOBS 只小怪，每 TRAIN_BOSS_EVERY 关是一个首领。败了往回退 TRAIN_RETREAT 关，再一关一关打回来。
 // 退回去重打的关不再给东西：储物袋的速度和掉落都只认这一世过的最远一关，否则故意输就能反复刷首领的掉落。
 // 每过一关，储物袋攒灵气的速度就高一档；储物袋随现实时间攒，离线也攒，最多存 TRAIN_BAG_HOURS 小时的量。
@@ -2536,7 +2653,7 @@ function trainBoss(stage) {
 
 // 这一关要连赢几场。
 function trainWaves(stage) {
-  return trainBoss(stage) ? 1 : TRAIN_MOBS;
+  return stage === 1 || trainBoss(stage) ? 1 : TRAIN_MOBS;
 }
 
 // 第 stage 关（从 1 起）来的是谁。每五关换一轮：前四关各是一种小怪，第五关的首领轮着当。
@@ -2547,6 +2664,7 @@ function trainFoeDef(stage) {
 
 function trainFoe(state, stage) {
   const def = trainFoeDef(stage);
+  if (stage === 1) return battle.foeFighter({ name: '叼刀的野狗', hp: 8, atk: 2, interval: def.interval });
   const boss = trainBoss(stage);
   const scale = 1 + HEAVEN_REQ * state.run.heaven;
   return battle.foeFighter({
@@ -2564,7 +2682,10 @@ function trainFoe(state, stage) {
 function trainReason(state) {
   const run = state.run;
   if (run.phase !== 'alive') return '这一世已经结束';
-  if (run.realm < TRAIN_REALM) return REALMS[TRAIN_REALM].name + '之后才有东西找上门';
+  if (run.realm < TRAIN_REALM) {
+    if (!run.lamp.school) return '挑一卷灯传功法，就能试招';
+    if (run.battle.cleared) return '试招已胜，引气后继续历练';
+  }
   if (atSea(run)) return '人在枯海，回来再说';
   return '';
 }
@@ -2616,7 +2737,7 @@ function trainClear(state, stage, rng) {
   const run = state.run;
   if (!stage || trainStage(state) !== stage) return null;
   const boss = trainBoss(stage);
-  const name = boss ? trainFoeDef(stage).name : trainFoeDef(stage).mob;
+  const name = trainFoe(state, stage).name;
   if (run.battle.back > 0) {
     run.battle.back--;
     return { stage: stage, boss: boss, name: name, perHour: qiRewardAmount(state, trainRate(state)), drop: null, again: true };
@@ -2627,15 +2748,18 @@ function trainClear(state, stage, rng) {
   const perHour = qiRewardAmount(state, trainRate(state));
   const roll = rng || Math.random;
   let drop = null;
-  if (boss || run.gear.dry >= TRAIN_DROP_PITY || roll() < TRAIN_DROP) {
+  if (stage === 1 || boss || run.gear.dry >= TRAIN_DROP_PITY || roll() < TRAIN_DROP) {
     run.gear.dry = 0;
-    drop = gearGain(state, gear.roll(stage, roll, boss));
+    drop = gearGain(state, gear.roll(stage, roll, boss, stage === 1 ? 'weapon' : undefined));
   } else {
     run.gear.dry++;
   }
   const stone = mountain.addStone(run, boss ? TRAIN_BOSS_STONE : TRAIN_STONE);
   const dew = boss ? mountain.addDew(run, TRAIN_BOSS_DEW) : 0;
-  if (boss) {
+  if (stage === 1) {
+    run.log.push({ age: run.age, title: '试招', text: '击退' + name + '，拾得' + drop.item.grade + drop.item.name, detail: '' });
+    run.log = run.log.slice(-MAX_LOG);
+  } else if (boss) {
     run.log.push({ age: run.age, title: '历练', text: '第 ' + stage + ' 关，打赢了' + name + '，得' + drop.item.grade + drop.item.name +
       (stone ? '、筑石 ' + stone + ' 块' : '') + (dew ? '、玉露 ' + dew + ' 滴' : '') + '。储物袋每小时攒灵气 ' + formatNumber(perHour), detail: '' });
     run.log = run.log.slice(-MAX_LOG);
@@ -3313,6 +3437,7 @@ function enterNextRealm(state, info, lines) {
   run.realm++;
   run.realmChoices = 0;
   run.scatters = 0;
+  run.lamp.spent = false;
   run.stage = 0;
   run.qi = 0;
   if (hasSet(run, 'sword', 4)) run.forceLegacy = true;
@@ -3926,6 +4051,11 @@ function normalizeRun(state, raw, rng) {
     });
   }
   run.choices = toCount(raw.choices);
+  if (raw.lamp && SCHOOL_IDS.includes(raw.lamp.school)) {
+    run.lamp.school = raw.lamp.school;
+    run.lamp.spent = raw.lamp.spent === true;
+    run.lamp.sparks = run.lamp.spent ? 0 : toCount(raw.lamp.sparks, LAMP_INSIGHT);
+  }
   run.realmChoices = toCount(raw.realmChoices, run.choices);
   run.scatters = toCount(raw.scatters, SCATTER_MAX);
   // 更新前已经开始的这一世沿用原来的考核，不补抽劫相。
@@ -4140,6 +4270,10 @@ function formatDuration(seconds) {
 }
 
 module.exports = {
+  LAMP_INSIGHT,
+  lampReady,
+  lampView,
+  chooseLamp,
   SCHOOL_IDS,
   SCHOOLS,
   GRADES,

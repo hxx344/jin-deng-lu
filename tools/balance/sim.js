@@ -104,6 +104,26 @@ function bestPath(state, score) {
   return open.length ? open[0].id : null;
 }
 
+function takeLamp(state, policy, rng) {
+  const view = game.lampView(state);
+  if (!view) return false;
+  const options = view.options;
+  let opt = options[0];
+  if (policy.id === 'casual') opt = pick(options, rng);
+  else if (policy.id === 'careful') {
+    if (view.kind === 'open') {
+      const trial = game.tribPlan(state)[state.run.realm];
+      opt = options.find((o) => trial && trial.tests.includes(SCHOOL_ATTR[o.school])) || opt;
+    } else {
+      const count = game.setCounts(state.run)[state.run.lamp.school];
+      if (count === 1 || count === 3) opt = options.find((o) => o.action === '合参') || opt;
+    }
+  }
+  const result = game.chooseLamp(state, view.stamp, opt.id, rng);
+  if (state.run.pending) game.resolveReplace(state, policy.replace(state, rng));
+  return !!result;
+}
+
 // 三种打法共用的骨架：act 返回 true 表示这一步做了一件要花时间的事。
 const POLICIES = {
   // 随手玩：不看收益，只是不点明摆着送命的选项；灵气满了立刻硬抗天劫，道途随便选。
@@ -416,6 +436,10 @@ function playLife(state, policy, rng, config, clock) {
       game.retire(state);
       break;
     }
+    if (takeLamp(state, policy, rng)) {
+      tick(config.choiceSeconds);
+      continue;
+    }
     const fought = sim.gate();
     if (fought) {
       tick(fought.seconds, fought.pauseTrain);
@@ -623,6 +647,7 @@ function render(data) {
     '- 重天：每一世都去已解锁的最高一重。“圆满”指修到' + REALM_NAMES[LAST_REALM] + '后期、灵气满了再渡过' + game.TRIBS[LAST_REALM].name + '，在最高一重做到就解锁下一重。',
     '- 终点：' + REALM_NAMES[LAST_REALM] + '圆满后灯芯不会再涨，三种打法都直接坐化，“余寿”是身死时还没用掉的寿元。一世走满 ' + MAX_STEPS + ' 步仍未结束的记为“活不死”并强制坐化。',
     '- 见闻：三种打法都从零开始认选项。挂机玩和认真玩在寿元、心魔宽裕时会去试没选过的选项。',
+    '- 灯传：三种打法都会开卷和使用本境顿悟。随手玩随机挑，挂机玩拿第一项，认真玩先选契合劫相的功法，顿悟优先凑两门或四门羁绊。凡胎试招打赢第一关就停，引气后续打。',
     '- **随手玩**：选项在不会当场寿尽的里面随机挑，功法取舍和道途随机，灵气一满立刻硬抗天劫，枯海和元婴劫也随机选；根骨拿第一副，不重抽。',
     '- **挂机玩**：见过的选项全交给游戏自带的“自动机缘”估分；道途选手里功法最多的一系；成功率到 ' + Math.round(config.idleThreshold * 100) + '% 就硬抗天劫，劫期过了或寿元将尽也渡；枯海和元婴劫随机选，不合秘法、不修洞府、不重抽根骨。',
     '- **认真玩**：选项同样靠“自动机缘”估分，但会经营：道途按功法和劫相选；成功率到 ' + Math.round(config.tribThreshold * 100) + '% 才渡劫（能借势就借势），劫期过了降到 ' + Math.round(config.overdueThreshold * 100) + '%，再拖一次机缘多折的寿元不比渡劫失败折的少时不再等，属性够了就只选“闭关不理”等灵气，寿元只剩 ' + config.lastDitchYears + ' 年时不再等；逐道雷的天劫渡过后，余雷成功率到 ' + Math.round(config.extraThreshold * 100) + '% 且寿元宽裕才多引一道；会合秘法、修洞府、在枯海拿凭据、带前世功法；根骨重抽到出“绝”品以上或次数用完。',

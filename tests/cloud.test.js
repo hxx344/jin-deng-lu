@@ -1,6 +1,6 @@
 const assert = require('node:assert');
 const test = require('node:test');
-const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, pickSave, friendlyError } = require('../utils/cloud-score');
+const { scoreOf, scoreKey, autoDaoName, cleanDaoName, isBlankSave, preferCloudProgress, pickSave, friendlyError } = require('../utils/cloud-score');
 const { createRetryWx, canRetry } = require('../utils/cloud-retry');
 
 // 只造 scoreOf 真正会读的字段，避免把规则层整份状态搬进测试。
@@ -75,6 +75,16 @@ test('空档判定：有轮回、灯芯、论道积分或选择记录时视为�
   assert.strictEqual(isBlankSave({ run: { phase: 'root' }, lives: 0, totalWick: 0, wick: 5 }), false);
   assert.strictEqual(isBlankSave({ run: { phase: 'alive', choices: 0 }, arenaPoints: 3 }), false);
   assert.strictEqual(isBlankSave(null), true);
+});
+
+test('较新的开卷进度可回写初始云档，新设备只开过卷仍会恢复已有选择的老档', () => {
+  const root = { run: { phase: 'root' } };
+  const opening = { run: { phase: 'alive', choices: 0, lamp: { school: 'sword' } } };
+  const played = { run: { phase: 'alive', choices: 1 } };
+  assert.strictEqual(pickSave(200, 100, preferCloudProgress(opening, root)), 'local');
+  assert.strictEqual(pickSave(200, 100, preferCloudProgress(root, opening)), 'cloud');
+  assert.strictEqual(pickSave(200, 100, preferCloudProgress(opening, played)), 'cloud');
+  assert.strictEqual(pickSave(200, 100, preferCloudProgress(played, opening)), 'local');
 });
 
 test('道号：去空白、去控制字符、最多 12 个字', () => {

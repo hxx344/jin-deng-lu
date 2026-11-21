@@ -1644,6 +1644,56 @@
   padding: 12rpx 0 20rpx;
 }
 
+.lamp-track, .result-sparks, .lamp-track-left, .lamp-sparks {
+  display: flex;
+  align-items: center;
+}
+
+.lamp-track {
+  flex-shrink: 0;
+  justify-content: space-between;
+  min-height: 48rpx;
+  padding: 0 16rpx;
+  border-bottom: 1rpx solid #584338;
+  background: #2b211d;
+  color: #f6d4a4;
+  font-size: 24rpx;
+}
+
+.lamp-track-ready {
+  min-height: 64rpx;
+  border-bottom-color: #bd8251;
+  background: #413025;
+}
+
+.lamp-track-hint, .result-sparks { color: #d2bda0; font-size: 22rpx; }
+.lamp-track-ready .lamp-track-hint { color: #ffce85; font-weight: 700; }
+.lamp-sparks { margin: 0 12rpx; }
+.lamp-spark {
+  box-sizing: border-box;
+  width: 13rpx;
+  height: 18rpx;
+  margin: 0 5rpx;
+  border: 2rpx solid #a4805f;
+  border-radius: 80% 10% 66% 50%;
+  transform: rotate(16deg);
+}
+.lamp-spark-lit { background: #ffc779; border-color: #ffe1a9; box-shadow: 0 0 8rpx #b66930; }
+
+.trial-spoil {
+  position: absolute;
+  right: 16rpx;
+  bottom: 14rpx;
+  z-index: 4;
+  padding: 8rpx 14rpx;
+  border: 1rpx solid #97714b;
+  border-radius: 8rpx;
+  background: #29201c;
+  color: #f6d4a4;
+  font-size: 22rpx;
+}
+.trial-link { margin-left: 12rpx; color: #e5b377; }
+
 .main-btn {
   flex: 1;
   display: flex;
@@ -2589,6 +2639,38 @@
   line-height: 1.5;
   color: #e9dfcf;
 }
+
+.scroll-caption { color: #e6b97c; font-size: 24rpx; }
+.scroll-title, .scroll-name, .scroll-seal { font-family: "Songti SC", "STSong", "SimSun", serif; }
+.scroll-leaf {
+  display: flex;
+  align-items: flex-start;
+  padding: 20rpx 8rpx;
+  border-top: 1rpx solid #705641;
+}
+.scroll-seal {
+  flex: none;
+  width: 58rpx;
+  height: 62rpx;
+  margin-right: 20rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 7rpx 3rpx 8rpx 3rpx;
+  color: #eac081;
+  text-align: center;
+  line-height: 62rpx;
+  font-size: 38rpx;
+}
+.scroll-sword .scroll-seal { color: #aacfe4; }
+.scroll-pill .scroll-seal { color: #a9d7b8; }
+.scroll-talisman .scroll-seal { color: #cfb9e7; }
+.scroll-body .scroll-seal { color: #e8b293; }
+.scroll-copy { flex: 1; min-width: 0; }
+.scroll-name { font-size: 34rpx; font-weight: 700; color: #ffead0; }
+.scroll-rank { flex: none; margin-left: 8rpx; font-size: 22rpx; color: #d1ac84; }
+.scroll-move { margin-top: 6rpx; font-size: 25rpx; line-height: 1.45; color: #ead7c1; }
+.scroll-stats { margin-top: 4rpx; font-size: 22rpx; line-height: 1.4; color: #c4af99; }
+.result-impact { margin-top: 10rpx; color: #ffcd84; font-size: 32rpx; font-weight: 700; }
+.result-sparks { margin-top: 12rpx; }
 
 .sheet-wick {
   display: flex;
