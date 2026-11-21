@@ -278,18 +278,20 @@ function buyLamps(state) {
 const TRAIN_GAP = 2;
 const TRAIN_REST = 4;
 const GEAR_STALL = 4;
+function tidyGear(state) {
+  game.gearEquipBest(state);
+  game.gearScrapSpare(state);
+  game.gearView(state).worn.forEach((slot) => {
+    while (game.gearEnhance(state, slot.slot)) { /* 强化到锻材不够为止 */ }
+  });
+}
+
 function train(state, clock, seconds, manage) {
   if (!game.trainStage(state)) {
     clock.spare = 0;
     return;
   }
-  const tidy = () => {
-    game.gearEquipBest(state);
-    game.gearScrapSpare(state);
-    game.gearView(state).worn.forEach((slot) => {
-      while (game.gearEnhance(state, slot.slot)) { /* 强化到锻材不够为止 */ }
-    });
-  };
+  const tidy = () => tidyGear(state);
   clock.spare += seconds;
   while (clock.spare > 0) {
     const stage = game.trainStage(state);
@@ -411,6 +413,8 @@ function playLife(state, policy, rng, config, clock) {
       continue;
     }
     if (run.phase === 'alive' && run.pending) game.resolveReplace(state, policy.replace(state, rng));
+    // 机缘里也会给装备和锻材。
+    if (run.phase === 'alive' && policy.gear) tidyGear(state);
     tick(config.choiceSeconds);
   }
   life.realm = run.realm;

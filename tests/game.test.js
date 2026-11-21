@@ -1204,7 +1204,7 @@ test('存档校验：失效的机缘会退还次数，寿元已尽或心魔已�
 });
 
 test('内容完整性：功法、事件、因果和灯纹的数据都能被规则使用', () => {
-  const fxKeys = ['qi', 'edge', 'body', 'mind', 'demon', 'life', 'chance', 'speed', 'skill', 'slot', 'karma', 'mark', 'unmark'];
+  const fxKeys = ['qi', 'edge', 'body', 'mind', 'demon', 'life', 'chance', 'speed', 'skill', 'slot', 'gear', 'forge', 'karma', 'mark', 'unmark'];
   const used = {};
   const gained = {};
   const checkFx = (fx, where) => {

@@ -490,7 +490,7 @@ const EVENTS = [
     text: '仙人的指甲缝里长着灵草，也住着别的东西。',
     options: [
       { label: '伸手去掏', years: 2, risk: { p: 0.6, win: { qi: 0.7 }, lose: { life: -10 } } },
-      { label: '用剑去挑', years: 3, fx: { edge: 2, qi: 0.2 } },
+      { label: '用剑去挑', years: 3, fx: { edge: 2, qi: 0.2, forge: 3 } },
       { label: '往里喊话', years: 1, risk: { p: 0.5, win: { skill: 'talisman' }, lose: { demon: 10 } } },
       { label: '一剑削下整片指甲', school: 'sword', years: 2, fx: { edge: 3, qi: 0.4 } }
     ]
@@ -790,7 +790,7 @@ const EVENTS = [
     text: '地上有一块灵石，旁边立着牌子：“谁捡谁是狗”。',
     options: [
       { label: '捡', years: 1, fx: { qi: 0.2, demon: 2 } },
-      { label: '把牌子劈了再捡', years: 1, fx: { qi: 0.1, edge: 1 } },
+      { label: '把牌子劈了再捡', years: 1, fx: { qi: 0.1, edge: 1, forge: 2 } },
       { label: '在旁边再立一块牌子', years: 1, fx: { mind: 1 } }
     ]
   },
@@ -1044,7 +1044,7 @@ const EVENTS = [
     id: 'a_salt_wreck', type: 'adventure', layers: [2], title: '盐壳里的桅杆',
     text: '一道旧雷把龙舟桅杆钉进了海床。风吹过断口，响得像谁还在击鼓。',
     options: [
-      { label: '沿着雷痕拆开盐壳', years: 4, fx: { edge: 9, demon: 7 } },
+      { label: '沿着雷痕拆开盐壳', years: 4, fx: { edge: 9, demon: 7, gear: 1 } },
       { label: '背着桅杆走到岸上', years: 4, fx: { body: 9 } },
       { label: '坐在断口旁听完一通鼓', years: 3, fx: { mind: 8 } }
     ]
@@ -1056,6 +1056,46 @@ const EVENTS = [
       { label: '替她守灯', years: 2, fx: { demon: -8 } },
       { label: '记下几段潮声', years: 2, fx: { mind: 4 } },
       { label: '把温热的盐倒进阵眼', years: 1, fx: { qi: 0.12 } }
+    ]
+  },
+  // 给装备和锻材的机缘：装备补身上装备分最低的槽位，阶比历练眼下掉的高，品级也更好。
+  {
+    id: 'a_smith', type: 'adventure', layers: [1, 2], title: '铁匠铺的回炉价',
+    text: '铁匠说，他这炉子烧的都是别人不要的兵器。烧到最后剩下什么，他自己也说不准。',
+    options: [
+      { label: '把身上最破的一件递进去', years: 2, cost: { qi: 0.3 }, fx: { gear: 1 } },
+      { label: '赌他炉底压着的那件', years: 2, risk: { p: 0.45, win: { gear: 2 }, lose: { life: -6, forge: 2 } } },
+      { label: '帮他拉一天风箱', years: 3, fx: { body: 2, forge: 4 } },
+      { label: '徒手从炉里捞一件', school: 'body', years: 2, fx: { gear: 1, body: 2 } }
+    ]
+  },
+  {
+    id: 'a_battlefield', type: 'adventure', layers: [1, 2], title: '没人收尸的战场',
+    text: '两拨修士在这里打过一场，赢的那边也没剩下人。兵器倒是都还在，只是有的手还握着不放。',
+    options: [
+      { label: '一根一根掰开手指', years: 3, fx: { gear: 1, demon: 6 } },
+      { label: '只捡地上散着的', years: 2, fx: { forge: 5 } },
+      { label: '挖坑把人都埋了', years: 4, fx: { demon: -8, mind: 2 } },
+      { label: '翻最里面穿得最好的那具', years: 2, risk: { p: 0.5, win: { gear: 2 }, lose: { life: -9, demon: 5 } } }
+    ]
+  },
+  {
+    id: 'a_pawn', type: 'adventure', layers: [1, 2], title: '当铺的死当',
+    text: '当铺清死当。掌柜说这些东西的主人都发过誓会回来赎，他等了三百年，决定不等了。',
+    options: [
+      { label: '挑一件顺眼的', years: 1, cost: { qi: 0.4 }, fx: { gear: 1 } },
+      { label: '买下那口没开封的箱子', years: 2, cost: { qi: 0.6 }, fx: { gear: 2 } },
+      { label: '替掌柜抄一天当票', years: 2, fx: { mind: 2, qi: 0.15 } },
+      { label: '闭着眼摸一件', school: 'luck', years: 1, fx: { gear: 2 } }
+    ]
+  },
+  {
+    id: 'i_whetstone', type: 'idle', layers: [0, 1, 2], title: '路边的磨刀石',
+    text: '磨刀石上刻着一行字：“磨一次少一次”。没说少的是石头还是刀。',
+    options: [
+      { label: '磨一磨随身的家伙', years: 1, fx: { forge: 3 } },
+      { label: '把石头搬走', years: 2, fx: { body: 1, forge: 5, demon: 2 } },
+      { label: '坐下看别人磨', years: 1, fx: { mind: 1 } }
     ]
   },
 

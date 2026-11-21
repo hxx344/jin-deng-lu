@@ -801,3 +801,48 @@ test('新词条在战斗里生效：暴击伤害、吸血、反伤、回血、�
   const mains = combo.timeline.filter((entry) => entry.who === 'me' && entry.text === '连击').length;
   assert.ok(mains > 0);
 });
+
+test('机缘里得装备：补装备分最低的槽位，阶比过的最远一关高，品级多掷几次；锻材有上限', () => {
+  // 指定槽位时不再掷槽位；给了次数就掷那么多次取最高的。
+  const fine = gear.roll(20, seq([0, 0.99, 0]), 3, 'ring');
+  assert.strictEqual(fine.slot, 'ring');
+  assert.strictEqual(fine.grade, 3);
+  assert.strictEqual(gear.roll(20, seq([0, 0, 0.99]), true).grade, 3);
+  assert.strictEqual(gear.roll(20, seq([0, 0, 0.99]), false).grade, 0);
+
+  const s = cultivator(20, 20, 20);
+  s.run.battle.cleared = 10;
+  const put = (id, index) => {
+    s.run.event = { kind: 'event', id: id, rerolls: 0 };
+    return game.choose(s, index, () => 0.5);
+  };
+  const first = put('a_battlefield', 0);
+  assert.ok(first.tags.includes('gear'));
+  assert.ok(first.lines.some((line) => /^得.+，已穿上$/.test(line)));
+  for (let i = 0; i < 5; i++) put('a_battlefield', 0);
+  let view = game.gearView(s);
+  assert.ok(view.worn.every((slot) => slot.item && slot.item.tier === 13));
+  assert.strictEqual(view.pack.length, 0);
+
+  // 冠最弱，下一件就补冠；“上好的装备”阶再高一截。
+  s.run.gear.worn.crown = { uid: 99, slot: 'crown', grade: 0, tier: 1, level: 0, affixes: [] };
+  s.run.qi = game.qiCap(s);
+  const next = put('a_pawn', 1);
+  assert.ok(next.lines.some((line) => line.indexOf('（冠）') > 0 && line.indexOf('比身上的好') > 0));
+  view = game.gearView(s);
+  assert.strictEqual(view.pack.length, 1);
+  assert.strictEqual(view.pack[0].slot, 'crown');
+  assert.strictEqual(view.pack[0].tier, 16);
+  assert.ok(game.gearHasBetter(s));
+
+  assert.ok(put('a_battlefield', 1).lines.indexOf('锻材 +5') >= 0);
+  assert.strictEqual(s.run.gear.forge, 5);
+  s.run.gear.forge = 97;
+  assert.ok(put('a_battlefield', 1).lines.indexOf('锻材 +2') >= 0);
+  assert.strictEqual(s.run.gear.forge, 99);
+  assert.ok(put('a_battlefield', 1).lines.indexOf('锻材已满') >= 0);
+
+  // 选项说明和结算用同一份数据。
+  s.run.event = { kind: 'event', id: 'a_pawn', rerolls: 0 };
+  assert.ok(game.eventView(s).options[1].desc.indexOf('得一件上好的装备') >= 0);
+});

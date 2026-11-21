@@ -68,17 +68,17 @@ function rollGrade(tier, rng) {
   return 0;
 }
 
-// 掉一件 tier 阶的装备。boss 为真时品级掷两次取高的。
-function roll(tier, rng, boss) {
-  const slot = SLOTS[Math.min(SLOTS.length - 1, Math.floor(rng() * SLOTS.length))].id;
+// 掉一件 tier 阶的装备。boss 为真时品级掷两次取高的，给数字就掷那么多次；slot 指定槽位，不给就随机。
+function roll(tier, rng, boss, slot) {
+  const at = slot && slotInfo(slot) ? slot : SLOTS[Math.min(SLOTS.length - 1, Math.floor(rng() * SLOTS.length))].id;
   let grade = rollGrade(tier, rng);
-  if (boss) grade = Math.max(grade, rollGrade(tier, rng));
+  for (let i = 1; i < (boss === true ? 2 : boss || 1); i++) grade = Math.max(grade, rollGrade(tier, rng));
   const pool = AFFIXES.map((affix) => affix.id);
   const affixes = [];
   for (let i = 0; i < GRADES[grade].affixes; i++) {
     affixes.push(pool.splice(Math.min(pool.length - 1, Math.floor(rng() * pool.length)), 1)[0]);
   }
-  return { slot: slot, grade: grade, tier: Math.max(1, Math.floor(tier)), level: 0, affixes: affixes };
+  return { slot: at, grade: grade, tier: Math.max(1, Math.floor(tier)), level: 0, affixes: affixes };
 }
 
 function strength(item) {

@@ -1007,6 +1007,8 @@ function fxParts(state, fx) {
   if (fx.chance) parts.push('机缘 ' + signed(fx.chance));
   if (fx.speed) parts.push('这一世机缘积攒速度 +' + pctText(fx.speed));
   if (fx.slot && state.run.slots < MAX_EXTRA_SLOTS) parts.push('功法上限 +' + fx.slot);
+  if (fx.gear) parts.push(fx.gear > 1 ? '得一件上好的装备' : '得一件装备');
+  if (fx.forge) parts.push('锻材 +' + fx.forge);
   if (fx.karma) parts.push('种下因果【' + KARMA[fx.karma] + '】');
   if (fx.mark) parts.push('记下【' + MARKS[fx.mark] + '】');
   markList(fx.unmark).forEach((m) => {
@@ -1692,6 +1694,18 @@ function applyFx(state, fx, rng, lines, tags) {
     lines.push('功法上限 +' + fx.slot);
     tags.push('slot');
   }
+  if (fx.gear) {
+    const got = gearFx(state, fx.gear, rng);
+    lines.push('得' + got.item.grade + got.item.name + '（' + got.item.slotName + '）' +
+      (got.worn ? '，已穿上' : got.scrapped ? '，背包满了，分解成锻材 +' + got.scrapped : got.better ? '，比身上的好' : '，收进背包'));
+    tags.push('gear');
+  }
+  if (fx.forge) {
+    const forge = Math.min(FORGE_MAX - run.gear.forge, fx.forge);
+    run.gear.forge += forge;
+    lines.push(forge ? '锻材 +' + forge : '锻材已满');
+    if (forge) tags.push('gear');
+  }
   if (fx.karma && !findById(run.karma, fx.karma)) {
     // 当前这次选择还没计入 choices，所以结果出现在此后的第 4 到 6 次机缘。
     run.karma.push({ id: fx.karma, due: run.choices + 4 + Math.floor(rng() * 3) });
@@ -2146,6 +2160,9 @@ function autoFxScore(state, fx) {
   if (fx.chance) v += 3 * fx.chance;
   if (fx.speed) v += AUTO_WORTH.speed * fx.speed;
   if (fx.slot && run.slots < MAX_EXTRA_SLOTS) v += 10 * fx.slot;
+  // 装备分不够眼前这场天劫时，装备比平时值钱得多。
+  if (fx.gear) v += (tribGear(state).short ? 12 : 4) * fx.gear;
+  if (fx.forge) v += 0.4 * Math.min(FORGE_MAX - run.gear.forge, fx.forge);
   if (fx.karma && !findById(run.karma, fx.karma)) v += 2;
   if (fx.mark && run.marks.indexOf(fx.mark) < 0) v += 1;
   return v;
@@ -2587,13 +2604,32 @@ function trainCollect(state, rng) {
   return { title: '历练', label: '收了储物袋', qi: amount >= 1 ? amount : 0, gained: Math.max(0, Math.floor(run.qi - qi)), drops: drops, lines: lines, tags: tags };
 }
 
-// 装备：历练掉落，只管这一世。身上兵、衣、佩三个槽位，背包最多 PACK_MAX 件，装不下的直接分解成锻材。
+// 装备：历练掉落，机缘里偶尔也给，只管这一世。身上兵、衣、佩三个槽位，背包最多 PACK_MAX 件，装不下的直接分解成锻材。
 function emptyGear() {
   const worn = {};
   gear.SLOTS.forEach((slot) => {
     worn[slot.id] = null;
   });
   return { worn: worn, pack: [], forge: 0, seq: 0, dry: 0 };
+}
+
+// 机缘里得的装备：补身上装备分最低的槽位（空着的优先），阶比这一世历练过的最远一关高 GEAR_FX_TIER，
+// 品级掷 GEAR_FX_ROLLS 次取最高的。level 是 2（上好的装备）时两个数都翻倍。
+const GEAR_FX_TIER = 3;
+const GEAR_FX_ROLLS = 2;
+function gearFx(state, level, rng) {
+  const run = state.run;
+  let slot = gear.SLOTS[0].id;
+  let low = Infinity;
+  gear.SLOTS.forEach((s) => {
+    const worn = run.gear.worn[s.id];
+    const value = worn ? gear.score(worn) : -1;
+    if (value < low) {
+      low = value;
+      slot = s.id;
+    }
+  });
+  return gearGain(state, gear.roll(Math.max(1, run.battle.cleared) + GEAR_FX_TIER * level, rng, GEAR_FX_ROLLS * level, slot));
 }
 
 function wornItems(run) {
@@ -3645,6 +3681,7 @@ function normalizeRun(state, raw, rng) {
     };
     if (toCount(death.heaven, HEAVEN_MAX)) run.death.heaven = toCount(death.heaven, HEAVEN_MAX);
     run.sea = normalizeSea(run, raw.sea);
+    run.gear = normalizeGear(raw.gear);
     return run;
   }
   const boltTrib = TRIBS[run.realm] && TRIBS[run.realm].bolts ? TRIBS[run.realm] : null;
