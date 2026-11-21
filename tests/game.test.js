@@ -429,6 +429,36 @@ test('机缘收紧：投胎只带上限的三分之一，境界越高攒得越�
   assert.ok(game.chanceYears(s) > 4.5 * 5 * Math.pow(1.15, 17));
   assert.strictEqual(game.meditateYears(s), 265);
 });
+test('功法出现得更少：传承占四分之一，新功法一成半直接是灵品，藏经阁功法的权重是普通功法的五分之一', () => {
+  const weights = {};
+  game.TYPE_WEIGHTS.forEach((item) => { weights[item[0]] = item[1]; });
+  assert.deepStrictEqual(weights, { legacy: 0.25, adventure: 0.36, karma: 0.23, idle: 0.12, rare: 0.04 });
+  near(game.TYPE_WEIGHTS.reduce((sum, item) => sum + item[1], 0), 1);
+  assert.strictEqual(game.TOME_WEIGHT, 0.2);
+  assert.strictEqual(game.LEGACY_FINE_CHANCE, 0.15);
+
+  const s = goldCore();
+  const rng = mulberry(7);
+  let legacy = 0;
+  let offers = 0;
+  let fine = 0;
+  const total = 4000;
+  for (let i = 0; i < total; i++) {
+    s.run.event = null;
+    s.run.chance = 5;
+    s.run.karma = [];
+    assert.ok(game.drawEvent(s, rng));
+    if (s.run.event.kind !== 'legacy') continue;
+    legacy++;
+    s.run.event.offers.forEach((offer) => {
+      offers++;
+      if (offer.level === 2) fine++;
+    });
+  }
+  // 故事章节会先占掉一部分，所以传承只会比四分之一少
+  assert.ok(legacy / total > 0.17 && legacy / total < 0.28, '传承占比 ' + legacy / total);
+  assert.ok(fine / offers > 0.1 && fine / offers < 0.2, '灵品占比 ' + fine / offers);
+});
 test('翻开机缘消耗一次机缘，没有机缘或已有未决事件时不能再翻', () => {
   const s = born();
   assert.strictEqual(game.drawEvent(s, mulberry(1)), true);

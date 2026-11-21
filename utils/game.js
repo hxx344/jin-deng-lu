@@ -71,7 +71,9 @@ const MAX_GRADE = GRADES.length;
 const TOME_MIN = MAX_GRADE + 1;
 const GRADE_NAMES = GRADES.concat(TOME_GRADES);
 // 已请出的藏经阁功法在传承里出现的权重，相对同系的普通功法。
-const TOME_WEIGHT = 0.5;
+const TOME_WEIGHT = 0.2;
+// 筑基之后，传承里没学过的功法直接是灵品的机会。
+const LEGACY_FINE_CHANCE = 0.15;
 const LEGACY_YEARS = 3;
 const FALLBACK_YEARS = 1;
 const FALLBACK_QI = 0.1;
@@ -117,7 +119,7 @@ const WAKES = {
   rest: { name: '养精蓄锐', text: '上一回闭关养足了精神：这一回的选项少耗 1 年寿元' }
 };
 const WAKE_WIN = 0.1;
-const TYPE_WEIGHTS = [['legacy', 0.4], ['adventure', 0.3], ['karma', 0.2], ['idle', 0.06], ['rare', 0.04]];
+const TYPE_WEIGHTS = [['legacy', 0.25], ['adventure', 0.36], ['karma', 0.23], ['idle', 0.12], ['rare', 0.04]];
 const TYPE_NAMES = { legacy: '传承', adventure: '奇遇', karma: '因果', fruit: '因果', idle: '闲事', rare: '奇缘', story: '故事', omen: '征兆', sudden: '突发' };
 const ATTRS = ['edge', 'body', 'mind'];
 const ATTR_NAMES = { edge: '锋', body: '躯', mind: '神' };
@@ -1195,7 +1197,7 @@ function legacyOffers(state, rng) {
     if (skill.tome) return { id: skill.id, level: tomeLevel(state, skill.id) };
     const owned = skillEntry(run, skill.id);
     if (owned) return { id: skill.id, level: Math.min(MAX_GRADE, owned.level + 1) };
-    return { id: skill.id, level: REALMS[run.realm].layer > 0 && rng() < 0.3 ? 2 : 1 };
+    return { id: skill.id, level: REALMS[run.realm].layer > 0 && rng() < LEGACY_FINE_CHANCE ? 2 : 1 };
   });
 }
 
@@ -3780,6 +3782,9 @@ module.exports = {
   DEMON_YEARS,
   DEMON_QI_RATE,
   CHANCE_INTERVAL_SEC,
+  TYPE_WEIGHTS,
+  TOME_WEIGHT,
+  LEGACY_FINE_CHANCE,
   CHANCE_HIGH_REALM,
   CHANCE_HIGH_GROWTH,
   FALLBACK_GAIN_P,
